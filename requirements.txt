@@ -1,5 +1,3 @@
-pyyaml
-numpy
-numpy-quaternion
 transformations
-opencv-contrib-python
+glog
+panda-python==0.8.1
