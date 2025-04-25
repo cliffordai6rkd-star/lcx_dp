@@ -1,7 +1,9 @@
 from panda_py import controllers, libfranka, Panda
 from hardware.base.arm import ArmBase
 import glog as log
+import numpy as np
 
+import time
 class Arm(ArmBase):
     def __init__(self, ip:str, mode='velocity'):
         super().__init__()
@@ -24,7 +26,12 @@ class Arm(ArmBase):
 
     def get_model(self):
         return self.model
-    
+
+    def create_context(self, frequency=1e3, max_runtime=1):
+        return self.instance.create_context(frequency=frequency, max_runtime=max_runtime)
+
+    def start_controller(self):
+        self.instance.start_controller(self.controller)
     # def get_spatial_mass_matrix(self):
     #     return self.model.mass(robot_state=self.instance.get_state())
     
@@ -248,11 +255,20 @@ class Arm(ArmBase):
         self.mode = mode
     
     def move_to_start(self):
+        start_time = time.time()
         self.instance.move_to_start()
+        elapsed_time = time.time() - start_time
+        log.debug(f"Time taken to move to start: {elapsed_time:.2f} seconds")
 
     def move_to_pose(self, pose):
+        start_time = time.time()
         self.instance.move_to_pose(pose)
+        elapsed_time = time.time() - start_time
+        log.debug(f"Time taken to move to pose: {elapsed_time:.2f} seconds")
 
     def move_to_joint_position(self, q):
+        start_time = time.time()
         self.instance.move_to_joint_position(q)
+        elapsed_time = time.time() - start_time
+        log.debug(f"Time taken to move to joint position: {elapsed_time:.2f} seconds")
 

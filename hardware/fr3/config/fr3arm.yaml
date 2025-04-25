@@ -1,0 +1,16 @@
+name: "fr3arm"
+# joint_names: ["shoulder_pan_joint",
+#               "shoulder_lift_joint",
+#               "elbow_joint", 
+#               "wrist_1_joint", 
+#               "wrist_2_joint",
+#               "wrist_3_joint"]
+
+# cycle_start
+# home_config: [-2.9804, -1.5563, 1.7109, -1.6425, -1.5253, 2.7178]
+
+# base_frame: "base_link"
+# flange_frame: "ee_link"
+# jvel_limit: [3.14, 3.14, 3.14, 3.14, 3.14, 3.14]
+# jacc_limit: [1.57, 1.57, 1.57, 1.57, 1.57, 1.57]
+# max_deviation: 0.01

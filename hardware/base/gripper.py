@@ -17,9 +17,5 @@ class GripperBase(metaclass=abc.ABCMeta):
     pass
 
   @abc.abstractmethod
-  def move_to(self, position: np.ndarray) -> bool:
-    pass
-
-  @abc.abstractmethod
   def is_gripping(self) -> bool:
     pass

@@ -21,6 +21,6 @@ pro enable realtime-kernel
 然后
 
 ```
-pip install panda-python==0.8.1
+pip install -r requirements.txt
 ```
 

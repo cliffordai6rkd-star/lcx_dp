@@ -1,0 +1,17 @@
+services:
+    unitreeg1:
+        ports:
+            - "30000:30000"
+        build:
+          context: .
+          dockerfile: Dockerfile
+        volumes:
+            - ../../:/workspace
+            - /tmp:/tmp
+        # network_mode: host
+        
+        stdin_open: true
+        tty: true
+        command: bash -c "cd /workspace && bash"
+       
+
