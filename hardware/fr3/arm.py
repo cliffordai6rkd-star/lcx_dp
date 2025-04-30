@@ -2,6 +2,7 @@ from panda_py import controllers, libfranka, Panda
 from hardware.base.arm import ArmBase
 import glog as log
 import numpy as np
+from panda_py.constants import *
 
 import time
 class Arm(ArmBase):
@@ -271,4 +272,11 @@ class Arm(ArmBase):
         self.instance.move_to_joint_position(q)
         elapsed_time = time.time() - start_time
         log.debug(f"Time taken to move to joint position: {elapsed_time:.2f} seconds")
+    def get_joint_position_start(self):
+      return JOINT_POSITION_START
 
+    def get_joint_limits_lower(self):
+        return JOINT_LIMITS_LOWER
+    
+    def get_joint_limits_upper(self):
+        return JOINT_LIMITS_UPPER
