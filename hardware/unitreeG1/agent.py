@@ -14,6 +14,8 @@ from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
 from unitree_sdk2py.utils.crc import CRC
 from unitree_sdk2py.utils.thread import RecurrentThread
 
+from unitree_sdk2py.g1.audio.g1_audio_client import AudioClient
+
 import numpy as np
 
 import glog as log
@@ -79,8 +81,21 @@ class Agent(Robot):
         self._leg_left = Leg(config['leg'])
         self._leg_right = Leg(config['leg'], False)
 
-        self._waist = Waist(config['waist']) 
+        self._waist = Waist(config['waist'])
 
+        audio_client = AudioClient()
+        audio_client.SetTimeout(10.0)
+        audio_client.Init()
+        self.audio_client = audio_client
+
+    def SetVolume(self, volume: int):
+        self.audio_client.SetVolume(volume)
+        time.sleep(8)
+        ret = self.audio_client.GetVolume()
+        log.info("debug GetVolume: ",ret)
+        time.sleep(8)
+        self.audio_client.TtsMaker(f"当前音量{ret}",0)
+        
     def LowStateHandler(self, msg: LowState_):
         self.low_state = msg
 
@@ -113,6 +128,15 @@ class Agent(Robot):
     
     def arm_right(self) -> Arm:
         return self._arm_right
+    
+    def leg_left(self) -> Leg:
+        return self._leg_left
+    
+    def leg_right(self) -> Leg:
+        return self._leg_right
+    
+    def waist(self) -> Waist:
+        return self._waist
     
     def Start(self):
       self.lowCmdWriteThreadPtr = RecurrentThread(

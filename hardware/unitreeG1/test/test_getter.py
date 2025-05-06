@@ -29,6 +29,8 @@ arm_l.hand_grasp()
 arm_r = r.arm_right()
 arm_r.hand_grasp()
 
+r.SetVolume(50)
+
 while True:
     log.info("---------------------------------")
     time.sleep(5)
