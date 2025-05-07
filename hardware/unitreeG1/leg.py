@@ -38,21 +38,19 @@ class Leg(LegBase):
   def __init__(self, config: Mapping[Text, Any], isLeft: bool = True):
     super().__init__()
 
-    self.jointIndices=[]
-    if isLeft:
-        self.jointIndices = [0,1,2,3,4,5]
-    else:
-        self.jointIndices = [6,7,8,9,10,11]
+    self.jointIndices=[0,1,2,3,4,5] if isLeft else [6,7,8,9,10,11]
+    self.low_state = None
 
-  def print_state(self, low_state: LowState_):
-      for idx in self.jointIndices:
-          print(f"motor_state[{idx}]: {low_state.motor_state[idx]}")
-
+  def print_state(self):
+    for idx in self.jointIndices:
+      print(f"motor_state[{idx}]: {self.low_state.motor_state[idx]}")
+  def update_low_state(self, low_state: LowState_):
+    self.low_state = low_state
   def get_model(self):
-      pass
+    pass
   
   def get_state(self):
-      pass
+    pass
   
 
 

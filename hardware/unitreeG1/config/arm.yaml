@@ -2,4 +2,4 @@ control_dt: 0.002
 
 hand: !include dex3.yaml
 
-urdf_path: "assets/unitree_g1/g1.urdf"
+urdf_path: "assets/unitree_g1/g1_29dof_with_hand.urdf"

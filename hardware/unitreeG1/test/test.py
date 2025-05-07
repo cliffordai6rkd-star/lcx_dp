@@ -23,10 +23,14 @@ r.Start()
 
 #okay
 arm_l = r.arm_left()
+log.info(f"arm_l.get_tcp_pose before grasp: {arm_l.get_tcp_pose()}")
 arm_l.hand_grasp()
+log.info(f"arm_l.get_tcp_pose after grasp: {arm_l.get_tcp_pose()}")
 
 arm_r = r.arm_right()
+log.info(f"arm_r.get_tcp_pose before grasp: {arm_r.get_tcp_pose()}")
 arm_r.hand_grasp()
+log.info(f"arm_r.get_tcp_pose after grasp: {arm_r.get_tcp_pose()}")
 
 r.SetVolume(85)
 

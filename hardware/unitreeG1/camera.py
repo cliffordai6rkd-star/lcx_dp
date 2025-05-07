@@ -16,6 +16,8 @@ class Camera(CameraBase):
     def capture(self):
         rgb,d=None,None
         frames = self.pipe.wait_for_frames()
+        for f in frames:
+            log.debug(f.profile)
 
         rgb_frame = frames.get_color_frame()
         depth_frame = frames.get_depth_frame()
@@ -30,8 +32,5 @@ class Camera(CameraBase):
             # Save the frames as images
             # cv2.imwrite('rgb.png', rgb)
             # cv2.imwrite('depth.png', d)
-
-            for f in frames:
-                log.debug(f.profile)
 
         return rgb, d

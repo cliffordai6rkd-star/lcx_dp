@@ -51,17 +51,3 @@ class Robot(metaclass=abc.ABCMeta):
 
     def move_to_start(self) -> None:
         raise NotImplementedError("This method should be implemented by subclasses.")
-
-# class Monte03(Robot):
-#     def __init__(self, config: Mapping[Text, Any], urdf: Text, 
-#                  arm_l: Arm, gripper_l: Gripper,
-#                  arm_r: Arm, gripper_r: Gripper):
-#         pass
-
-class UnitreeG1(Robot):
-    def __init__(self):
-        pass
-
-class AgibotG1(Robot):
-    def __init__(self):
-        pass

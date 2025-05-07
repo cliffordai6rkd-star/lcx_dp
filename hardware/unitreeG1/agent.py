@@ -128,6 +128,8 @@ class Agent(Robot):
 
         #TODO: add livox support
 
+        
+
     def CameraCapture(self):
         return self.camera.capture()
 
@@ -153,6 +155,12 @@ class Agent(Robot):
     def LowStateHandler(self, msg: LowState_):
         self.low_state = msg
 
+        self._arm_left.update_low_state(msg)
+        self._arm_right.update_low_state(msg)
+        self._leg_left.update_low_state(msg)
+        self._leg_right.update_low_state(msg)
+        self._waist.update_low_state(msg)
+        
         if self.update_mode_machine_ == False:
             self.mode_machine_ = self.low_state.mode_machine
             self.update_mode_machine_ = True
@@ -173,15 +181,16 @@ class Agent(Robot):
         log.info(f"Reserve: {self.low_state.reserve}")
         log.info(f"CRC: {self.low_state.crc}")
         log.info('------------------left arm--------------------------')
-        self._arm_left.print_state(self.low_state)
+        
+        self._arm_left.print_state()
         log.info('------------------right arm--------------------------')
-        self._arm_right.print_state(self.low_state)
+        self._arm_right.print_state()
         log.info('------------------left leg--------------------------')
-        self._leg_left.print_state(self.low_state)
+        self._leg_left.print_state()
         log.info('------------------right leg--------------------------')
-        self._leg_right.print_state(self.low_state)
+        self._leg_right.print_state()
         log.info('------------------waist--------------------------')
-        self._waist.print_state(self.low_state)
+        self._waist.print_state()
 
     def arm_left(self) -> Arm:
         return self._arm_left

@@ -5,11 +5,6 @@ from typing import Sequence, Union
 class WaistBase(metaclass=abc.ABCMeta):
   
   @abc.abstractmethod
-  def get_model(self):
+  def print_state(self):
       pass
-  
-  @abc.abstractmethod
-  def get_state(self):
-      pass
-
  
