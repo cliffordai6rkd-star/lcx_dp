@@ -24,6 +24,9 @@ class Mode:
 
 class Dex3(HandBase):
     def print_state(self):
+        if self.hand_state is None:
+            log.info("Hand state is None")
+            return
         log.info(f"Motor State: {self.hand_state.motor_state}")
         log.info(f"Press Sensor State: {self.hand_state.press_sensor_state}")
         log.info(f"Power Voltage: {self.hand_state.power_v}")

@@ -30,6 +30,14 @@ Kd = [
     1, 1, 1, 1, 1, 1, 1   # arms 
 ]
 
+Q = [
+  -0.25, 0,0,0.54,-0.21,0,
+  -0.25, 0,0,0.54,-0.21,0,
+  0,0,-0.26,
+  0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,
+]
+
 class Mode:
     PR = 0  # Series Control for Pitch/Roll Joints
     AB = 1  # Parallel Control for A/B Joints
@@ -40,6 +48,14 @@ class Waist(WaistBase):
     super().__init__()
     self.jointIndices=[12,13,14]
     self.low_state = None
+  def LowCmdUpdate(self, low_cmd: LowCmd_):
+    for i in self.jointIndices:
+        low_cmd.motor_cmd[i].mode =  1 # 1:Enable, 0:Disable
+        low_cmd.motor_cmd[i].tau = 0.
+        low_cmd.motor_cmd[i].q = Q[i]
+        low_cmd.motor_cmd[i].dq = 0.
+        low_cmd.motor_cmd[i].kp = Kp[i]
+        low_cmd.motor_cmd[i].kd = Kd[i]
   def print_state(self):
     for idx in self.jointIndices:
       print(f"motor_state[{idx}]: {self.low_state.motor_state[idx]}")

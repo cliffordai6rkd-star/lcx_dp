@@ -8,14 +8,15 @@ import numpy as np
 
 
 class GripperBase(metaclass=abc.ABCMeta):
+    
   @abc.abstractmethod
-  def open(self) -> bool:
+  def print_state(self) -> None:
     pass
 
-  @abc.abstractmethod
-  def close(self) -> bool:
-    pass
+  # @abc.abstractmethod
+  # def close(self) -> bool:
+  #   pass
 
-  @abc.abstractmethod
-  def is_gripping(self) -> bool:
-    pass
+  # @abc.abstractmethod
+  # def is_gripping(self) -> bool:
+  #   pass

@@ -51,10 +51,7 @@ if __name__ == "__main__":
 
     cmd.mode_pr = 0 # PR
     cmd.mode_machine = 6
-    # cmd.head[0]=0xFE
-    # cmd.head[1]=0xEF
-    # cmd.level_flag = 0xFF
-    # cmd.gpio = 0
+
     for i in range(G1_DOF):
         cmd.motor_cmd[i].mode = 0x01  # (PMSM) mode
         cmd.motor_cmd[i].q= 0.0

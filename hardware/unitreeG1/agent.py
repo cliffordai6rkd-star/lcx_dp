@@ -62,24 +62,6 @@ class Agent(Robot):
 
         ChannelFactoryInitialize(config['robot_domain'], config['network_interface'])
 
-        # create publisher #
-        self.lowcmd_publisher_ = ChannelPublisher("rt/lowcmd", LowCmd_)
-        self.lowcmd_publisher_.Init()
-        # create subscriber # 
-        self.lowstate_subscriber_ = ChannelSubscriber("rt/lowstate", LowState_)
-        self.lowstate_subscriber_.Init(self.LowStateHandler, 10)
-
-        self.mainboardstate_subscriber_ = ChannelSubscriber("rt/lf/mainboardstate", MainBoardState_)
-        self.mainboardstate_subscriber_.Init(self.MainBoardStateHandler, 10)
-
-        self.bms_subscriber_ = ChannelSubscriber("rt/lf/bmsstate", BmsState_)
-        self.bms_subscriber_.Init(self.BMSStateHandler, 10)
-
-        # https://support.unitree.com/home/zh/G1_developer/odometer_service_interface
-        # self.odom_sub_ = ChannelSubscriber("rt/odommodestate", SportModeState_)
-        self.odom_sub_ = ChannelSubscriber("rt/lf/odommodestate", SportModeState_)
-        self.odom_sub_.Init(self.HighStateHandler, 10)
-
         # G1 常用TOPIC 列表
         # TopicName 	Idl 	Info
         # rt/dex3/left/state 	hg/idl/HandState_.idl 	获取左灵巧手反馈状态-低频模式
@@ -111,8 +93,13 @@ class Agent(Robot):
         low_cmd: LowCmd_ = unitree_hg_msg_dds__LowCmd_()
         self.low_cmd = low_cmd
         self.crc = crc
-        self._arm_left = Arm(config['arm'])
-        self._arm_right = Arm(config['arm'], False)
+
+        is_sim=True if config['robot_domain'] == 1 else False
+        self._arm_left = Arm(config['arm'], write_func=self.Write,simulator=is_sim)
+        self._arm_right = Arm(config['arm'], False, write_func=self.Write,simulator=is_sim)
+
+        self._arm_left.Enable(self.low_cmd)
+        # self._arm_right.Enable(self.low_cmd)
 
         self._leg_left = Leg(config['leg'])
         self._leg_right = Leg(config['leg'], False)
@@ -124,12 +111,28 @@ class Agent(Robot):
         audio_client.Init()
         self.audio_client = audio_client
 
-        if config['camera'] is not None:
+        if config['robot_domain'] == 0:
             self.camera = Camera(config=config['camera'])
 
         #TODO: add livox support
 
-        
+        # create publisher #
+        self.lowcmd_publisher_ = ChannelPublisher("rt/lowcmd", LowCmd_)
+        self.lowcmd_publisher_.Init()
+        # create subscriber # 
+        self.lowstate_subscriber_ = ChannelSubscriber("rt/lowstate", LowState_)
+        self.lowstate_subscriber_.Init(self.LowStateHandler, 10)
+
+        self.mainboardstate_subscriber_ = ChannelSubscriber("rt/lf/mainboardstate", MainBoardState_)
+        self.mainboardstate_subscriber_.Init(self.MainBoardStateHandler, 10)
+
+        self.bms_subscriber_ = ChannelSubscriber("rt/lf/bmsstate", BmsState_)
+        self.bms_subscriber_.Init(self.BMSStateHandler, 10)
+
+        # https://support.unitree.com/home/zh/G1_developer/odometer_service_interface
+        # self.odom_sub_ = ChannelSubscriber("rt/odommodestate", SportModeState_)
+        self.odom_sub_ = ChannelSubscriber("rt/lf/odommodestate", SportModeState_)
+        self.odom_sub_.Init(self.HighStateHandler, 10)
 
     def CameraCapture(self):
         return self.camera.capture()
@@ -161,7 +164,7 @@ class Agent(Robot):
         self._leg_left.update_low_state(msg)
         self._leg_right.update_low_state(msg)
         self._waist.update_low_state(msg)
-        
+
         if self.update_mode_machine_ == False:
             self.mode_machine_ = self.low_state.mode_machine
             self.update_mode_machine_ = True
@@ -225,9 +228,21 @@ class Agent(Robot):
         ratio = np.clip(self.time_ / self.duration_, 0.0, 1.0)
         self._arm_left.LowCmdUpdate(self.low_cmd, self.low_state, ratio)
         self._arm_right.LowCmdUpdate(self.low_cmd, self.low_state, ratio)
+
+        # self.FreezeLegs()
         
         self.low_cmd.crc = self.crc.Crc(self.low_cmd)
         self.lowcmd_publisher_.Write(self.low_cmd)
+
+    def Write(self, low_cmd: LowCmd_):
+        
+        low_cmd.crc = self.crc.Crc(low_cmd)
+        self.lowcmd_publisher_.Write(low_cmd)
+
+    def FreezeLegs(self):
+        self._leg_left.LowCmdUpdate(self.low_cmd)
+        self._leg_right.LowCmdUpdate(self.low_cmd)
+        self._waist.LowCmdUpdate(self.low_cmd)
 
     def PreMove(self):
         self.low_cmd.mode_pr = Mode.PR

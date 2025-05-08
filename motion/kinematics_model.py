@@ -76,13 +76,16 @@ class KinematicsModel(object):
       upperLim = np.where(np.isfinite(self.max_joints), self.max_joints, 0.)
       seed = (lowerLim + upperLim) / 2.0
       seed = np.where(np.isnan(seed), [0.] * len(seed), seed)
+      log.info("Using default seed: %s" % str(seed))
 
     q_kdl = kdl.JntArray(self.num_dof)
     seed_kdl = jointListToKdl(seed)
     if self.ik_pos_solver.CartToJnt(
       seed_kdl, transform_to_kdl(pose), q_kdl) >= 0:
+      log.debug("IK solution found!")
       return jointKdlToList(q_kdl)
     else:
+      log.warn("IK solution NOT  found!")
       return None
 
   def ik_vel(self, twist: Union[kdl.Twist, np.ndarray],
@@ -388,4 +391,5 @@ def get_seeds(num_dof):
        0.3466158031218269, 1.023886763372576, 2.8198200726725]
     ])
   else:
+    log.warn(f"The number of dof is not 6, no seed is provided!")
     return []
