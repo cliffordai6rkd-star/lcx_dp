@@ -4,9 +4,9 @@ name: "unitreeG1"
 arm: !include arm.yaml
 leg: !include leg.yaml
 waist: !include waist.yaml
-camera: !include camera.yaml
 
-network_interface: 'eth0'
-robot_domain: 0
+network_interface: 'lo'
+robot_domain: 1
+
 control_dt: 0.002
 duration: 3.0

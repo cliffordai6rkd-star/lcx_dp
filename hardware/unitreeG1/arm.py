@@ -80,9 +80,10 @@ class Arm(ArmBase):
         urdf_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', config['urdf_path'])) #urdf_path: "assets/unitree_g1/g1_29dof_with_hand.urdf"
         log.info(f"arm urdf path: {urdf_path}")
 
-        base_link = config['left_shoulder_pitch_link'] if isLeft else config['right_shoulder_pitch_link']
-        end_link = config['left_wrist_yaw_link'] if isLeft else config['right_wrist_yaw_link']
-        self.kinematics = KinematicsModel(urdf=file_utils.read_file(urdf_path), base_link=base_link, end_link=end_link)
+        base_link = 'left_shoulder_pitch_link' if isLeft else 'right_shoulder_pitch_link'
+        end_link = 'left_wrist_yaw_link' if isLeft else 'right_wrist_yaw_link'
+        joint_names = config['joint_names_left'] if isLeft else config['joint_names_right']
+        self.kinematics = KinematicsModel(urdf=file_utils.read_file(urdf_path), base_link=base_link, ee_link=end_link, joint_names=joint_names)
         self.jointIndices = [15,16,17,18,19,20,21] if isLeft else [22,23,24,25,26,27,28]
 
         self._dex3 = Dex3(config['hand'], isLeft)

@@ -60,7 +60,7 @@ class Agent(Robot):
         self.mode_pr_ = Mode.PR
         self.mode_machine_ = 0
 
-        ChannelFactoryInitialize(0, config['network_interface'])
+        ChannelFactoryInitialize(config['robot_domain'], config['network_interface'])
 
         # create publisher #
         self.lowcmd_publisher_ = ChannelPublisher("rt/lowcmd", LowCmd_)
@@ -97,15 +97,15 @@ class Agent(Robot):
         # rt/lf/odommodestate 	hg/idl/IMUState_.idl 	获取里程计信息-低频模式
         # rt/lf/secondary_imu 	/hg/IMUState_.idl 	获取机身IMU数据-低频模式
         # rt/secondary_imu 	/hg/IMUState_.idl 	获取机身IMU数据
-
-        self.msc = MotionSwitcherClient()
-        self.msc.SetTimeout(5.0)
-        self.msc.Init()
-        status, result = self.msc.CheckMode()
-        while result['name']:
-            self.msc.ReleaseMode()
+        if config['robot_domain'] == 0:
+            self.msc = MotionSwitcherClient()
+            self.msc.SetTimeout(5.0)
+            self.msc.Init()
             status, result = self.msc.CheckMode()
-            time.sleep(1)
+            while result['name']:
+                self.msc.ReleaseMode()
+                status, result = self.msc.CheckMode()
+                time.sleep(1)
 
         crc = CRC()
         low_cmd: LowCmd_ = unitree_hg_msg_dds__LowCmd_()
@@ -124,7 +124,8 @@ class Agent(Robot):
         audio_client.Init()
         self.audio_client = audio_client
 
-        self.camera = Camera(config=config['camera'])
+        if config['camera'] is not None:
+            self.camera = Camera(config=config['camera'])
 
         #TODO: add livox support
 

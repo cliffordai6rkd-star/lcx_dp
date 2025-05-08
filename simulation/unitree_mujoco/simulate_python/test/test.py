@@ -1,6 +1,5 @@
 import sys, os, pathlib
-
-sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent.parent.parent))
+sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent))
 
 import glog as log
 log.setLevel("INFO")
@@ -8,7 +7,7 @@ log.setLevel("INFO")
 from hardware.unitreeG1.agent import Agent
 
 from tools import file_utils
-import time 
+import time
 
 cur_path = os.path.dirname(os.path.abspath(__file__))
 robot_config_file = os.path.join(
@@ -33,11 +32,8 @@ log.info(f"arm_r.get_tcp_pose before grasp: {arm_r.get_tcp_pose()}")
 arm_r.hand_grasp()
 log.info(f"arm_r.get_tcp_pose after grasp: {arm_r.get_tcp_pose()}")
 
-r.SetVolume(85)
-
 while True:
     log.info("---------------------------------")
     time.sleep(5)
     r.print_state()
-    rgb,d = r.CameraCapture()
     pass
