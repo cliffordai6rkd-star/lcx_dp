@@ -1,5 +1,7 @@
 In tty1, start genesis sim server
 ```
+cd dependencies/libfranka-sim
+pip install -e .
 run-franka-sim-server -v
 ```
 

@@ -1,4 +1,10 @@
 """
+@File    : kinematics_add_ik_my_implement
+@Author  : Haotian Liang
+@Time    : 2025/4/27 11:31
+@Email   :Haotianliang10@gmail.com
+"""
+"""
 @File    : kinematics
 @Author  : Haotian Liang
 @Time    : 2025/4/25 14:33
@@ -11,7 +17,6 @@ from typing import Optional, Tuple, Dict
 from abc import ABC, abstractmethod
 import numpy.linalg as LA
 
-import glog as log
 
 
 # Define the abstract base class
@@ -23,7 +28,7 @@ class BaseKinematicsModel(ABC):
     """
 
     @abstractmethod
-    def fk(self, joint_positions: np.ndarray) -> np.ndarray:
+    def forward_kinematics(self, joint_positions: np.ndarray) -> np.ndarray:
         """
         Calculate the end-effector pose from given joint positions.
 
@@ -37,7 +42,7 @@ class BaseKinematicsModel(ABC):
         pass
 
     @abstractmethod
-    def ik(
+    def inverse_kinematics(
             self,
             target_pose: np.ndarray,
             seed: Optional[np.ndarray] = None,
@@ -115,14 +120,13 @@ class PinocchioKinematicsModel(BaseKinematicsModel):
             end_effector_link: Name of the end-effector link
 
         """
-
         # Call the parent class initializer
         super().__init__()
 
+        self.urdf_path = urdf_path
         # Build the Pinocchio model from URDF
         # 使用 pinocchio.buildModelFromUrdf() 加载 URDF 文件
         self.model = pin.buildModelFromUrdf(urdf_path)
-
         # 创建对应的 Pinocchio 数据对象
         self.data = pin.Data(self.model)
 
@@ -179,7 +183,7 @@ class PinocchioKinematicsModel(BaseKinematicsModel):
         if np.any(inf_mask):
             self.joint_upper_limit[inf_mask] = 1e10
 
-    def fk(self, joint_positions: np.ndarray) -> np.ndarray:
+    def forward_kinematics(self, joint_positions: np.ndarray) -> np.ndarray:
         """
         Calculate the forward kinematics to get the end-effector pose.
 
@@ -225,90 +229,90 @@ class PinocchioKinematicsModel(BaseKinematicsModel):
         # Return the 4x4 homogeneous transformation matrix
         return np.array(T_ee.homogeneous)
 
-    # def ik(
-    #         self,
-    #         target_pose: np.ndarray,
-    #         seed: Optional[np.ndarray] = None,
-    #         joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
-    #         max_iter: int = 10000,
-    #         tol: float = 1e-7,
-    #         lambda_reg: float = 0.1
-    # ) -> np.ndarray:
-    #     """
-    #     Solve inverse kinematics to find joint angles that achieve the target pose.
+    def inverse_kinematics(
+            self,
+            target_pose: np.ndarray,
+            seed: Optional[np.ndarray] = None,
+            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+            max_iter: int = 10000,
+            tol: float = 1e-7,
+            lambda_reg: float = 0.1
+    ) -> np.ndarray:
+        """
+        Solve inverse kinematics to find joint angles that achieve the target pose.
 
-    #     Args:
-    #         target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
-    #         seed: Initial guess for joint angles, shape (n,)
-    #         joint_limits: Tuple of (lower_limits, upper_limits) arrays. If None, use model defaults
-    #         max_iter: Maximum number of iterations for the solver
-    #         tol: Tolerance for convergence
-    #         lambda_reg: Damping factor for the damped least squares method
+        Args:
+            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+            seed: Initial guess for joint angles, shape (n,)
+            joint_limits: Tuple of (lower_limits, upper_limits) arrays. If None, use model defaults
+            max_iter: Maximum number of iterations for the solver
+            tol: Tolerance for convergence
+            lambda_reg: Damping factor for the damped least squares method
 
-    #     Returns:
-    #         joint_angles: Solved joint angles of shape (n,)
-    #     """
+        Returns:
+            joint_angles: Solved joint angles of shape (n,)
+        """
 
-    #     # Get the number of joints
-    #     n_joints = len(self.joint_lower_limit)
+        # Get the number of joints
+        n_joints = len(self.joint_lower_limit)
 
-    #     # Use provided joint limits or default to model limits
-    #     if joint_limits is None:
-    #         lower_limits = self.joint_lower_limit
-    #         upper_limits = self.joint_upper_limit
-    #     else:
-    #         lower_limits, upper_limits = joint_limits
+        # Use provided joint limits or default to model limits
+        if joint_limits is None:
+            lower_limits = self.joint_lower_limit
+            upper_limits = self.joint_upper_limit
+        else:
+            lower_limits, upper_limits = joint_limits
 
-    #     # Initialize joint angles with seed or middle of joint range if not provided
-    #     if seed is None:
-    #         q = 0.5 * (lower_limits + upper_limits)
-    #     else:
-    #         q = seed.copy()
+        # Initialize joint angles with seed or middle of joint range if not provided
+        if seed is None:
+            q = 0.5 * (lower_limits + upper_limits)
+        else:
+            q = seed.copy()
 
-    #     # Ensure q is within joint limits
-    #     q = np.clip(q, lower_limits, upper_limits)
+        # Ensure q is within joint limits
+        q = np.clip(q, lower_limits, upper_limits)
 
-    #     # Convert target pose to SE3 placement
-    #     target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+        # Convert target pose to SE3 placement
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
 
-    #     # Initialize variables for the iterative solver
-    #     converged = False
+        # Initialize variables for the iterative solver
+        converged = False
 
-    #     for i in range(max_iter):
-    #         # Compute current forward kinematics
-    #         pin.forwardKinematics(self.model, self.data, q)
-    #         pin.updateFramePlacements(self.model, self.data)
+        for i in range(max_iter):
+            # Compute current forward kinematics
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
 
-    #         # Get current end-effector placement
-    #         current_placement = self.data.oMf[self.ee_frame_id]
+            # Get current end-effector placement
+            current_placement = self.data.oMf[self.ee_frame_id]
 
-    #         # Compute the error in SE3 (log maps the difference to a spatial velocity)
-    #         err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+            # Compute the error in SE3 (log maps the difference to a spatial velocity)
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
 
-    #         # Check for convergence
-    #         if np.linalg.norm(err_se3) < tol:
-    #             converged = True
-    #             break
+            # Check for convergence
+            if np.linalg.norm(err_se3) < tol:
+                converged = True
+                break
 
-    #         # Compute the Jacobian at the current configuration
-    #         pin.computeJointJacobians(self.model, self.data, q)
-    #         J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+            # Compute the Jacobian at the current configuration
+            pin.computeJointJacobians(self.model, self.data, q)
+            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
 
-    #         # Damped least squares method
-    #         JJT = J @ J.T + lambda_reg * np.eye(6)
-    #         delta_q = J.T @ np.linalg.solve(JJT, err_se3)
+            # Damped least squares method
+            JJT = J @ J.T + lambda_reg * np.eye(6)
+            delta_q = J.T @ np.linalg.solve(JJT, err_se3)
 
-    #         # Update joint angles
-    #         q = q + delta_q
+            # Update joint angles
+            q = q + delta_q
 
-    #         # Project back to joint limits
-    #         q = np.clip(q, lower_limits, upper_limits)
+            # Project back to joint limits
+            q = np.clip(q, lower_limits, upper_limits)
 
-    #     if not converged:
-    #         # If the solver did not converge, return the best solution found
-    #         print(f"Warning: IK did not converge after {max_iter} iterations. Best error: {np.linalg.norm(err_se3)}")
+        if not converged:
+            # If the solver did not converge, return the best solution found
+            print(f"Warning: IK did not converge after {max_iter} iterations. Best error: {np.linalg.norm(err_se3)}")
 
-    #     return q
+        return q
 
     def inverse_kinematics_SDLS(
             self,
@@ -703,109 +707,7 @@ class PinocchioKinematicsModel(BaseKinematicsModel):
                 joint_velocities *= min_time
 
         return joint_velocities
-    
-    def ik(
-            self,
-            target_pose: np.ndarray,
-            seed: Optional[np.ndarray] = None,
-            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
-            max_iter: int = 5000,
-            tol: float = 1e-6,
-            step_size: float = 1.0
-    ) -> np.ndarray:
-        """
-        Solve inverse kinematics using the Gauss-Newton method.
 
-        The Gauss-Newton algorithm is similar to Newton's method but it approximates
-        the Hessian as J^T * J, ignoring second-order terms.
-
-        Args:
-            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
-            seed: Initial guess for joint angles
-            joint_limits: Tuple of (lower_limits, upper_limits) arrays
-            max_iter: Maximum number of iterations
-            tol: Tolerance for convergence
-            step_size: Step size factor (1.0 = full Gauss-Newton step)
-
-        Returns:
-            joint_angles: Solved joint angles
-        """
-        # Get the number of joints
-        n_joints = len(self.joint_lower_limit)
-
-        # Use provided joint limits or default to model limits
-        if joint_limits is None:
-            lower_limits = self.joint_lower_limit
-            upper_limits = self.joint_upper_limit
-        else:
-            lower_limits, upper_limits = joint_limits
-
-        # Initialize joint angles with seed or middle of joint range
-        if seed is None:
-            q = 0.5 * (lower_limits + upper_limits)
-        else:
-            q = seed.copy()
-
-        # Ensure q is within joint limits
-        q = np.clip(q, lower_limits, upper_limits)
-
-        # Convert target pose to SE3 placement
-        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
-
-        # Initialize variables for the iterative solver
-        converged = False
-
-        for i in range(max_iter):
-            # Compute current forward kinematics
-            pin.forwardKinematics(self.model, self.data, q)
-            pin.updateFramePlacements(self.model, self.data)
-
-            # Get current end-effector placement
-            current_placement = self.data.oMf[self.ee_frame_id]
-
-            # Compute the error in SE3 (log maps the difference to a spatial velocity)
-            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
-
-            # Check for convergence
-            if np.linalg.norm(err_se3) < tol:
-                converged = True
-                break
-
-            # Compute the Jacobian at the current configuration
-            pin.computeJointJacobians(self.model, self.data, q)
-            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
-
-            # Pseudo-inverse of the Jacobian using the normal equations approach
-            # For Gauss-Newton: delta_q = (J^T * J)^(-1) * J^T * err
-            JtJ = J @ J.T
-
-            try:
-                # Solve the normal equations
-                v = np.linalg.solve(JtJ, err_se3)
-                delta_q = J.T @ v
-
-                # Apply step size and update joint angles
-                q = q + step_size * delta_q
-
-                # Project back to joint limits
-                q = np.clip(q, lower_limits, upper_limits)
-            except np.linalg.LinAlgError:
-                # If the matrix is singular, use a damped approach
-                reg = 1e-3 * np.eye(JtJ.shape[0])
-                v = np.linalg.solve(JtJ + reg, err_se3)
-                delta_q = J.T @ v
-
-                # Apply step size and update joint angles
-                q = q + step_size * delta_q
-
-                # Project back to joint limits
-                q = np.clip(q, lower_limits, upper_limits)
-
-        if not converged:
-            print(
-                f"Warning: Gauss-Newton IK did not converge after {max_iter} iterations. Best error: {np.linalg.norm(err_se3)}")
-
-        return q
     def get_joint_limits(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get the joint limits of the robot.
@@ -932,3 +834,620 @@ class PinocchioKinematicsModel(BaseKinematicsModel):
                 poses[frame.name] = np.array(T.homogeneous)
 
         return poses
+
+    # 1. Levenberg-Marquardt Method (LM)
+    def inverse_kinematics_LM(
+            self,
+            target_pose: np.ndarray,
+            seed: Optional[np.ndarray] = None,
+            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+            max_iter: int = 5000,
+            tol: float = 1e-6,
+            lambda_init: float = 0.1,
+            lambda_min: float = 1e-6,
+            lambda_max: float = 1e3,
+            lambda_factor: float = 10.0
+    ) -> np.ndarray:
+        """
+        Solve inverse kinematics using the Levenberg-Marquardt method.
+
+        The LM algorithm dynamically adjusts the damping parameter based on the progress:
+        - Increases damping when the error increases (more like gradient descent)
+        - Decreases damping when the error decreases (more like Gauss-Newton)
+
+        Args:
+            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+            seed: Initial guess for joint angles
+            joint_limits: Tuple of (lower_limits, upper_limits) arrays
+            max_iter: Maximum number of iterations
+            tol: Tolerance for convergence
+            lambda_init: Initial damping parameter
+            lambda_min: Minimum damping parameter
+            lambda_max: Maximum damping parameter
+            lambda_factor: Factor to multiply/divide lambda by
+
+        Returns:
+            joint_angles: Solved joint angles
+        """
+        # Get the number of joints
+        n_joints = len(self.joint_lower_limit)
+
+        # Use provided joint limits or default to model limits
+        if joint_limits is None:
+            lower_limits = self.joint_lower_limit
+            upper_limits = self.joint_upper_limit
+        else:
+            lower_limits, upper_limits = joint_limits
+
+        # Initialize joint angles with seed or middle of joint range
+        if seed is None:
+            q = 0.5 * (lower_limits + upper_limits)
+        else:
+            q = seed.copy()
+
+        # Ensure q is within joint limits
+        q = np.clip(q, lower_limits, upper_limits)
+
+        # Convert target pose to SE3 placement
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+
+        # Initialize damping parameter
+        lambda_k = lambda_init
+
+        # Initialize variables for the iterative solver
+        converged = False
+        last_error_norm = float('inf')
+
+        for i in range(max_iter):
+            # Compute current forward kinematics
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Get current end-effector placement
+            current_placement = self.data.oMf[self.ee_frame_id]
+
+            # Compute the error in SE3
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+            error_norm = np.linalg.norm(err_se3)
+
+            # Check for convergence
+            if error_norm < tol:
+                converged = True
+                break
+
+            # Compute the Jacobian at the current configuration
+            pin.computeJointJacobians(self.model, self.data, q)
+            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+
+            # Compute J^T * J and J^T * err
+            JtJ = J @ J.T
+            Jt_err = J.T @ err_se3
+
+            # Add damping to the diagonal of J^T * J
+            # (increase numerical stability and control step size)
+            JtJ_damped = JtJ + lambda_k * np.eye(JtJ.shape[0])
+
+            # Solve the normal equations
+            try:
+                v = np.linalg.solve(JtJ_damped, err_se3)
+                delta_q = J.T @ v
+
+                # Try the update
+                q_new = np.clip(q + delta_q, lower_limits, upper_limits)
+
+                # Check if the new position reduces the error
+                pin.forwardKinematics(self.model, self.data, q_new)
+                pin.updateFramePlacements(self.model, self.data)
+                new_err_se3 = pin.log(self.data.oMf[self.ee_frame_id].inverse() * target_placement).vector
+                new_error_norm = np.linalg.norm(new_err_se3)
+
+                if new_error_norm < error_norm:
+                    # Accept the update and decrease lambda (more like Gauss-Newton)
+                    q = q_new
+                    lambda_k = max(lambda_min, lambda_k / lambda_factor)
+                    last_error_norm = new_error_norm
+                else:
+                    # Reject the update and increase lambda (more like gradient descent)
+                    lambda_k = min(lambda_max, lambda_k * lambda_factor)
+            except np.linalg.LinAlgError:
+                # If matrix is singular, increase lambda and continue
+                lambda_k = min(lambda_max, lambda_k * lambda_factor)
+                continue
+
+        if not converged:
+            print(f"Warning: LM IK did not converge after {max_iter} iterations. Best error: {error_norm}")
+
+        return q
+
+    # 2. Gauss-Newton Method
+    def inverse_kinematics_GaussNewton(
+            self,
+            target_pose: np.ndarray,
+            seed: Optional[np.ndarray] = None,
+            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+            max_iter: int = 5000,
+            tol: float = 1e-6,
+            step_size: float = 1.0
+    ) -> np.ndarray:
+        """
+        Solve inverse kinematics using the Gauss-Newton method.
+
+        The Gauss-Newton algorithm is similar to Newton's method but it approximates
+        the Hessian as J^T * J, ignoring second-order terms.
+
+        Args:
+            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+            seed: Initial guess for joint angles
+            joint_limits: Tuple of (lower_limits, upper_limits) arrays
+            max_iter: Maximum number of iterations
+            tol: Tolerance for convergence
+            step_size: Step size factor (1.0 = full Gauss-Newton step)
+
+        Returns:
+            joint_angles: Solved joint angles
+        """
+        # Get the number of joints
+        n_joints = len(self.joint_lower_limit)
+
+        # Use provided joint limits or default to model limits
+        if joint_limits is None:
+            lower_limits = self.joint_lower_limit
+            upper_limits = self.joint_upper_limit
+        else:
+            lower_limits, upper_limits = joint_limits
+
+        # Initialize joint angles with seed or middle of joint range
+        if seed is None:
+            q = 0.5 * (lower_limits + upper_limits)
+        else:
+            q = seed.copy()
+
+        # Ensure q is within joint limits
+        q = np.clip(q, lower_limits, upper_limits)
+
+        # Convert target pose to SE3 placement
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+
+        # Initialize variables for the iterative solver
+        converged = False
+
+        for i in range(max_iter):
+            # Compute current forward kinematics
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Get current end-effector placement
+            current_placement = self.data.oMf[self.ee_frame_id]
+
+            # Compute the error in SE3 (log maps the difference to a spatial velocity)
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+
+            # Check for convergence
+            if np.linalg.norm(err_se3) < tol:
+                converged = True
+                break
+
+            # Compute the Jacobian at the current configuration
+            pin.computeJointJacobians(self.model, self.data, q)
+            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+
+            # Pseudo-inverse of the Jacobian using the normal equations approach
+            # For Gauss-Newton: delta_q = (J^T * J)^(-1) * J^T * err
+            JtJ = J @ J.T
+
+            try:
+                # Solve the normal equations
+                v = np.linalg.solve(JtJ, err_se3)
+                delta_q = J.T @ v
+
+                # Apply step size and update joint angles
+                q = q + step_size * delta_q
+
+                # Project back to joint limits
+                q = np.clip(q, lower_limits, upper_limits)
+            except np.linalg.LinAlgError:
+                # If the matrix is singular, use a damped approach
+                reg = 1e-3 * np.eye(JtJ.shape[0])
+                v = np.linalg.solve(JtJ + reg, err_se3)
+                delta_q = J.T @ v
+
+                # Apply step size and update joint angles
+                q = q + step_size * delta_q
+
+                # Project back to joint limits
+                q = np.clip(q, lower_limits, upper_limits)
+
+        if not converged:
+            print(
+                f"Warning: Gauss-Newton IK did not converge after {max_iter} iterations. Best error: {np.linalg.norm(err_se3)}")
+
+        return q
+
+    # 3. L-BFGS Method
+    def inverse_kinematics_LBFGS(
+            self,
+            target_pose: np.ndarray,
+            seed: Optional[np.ndarray] = None,
+            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+            max_iter: int = 5000,
+            tol: float = 1e-6,
+            m: int = 5  # Number of corrections to approximate the inverse Hessian
+    ) -> np.ndarray:
+        """
+        Solve inverse kinematics using the L-BFGS (Limited-memory BFGS) method.
+
+        L-BFGS is a quasi-Newton method that approximates the inverse Hessian
+        using a limited memory of previous iterations.
+
+        Args:
+            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+            seed: Initial guess for joint angles
+            joint_limits: Tuple of (lower_limits, upper_limits) arrays
+            max_iter: Maximum number of iterations
+            tol: Tolerance for convergence
+            m: Number of corrections to approximate the inverse Hessian
+
+        Returns:
+            joint_angles: Solved joint angles
+        """
+        import scipy.optimize as optimize
+
+        # Use provided joint limits or default to model limits
+        if joint_limits is None:
+            lower_limits = self.joint_lower_limit
+            upper_limits = self.joint_upper_limit
+        else:
+            lower_limits, upper_limits = joint_limits
+
+        # Initialize joint angles with seed or middle of joint range
+        if seed is None:
+            q_init = 0.5 * (lower_limits + upper_limits)
+        else:
+            q_init = seed.copy()
+
+        # Ensure q_init is within joint limits
+        q_init = np.clip(q_init, lower_limits, upper_limits)
+
+        # Convert target pose to SE3 placement
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+
+        # Define the objective function to minimize (squared error)
+        def objective(q):
+            # Ensure joint limits
+            q_bounded = np.clip(q, lower_limits, upper_limits)
+
+            # Calculate forward kinematics
+            pin.forwardKinematics(self.model, self.data, q_bounded)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Calculate pose error
+            current_placement = self.data.oMf[self.ee_frame_id]
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+
+            # Return squared error (scalar objective)
+            return 0.5 * np.sum(err_se3 ** 2)
+
+        # Define the gradient of the objective function
+        def gradient(q):
+            # Ensure joint limits
+            q_bounded = np.clip(q, lower_limits, upper_limits)
+
+            # Calculate forward kinematics
+            pin.forwardKinematics(self.model, self.data, q_bounded)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Calculate pose error
+            current_placement = self.data.oMf[self.ee_frame_id]
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+
+            # Calculate Jacobian
+            pin.computeJointJacobians(self.model, self.data, q_bounded)
+            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+
+            # Gradient is J^T * err
+            return J.T @ err_se3
+
+        # Set up the bounds for L-BFGS-B
+        bounds = list(zip(lower_limits, upper_limits))
+
+        # Run L-BFGS-B optimization
+        result = optimize.minimize(
+            objective,
+            q_init,
+            method='L-BFGS-B',
+            jac=gradient,
+            bounds=bounds,
+            options={
+                'maxiter': max_iter,
+                'ftol': tol,
+                'gtol': 1e-5,
+                'maxcor': m  # Number of corrections used in the L-BFGS update
+            }
+        )
+
+        # Get the solution
+        q_solution = result.x
+
+        # Ensure the solution is within joint limits (should already be, but just to be safe)
+        q_solution = np.clip(q_solution, lower_limits, upper_limits)
+
+        # Check convergence
+        if not result.success:
+            print(f"Warning: L-BFGS IK optimization did not converge. Status: {result.message}")
+
+        return q_solution
+
+    # 4. Newton-Raphson Method with Line Search
+    def inverse_kinematics_NewtonRaphson(
+            self,
+            target_pose: np.ndarray,
+            seed: Optional[np.ndarray] = None,
+            joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+            max_iter: int = 5000,
+            tol: float = 1e-6,
+            damping: float = 0.1,
+            line_search: bool = True,
+            max_line_search_iter: int = 10
+    ) -> np.ndarray:
+        """
+        Solve inverse kinematics using the Newton-Raphson method with optional line search.
+
+        This method uses the Jacobian pseudo-inverse with optional line search to ensure
+        decrease in the error at each iteration.
+
+        Args:
+            target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+            seed: Initial guess for joint angles
+            joint_limits: Tuple of (lower_limits, upper_limits) arrays
+            max_iter: Maximum number of iterations
+            tol: Tolerance for convergence
+            damping: Damping factor for the pseudo-inverse
+            line_search: Whether to use line search
+            max_line_search_iter: Maximum iterations for line search
+
+        Returns:
+            joint_angles: Solved joint angles
+        """
+        # Get the number of joints
+        n_joints = len(self.joint_lower_limit)
+
+        # Use provided joint limits or default to model limits
+        if joint_limits is None:
+            lower_limits = self.joint_lower_limit
+            upper_limits = self.joint_upper_limit
+        else:
+            lower_limits, upper_limits = joint_limits
+
+        # Initialize joint angles with seed or middle of joint range
+        if seed is None:
+            q = 0.5 * (lower_limits + upper_limits)
+        else:
+            q = seed.copy()
+
+        # Ensure q is within joint limits
+        q = np.clip(q, lower_limits, upper_limits)
+
+        # Convert target pose to SE3 placement
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+
+        # Calculate the initial error
+        pin.forwardKinematics(self.model, self.data, q)
+        pin.updateFramePlacements(self.model, self.data)
+
+        # Get current end-effector placement
+        current_placement = self.data.oMf[self.ee_frame_id]
+        err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+        initial_error = np.linalg.norm(err_se3)
+
+        # Function to compute the error norm at a given configuration
+        def compute_error(joint_config):
+            # Compute FK at the given configuration
+            pin.forwardKinematics(self.model, self.data, joint_config)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Compute the error vector
+            current_pose = self.data.oMf[self.ee_frame_id]
+            error = pin.log(current_pose.inverse() * target_placement).vector
+
+            # Return the error norm
+            return np.linalg.norm(error)
+
+        # Iterate to solve the IK
+        for i in range(max_iter):
+            # Compute current forward kinematics
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
+
+            # Get current end-effector placement
+            current_placement = self.data.oMf[self.ee_frame_id]
+
+            # Compute the error in SE3
+            err_se3 = pin.log(current_placement.inverse() * target_placement).vector
+            error_norm = np.linalg.norm(err_se3)
+
+            # Check for convergence
+            if error_norm < tol:
+                converged = True
+                break
+
+            # Compute the Jacobian at the current configuration
+            pin.computeJointJacobians(self.model, self.data, q)
+            J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+
+            # Compute the damped pseudo-inverse
+            J_pinv = J.T @ np.linalg.inv(J @ J.T + damping * np.eye(6))
+
+            # Compute Newton step
+            delta_q = J_pinv @ err_se3
+
+            # Apply line search if enabled
+            if line_search and error_norm > tol:
+                alpha = 1.0  # Initial step size
+                beta = 0.5  # Reduction factor
+                current_error = error_norm
+
+                # Line search iterations
+                for j in range(max_line_search_iter):
+                    # Try the new configuration
+                    q_new = np.clip(q + alpha * delta_q, lower_limits, upper_limits)
+                    new_error = compute_error(q_new)
+
+                    # If error decreased, accept the step
+                    if new_error < current_error:
+                        q = q_new
+                        break
+
+                    # Otherwise, reduce the step size
+                    alpha *= beta
+
+                    # If step size becomes too small, break
+                    if alpha < 1e-5:
+                        break
+
+                # If line search failed to improve (all steps rejected), take a small step
+                if j == max_line_search_iter - 1 or alpha < 1e-5:
+                    q = np.clip(q + 1e-3 * delta_q / np.linalg.norm(delta_q), lower_limits, upper_limits)
+            else:
+                # No line search, just update with full step
+                q = np.clip(q + delta_q, lower_limits, upper_limits)
+
+        if i == max_iter - 1:
+            print(f"Warning: Newton-Raphson IK did not converge after {max_iter} iterations. Best error: {error_norm}")
+
+        return q
+
+    # def inverse_kinematics_pino(
+    #         self,
+    #         target_pose: np.ndarray,
+    #         seed: Optional[np.ndarray] = None,
+    #         joint_limits: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+    #         max_iter: int = 1000,
+    #         eps: float = 1e-4,
+    #         dt: float = 1e-1,
+    #         damp: float = 1e-12
+    # ) -> np.ndarray:
+    #     """
+    #     Solve inverse kinematics using an iterative damped least squares approach
+    #     with Jlog6 correction (based on SE(3) pose error).
+    #
+    #     Args:
+    #         target_pose: Target end-effector pose as a 4x4 homogeneous transformation matrix
+    #         seed: Optional initial joint configuration (shape: (n,))
+    #         joint_limits: Optional joint limits (lower_limits, upper_limits)
+    #         max_iter: Maximum number of iterations
+    #         eps: Convergence threshold
+    #         dt: Step size for integration
+    #         damp: Damping factor for stability
+    #
+    #     Returns:
+    #         joint_angles: Solved joint configuration (shape: (n,))
+    #     """
+    #     n_joints = len(self.joint_lower_limit)
+    #
+    #     # Use provided or default joint limits
+    #     lower_limits, upper_limits = (self.joint_lower_limit, self.joint_upper_limit) if joint_limits is None else joint_limits
+    #
+    #     # Initialize q
+    #     if seed is None:
+    #         q = 0.5 * (lower_limits + upper_limits)
+    #     else:
+    #         q = np.clip(seed.copy(), lower_limits, upper_limits)
+    #
+    #     # Target pose
+    #     target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+    #
+    #     success = False
+    #
+    #     for i in range(max_iter):
+    #         # Forward kinematics
+    #         pin.forwardKinematics(self.model, self.data, q)
+    #         pin.updateFramePlacements(self.model, self.data)
+    #
+    #         # Compute error
+    #         current_placement = self.data.oMf[self.ee_frame_id]
+    #         iMd = current_placement.inverse() * target_placement
+    #         err = pin.log(iMd).vector
+    #
+    #         if np.linalg.norm(err) < eps:
+    #             success = True
+    #             break
+    #
+    #         # Jacobian
+    #         pin.computeJointJacobians(self.model, self.data, q)
+    #         J = pin.getFrameJacobian(self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+    #
+    #         # Correct Jacobian with Jlog6
+    #         J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+    #
+    #         # Solve for velocity
+    #         JJT = J @ J.T + damp * np.eye(6)
+    #         v = -J.T @ np.linalg.solve(JJT, err)
+    #
+    #         # Update q
+    #         q = pin.integrate(self.model, q, v * dt)
+    #         q = np.clip(q, lower_limits, upper_limits)
+    #
+    #         if i % 100 == 0:
+    #             print(f"Iteration {i}: error norm = {np.linalg.norm(err):.6f}")
+    #
+    #     if not success:
+    #         print(f"Warning: Pino IK did not converge after {max_iter} iterations. Final error: {np.linalg.norm(err):.6f}")
+    #
+    #     return q
+    def inverse_kinematics_pino(self, target_pose, seed=None, joint_limits=None, max_iter=1000, eps=1e-4, dt=0.1,
+                                     damp=1e-12):
+        model = self.model  # 局部变量，避免self.model每次访问
+        data = self.data
+
+        lower_limits, upper_limits = (
+        self.joint_lower_limit, self.joint_upper_limit) if joint_limits is None else joint_limits
+        q = 0.5 * (lower_limits + upper_limits) if seed is None else np.clip(seed.copy(), lower_limits, upper_limits)
+
+        target_placement = pin.SE3(target_pose[:3, :3], target_pose[:3, 3])
+        success = False
+
+        for i in range(max_iter):
+            pin.forwardKinematics(model, data, q)
+            pin.updateFramePlacements(model, data)
+
+            current_placement = data.oMf[self.ee_frame_id]
+            iMd = current_placement.inverse() * target_placement
+            err = pin.log(iMd).vector
+
+            if np.linalg.norm(err) < eps:
+                success = True
+                break
+
+            pin.computeJointJacobians(model, data, q)
+            J = pin.getFrameJacobian(model, data, self.ee_frame_id, pin.ReferenceFrame.LOCAL)
+            J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+
+            JJT = J @ J.T + damp * np.eye(6)
+            v = -J.T @ np.linalg.solve(JJT, err)
+
+            q += v * dt
+            # Only clip if necessary
+            if np.any(q < lower_limits) or np.any(q > upper_limits):
+                q = np.clip(q, lower_limits, upper_limits)
+
+            # NO PRINT, save time
+        if not success:
+            print(
+                f"Warning: Pino IK did not converge after {max_iter} iterations. Final error: {np.linalg.norm(err):.6f}")
+
+        return q
+
+
+class rtbKinematicsModel(BaseKinematicsModel):
+    None
+
+
+class kdlKinematicsModel(BaseKinematicsModel):
+    None
+
+
+
+
+
+
+

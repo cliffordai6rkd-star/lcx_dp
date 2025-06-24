@@ -9,6 +9,7 @@ joint_names: ["fr3_joint1",
 ip: "192.168.1.101"
 control_mode: 'position'
 urdf_path: "assets/franka_fr3/fr3.urdf"
+control_rate: 1000
 
 gripper:
   !include fr3gripper.yaml
@@ -19,7 +20,7 @@ gripper:
 # base_frame: "base_link"
 # flange_frame: "ee_link"
 base_link: "base"
-end_link: "fr3_hand"
-# jvel_limit: [3.14, 3.14, 3.14, 3.14, 3.14, 3.14]
-# jacc_limit: [1.57, 1.57, 1.57, 1.57, 1.57, 1.57]
-# max_deviation: 0.01
+end_link: "fr3_hand_tcp"
+jvel_limit: [2.62,2.62,2.62,2.62,5.26,4.18,5.26]
+jacc_limit: [10, 10, 10, 10, 10, 10, 10]
+max_deviation: 0.01

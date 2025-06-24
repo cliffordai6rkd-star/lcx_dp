@@ -11,7 +11,7 @@ import numpy as np
 from typing import Optional, Tuple
 import roboticstoolbox as rtb
 from spatialmath import SE3
-from kinematics import BaseKinematicsModel
+from motion.kinematics_ import BaseKinematicsModel
 
 
 class RTBKinematicsModel(BaseKinematicsModel):

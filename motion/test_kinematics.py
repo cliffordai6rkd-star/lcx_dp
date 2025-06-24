@@ -5,7 +5,7 @@
 @Email   :Haotianliang10@gmail.com
 """
 
-from motion.kinematics_ import *
+from kinematics import *
 import time
 
 import os
@@ -47,7 +47,7 @@ def test_pinocchio_kinematics_model():
         print(q_test)
 
         # Compute forward kinematics
-        T_test = kin_model.forward_kinematics(q_test)
+        T_test = kin_model.fk(q_test)
         print("Resulting end-effector pose:")
         print(T_test)
         print("Position:", T_test[:3, 3])
@@ -66,7 +66,7 @@ def test_pinocchio_kinematics_model():
 
         # Compute inverse kinematics
         start_time = time.time()
-        q_solved = kin_model.inverse_kinematics(target_pose, seed=q_seed)
+        q_solved = kin_model.ik(target_pose, seed=q_seed)
         end_time = time.time()
         print("Solved joint configuration:")
         print(q_solved)
@@ -75,7 +75,7 @@ def test_pinocchio_kinematics_model():
         # Test 3: FK-IK Consistency
         print("\n--- Test 3: FK-IK Consistency ---")
         # Compute FK with the solved IK solution
-        T_solved = kin_model.forward_kinematics(q_solved)
+        T_solved = kin_model.fk(q_solved)
         print("FK of IK solution:")
         print(T_solved)
 
@@ -114,7 +114,7 @@ def test_pinocchio_kinematics_model():
         J_numerical = np.zeros((6, n_joints))
 
         # Compute forward kinematics at the reference position
-        T_ref = kin_model.forward_kinematics(q_solved)
+        T_ref = kin_model.fk(q_solved)
 
         # Compute numerical Jacobian column by column
         for i in range(n_joints):
@@ -123,7 +123,7 @@ def test_pinocchio_kinematics_model():
             q_plus[i] += epsilon
 
             # Compute FK at perturbed position
-            T_plus = kin_model.forward_kinematics(q_plus)
+            T_plus = kin_model.fk(q_plus)
 
             # Extract position difference
             pos_diff = (T_plus[:3, 3] - T_ref[:3, 3]) / epsilon
@@ -248,7 +248,7 @@ def test_forward_kinematics_all_links():
                 break
 
         # Verify results by checking the end-effector pose
-        ee_pose_from_fk = kin_model.forward_kinematics(q_test)
+        ee_pose_from_fk = kin_model.fk(q_test)
         ee_pose_from_fk_all = link_poses.get(kin_model.ee_frame_name)
 
         if ee_pose_from_fk_all is not None:

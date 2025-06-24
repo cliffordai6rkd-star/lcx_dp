@@ -1,12 +1,13 @@
+from typing import Text, Mapping, Any
 from panda_py import controllers, libfranka, Panda
 from hardware.base.gripper import GripperBase
 import glog as log
 
 class Gripper(GripperBase):
-    def __init__(self, ip: str):
+    def __init__(self, config: Mapping[Text, Any]):
         super().__init__()
-        self.instance = libfranka.Gripper(ip)
-        log.info(f"Gripper instance created with IP: {ip}")
+        self.instance = libfranka.Gripper(config['ip'])
+        log.info(f"Gripper instance created with IP: {config['ip']}")
         log.info(f"Server version: {self.instance.server_version()}")
 
     def open(self) -> bool:
@@ -26,7 +27,7 @@ class Gripper(GripperBase):
         self.instance.homing()
         log.info("Gripper homing completed.")
 
-    def get_state(self):
+    def print_state(self):
         state = self.instance.read_once()
         log.info(
             f"is_grasped: {state.is_grasped}, \n"
@@ -38,3 +39,6 @@ class Gripper(GripperBase):
 
     def grasp(self, width: float, speed: float, force: float, epsilon_inner: float = 0.005, epsilon_outer: float = 0.005) -> bool:
         return self.instance.grasp(width, speed, force, epsilon_inner, epsilon_outer)
+    
+    def move(self, width, speed):
+        return self.instance.move(width, speed)

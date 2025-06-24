@@ -11,10 +11,8 @@ from hardware.fr3.agent import Agent
 import numpy as np
 from tools import file_utils
 
-from panda_py import ik_full, ik
-
-# from motion.ik import ik
 from data_types import se3
+import time
 
 
 cur_path = os.path.dirname(os.path.abspath(__file__))
@@ -29,13 +27,39 @@ r = Agent(config)
 a = r.get_arm()
 
 g = a.get_gripper()
-g.homing()
 
-g.grasp(width=0.02, speed=0.2, force=10, epsilon_inner=0.04, epsilon_outer=0.04)
+# g.homing()
 
-g.move(width=0.06, speed=0.2)
+# g.grasp(width=0.02, speed=0.2, force=10, epsilon_inner=0.04, epsilon_outer=0.04)
+
+# g.move(width=0.06, speed=0.2)
 
 a.print_state()
+
+# a.move_to_start()
+# time.sleep(20)
+
+pose = a.get_tcp_pose()
+
+log.info(f"pose: \n{pose}")
+log.info(f"IK: \n   {a.get_joint_positions()}\n== {a.ik(pose)}")
+
+pose[2,3] -= 0.14
+# # log.info(f"pose: \n{pose}")
+
+q = a.ik(pose)
+log.info(f"ik: {q}")
+
+# # # Extend q by two values: 0.02, 0.02
+# # xq = np.append(a.ik(pose), [0.00, 0.00])
+# # log.info(f"fk: {a.fk(xq)}")
+
+desired_position = q.copy()
+# a.set_joint_positions(desired_position)
+
+# time.sleep(10)
+# a.print_state()
+
 
 initial_position = a.get_joint_positions()
 
@@ -44,7 +68,6 @@ frequency = 0.2  # Hz
 run_time = 5.0  # seconds
 elapsed_time = 0.0
 
-desired_position=None
 while elapsed_time < run_time:
 
     try:
@@ -56,53 +79,32 @@ while elapsed_time < run_time:
     elapsed_time += duration
     print(f"Elapsed time: {elapsed_time:.2f} seconds")
     
-    # Calculate desired position
-    desired_position = initial_position.copy()
-    delta_angle = amplitude * (0.0 - np.sin(2.0 * np.pi * frequency * elapsed_time))
-    desired_position[3] += delta_angle  # Move joint 4
-    desired_position[0] += delta_angle  # Move joint 4
-    
-    joint_positions = JointPositions(desired_position)
+    jp = (initial_position + (desired_position - initial_position) * elapsed_time / run_time)
+    # log.info(f"{initial_position + (desired_position - initial_position) * elapsed_time / run_time}")
     try:
-        a.set_joint_positions(joint_positions)
+        # if run_time - elapsed_time < 0.01: 
+        #     jp.motion_finished = True
+        a.set_joint_positions(jp)
     except Exception as e:
         print(f"Error writing joint positions: {e}")
         continue
 
-a.print_state()
+    
 
-joint_positions = JointPositions(desired_position)
+# a.print_state()
 
-pose = a.get_pose()
-
-pose[2,3] -= .1
-
-tt = se3.Transform(matrix=pose)
-position = tt.translation
-orientation = tt.quaternion
-
-q = a.kinematics.ik(se3.Transform(matrix=pose))
-log.info(f"ik: {q}")
-joint_positions = JointPositions(q)
-
-# log.info(f"pose: \n{pose}")
-# # from panda_py import ik_full, ik
-# x = ik(pose)
-# log.info(f"ik x: {x}")
-
-# print(f"position: {position}")
-# print(f"orientation: {orientation}")
-# x = ik(position=position, orientation=orientation)
-# log.info(f"ik x: {x}")
-# joint_positions = JointPositions(x)
+# joint_positions = JointPositions(desired_position)
 
 
 
-# joint_positions.motion_finished = True
-try:
-    a.set_joint_positions(joint_positions)
-except Exception as e:
-    print(f"Error writing joint positions: {e}")
+
+
+# joint_positions.motion_finished = False
+# try:
+#     a.set_joint_positions(joint_positions)
+# except Exception as e:
+#     print(f"Error writing joint positions: {e}")
+
 
 
 a.stop()
