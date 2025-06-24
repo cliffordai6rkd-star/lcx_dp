@@ -22,4 +22,4 @@ arm: !include fr3arm.yaml
 
 # ft_sensor: !include ft_sensor_pb.yaml
 control_rate: 1000
-control_mode: 'velocity'
+control_mode: 'position'

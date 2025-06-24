@@ -15,7 +15,7 @@ current_dir = Path(__file__).parent.absolute()
 parent_dir = current_dir.parent
 sys.path.append(str(parent_dir))
 
-from kinematics import PinocchioKinematicsModel
+from motion.kinematics_ import PinocchioKinematicsModel
 from trajectory_planning import (
     PolynomialTrajectoryPlanner,
     CartesianTrajectoryPlanner,

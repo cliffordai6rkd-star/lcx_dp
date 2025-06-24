@@ -201,6 +201,7 @@ class Arm(ArmBase):
             return True
         
     def log_trajectory(self, timestamp: float):
+        log.info(f'.')
         pass
         # raise NotImplementedError("log_trajectory not implemented")
         # self.time_log.append(timestamp)

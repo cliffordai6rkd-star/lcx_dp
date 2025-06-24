@@ -1,7 +1,7 @@
 from typing import Text, Mapping, Any
 
-from hardware.fr3.arm import Arm
-from hardware.fr3.gripper import Gripper
+from hardware.fr3.arm_panda_py import Arm
+from hardware.fr3.gripper_panda_py import Gripper
 from hardware.base.robot import Robot
 from panda_py import libfranka, Desk
 import glog as log
@@ -18,13 +18,19 @@ class Agent(Robot):
         #     desk.take_control()
         #     desk.activate_fci()
         ip = config['ip']
-        self._arm = Arm(ip, mode=config['control_mode'])
-        self._gripper = Gripper(ip)
+        self._arm = Arm(ip, mode=config['control_mode'], config=config['arm'])
+        # self._gripper = Gripper(ip)
 
     def print_state(self):
         log.info(f"Has realtime kernel: {libfranka.has_realtime_kernel()}")
-        self._arm.get_state()
-        self._gripper.get_state()
+        self._arm.print_state()
+        self._gripper.print_state()
+
+    def get_arm(self):
+        return self._arm
+    
+    def get_gripper(self):
+        return self._gripper
 
     def move_to_start(self):
         self._arm.move_to_start()

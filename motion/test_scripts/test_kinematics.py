@@ -5,7 +5,7 @@
 @Email   :Haotianliang10@gmail.com
 """
 
-from kinematics import *
+from motion.kinematics_ import *
 import time
 
 import os

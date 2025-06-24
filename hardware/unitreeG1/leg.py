@@ -13,9 +13,9 @@ from unitree_sdk2py.utils.crc import CRC
 from unitree_sdk2py.utils.thread import RecurrentThread
 from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
 
-import pyroki as pk
-from robot_descriptions.loaders.yourdfpy import load_robot_description
-import pyroki_snippets as pks
+# import pyroki as pk
+# from robot_descriptions.loaders.yourdfpy import load_robot_description
+# import pyroki_snippets as pks
 
 Kp = [
     60, 60, 60, 100, 40, 40,      # legs
@@ -52,12 +52,12 @@ class Leg(LegBase):
     self.jointIndices=[0,1,2,3,4,5] if isLeft else [6,7,8,9,10,11]
     self.low_state = None
 
-    urdf = load_robot_description("g1_description")
-    target_link_name = "left_ankle_roll_link" if isLeft else "right_ankle_roll_link"
+    # urdf = load_robot_description("g1_description")
+    # target_link_name = "left_ankle_roll_link" if isLeft else "right_ankle_roll_link"
 
     # Create robot.
-    robot = pk.Robot.from_urdf(urdf)
-    log.info(f"robot: {robot}")
+    # robot = pk.Robot.from_urdf(urdf)
+    # log.info(f"robot: {robot}")
 
   def LowCmdUpdate(self, low_cmd: LowCmd_):
     for i in self.jointIndices:

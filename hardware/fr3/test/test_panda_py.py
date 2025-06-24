@@ -4,7 +4,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 import glog as log
 log.setLevel("INFO")
 
-from hardware.fr3.agent import Agent
+from hardware.fr3.agent_panda_py import Agent
 from panda_py import ik
 import numpy as np
 import panda_py
@@ -22,26 +22,48 @@ r = Agent(config)
 
 r.print_state()
 
-r.move_to_start()
+a = r.get_arm()
+g = r.get_gripper()
+# g.open()
 
-pose = r.get_pose()
-pose[2,3] -= .1
-q = ik(pose)
-r.move_to_joint_position(q)
+g.move(0.02, 0.2)
 
-log.info(f"controller time: {r.get_controller_time()}")
-pose = r.get_pose()
-pose[1,3] -= .1
-r.move_to_pose(pose)
-log.info(f"controller time: {r.get_controller_time()}")
+xx = np.array([
+        0.0,
+        -np.pi / 4,
+        0.0,
+        -3 * np.pi / 4,
+        0.0,
+        np.pi / 2 + np.pi / 8,
+        np.pi / 4,
+    ])
+count = 10
+while count > 0:
+    count -= 1
+    a.move_to_start()
+    
+    a.move_to_joint_target(xx)  # this can work
+
+    pose = r.get_pose()
+    pose[2,3] -= .1
+    q = ik(pose)
+    a.move_to_joint_target(q)
+
+    log.info(f"controller time: {r.get_controller_time()}")
+    pose = r.get_pose()
+    pose[1,3] -= .1
+    a.move_to_pose(pose)
+    log.info(f"controller time: {r.get_controller_time()}")
 
 
-T_0 = panda_py.fk(constants.JOINT_POSITION_START)
-T_0[1, 3] = 0.25
-T_1 = T_0.copy()
-T_1[1, 3] = -0.25
+    T_0 = a.fk(constants.JOINT_POSITION_START)
+    T_0[1, 3] = 0.25
+    T_1 = T_0.copy()
+    T_1[1, 3] = -0.25
 
-r.move_to_pose(T_0)
+    a.move_to_pose(T_0)
 
-r.move_to_start()
+    a.move_to_joint_target(xx)  # this can work
+
+    a.move_to_start()
 

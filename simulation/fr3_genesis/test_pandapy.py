@@ -5,11 +5,11 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent.parent))
 import glog as log
 log.setLevel("INFO")
 
-from hardware.fr3.agent import Agent
+from hardware.fr3.agent_panda_py import Agent
 from panda_py import ik
 import numpy as np
 import panda_py
-from panda_py import constants
+# from panda_py import constants
 from tools import file_utils
 
 cur_path = os.path.dirname(os.path.abspath(__file__))
@@ -21,9 +21,9 @@ print(config)
 
 r = Agent(config)
 
-# r.print_state()
+r.print_state()
 
-# r.move_to_start()
+r.move_to_start()
 
 # pose = r.get_pose()
 # pose[2,3] -= .1
