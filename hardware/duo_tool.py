@@ -2,6 +2,7 @@ from hardware.base.tool_base import ToolBase
 from hardware.base.utils import ToolType, ToolState
 from hardware.fr3.franka_hand import FrankaHand
 from hardware.monte01.xarm_gripper import XArmGripper
+from hardware.monte01.corenetic_gripper import CoreneticGripper
 import numpy as np
 
 class DuoTool(ToolBase):
@@ -10,7 +11,8 @@ class DuoTool(ToolBase):
     def __init__(self, config):
         self._single_tool_class = {
             'franka_hand': FrankaHand,
-            'xarm_gripper': XArmGripper
+            'xarm_gripper': XArmGripper,
+            'corenetic_gripper': CoreneticGripper
         }
         
         self._tool = {}

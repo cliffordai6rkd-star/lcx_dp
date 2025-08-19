@@ -5,6 +5,8 @@ ros2_camera:
   image_topic: "/camera_head_front/color/image_raw"
   depth_topic: "/camera_head_front/depth/image_raw" 
   # imu_topic: "/camera_head_front/imu"
+  serial_number: "CL8M84101W7"
+  
   # Data capabilities
   contain_depth: false
   contain_imu: false

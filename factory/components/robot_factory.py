@@ -15,6 +15,7 @@ from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from hardware.sensors.cameras.agibot_cameras import AgibotCamera
 from hardware.sensors.cameras.ros2_camera import Ros2Camera
+
 import warnings
 import threading
 from hardware.base.utils import object_class_check
@@ -182,6 +183,7 @@ class RobotFactory:
             dofs = sim_dofs
         if self._use_hardware:
             hw_dofs = self._robot.get_dof()
+            dofs = hw_dofs
 
         if self._use_hardware and self._use_simulation:
             if sim_dofs != hw_dofs:
@@ -274,29 +276,35 @@ class RobotFactory:
         log.info(f'Robot systyem is closed successfully!!!')
         
     def get_cameras_infos(self):
-        cameras_data = None
+        cameras_data = []
+        
+        # Get simulation camera data
         if self._use_simulation:
-            cameras_data = self._simulation.get_all_camera_images()
-        if'camera' in self._sensors and self._use_hardware:
-            hw_camera_data = []
+            sim_cameras_data = self._simulation.get_all_camera_images()
+            if sim_cameras_data is not None:
+                cameras_data.extend(sim_cameras_data)
+        
+        # Get hardware camera data  
+        if 'camera' in self._sensors and self._use_hardware:
             cameras = self._sensors['camera']
+            cameras_data = []
+
             for cam in cameras:
                 camera_name = cam['name']
                 camera_object:CameraBase = cam['object']
                 img = camera_object.capture_all_data()
                 resolution = camera_object.get_resolution()
                 if not img['image'] is None:
-                    hw_camera_data.append({'name': camera_name+'_color', 'resolution': resolution,
+                    cameras_data.append({'name': camera_name+'_color', 'resolution': resolution,
                                         'img': img['image']})
                 if not img['depth_map'] is None:
-                    hw_camera_data.append({'name': camera_name+'_depth', 'resolution': resolution,
+                    cameras_data.append({'name': camera_name+'_depth', 'resolution': resolution,
                                         'img': img['depth_map']})
                 if not img['imu'] is None:
-                    hw_camera_data.append({'name': camera_name+'_imu', 'resolution': resolution,
+                    cameras_data.append({'name': camera_name+'_imu', 'resolution': resolution,
                                         'imu': img['imu']})
-            if len(hw_camera_data):
-                cameras_data = hw_camera_data
-        return cameras_data
+        
+        return cameras_data if len(cameras_data) > 0 else None
             
     def move_to_start(self):
         self._robot.move_to_start()
