@@ -1,0 +1,10 @@
+pika_gripper:
+  # 串口设备路径
+  serial_port: "/dev/ttyUSB0"
+  
+  # 状态更新频率 (Hz)
+  update_frequency: 100.0  # 状态读取频率，建议100Hz
+  step_velue: 5
+  
+  temp_threshold: 60
+  current_threshold: 100

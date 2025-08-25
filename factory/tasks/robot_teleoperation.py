@@ -17,6 +17,7 @@ from scipy.spatial.transform import Rotation as R
 from sshkeyboard import listen_keyboard, stop_listening
 import glog as log
 import cv2
+from tools.performance_profiler import PerformanceProfiler, timer
 
 # Used for different robot component into one robot system
 class TeleoperationFactory:
@@ -81,25 +82,18 @@ class TeleoperationFactory:
         self._robot_system = self._robot_motion_system._robot_system
         
         # base frames
+        self.world2base_pose = [np.array([0, 0, 0, 0, 0, 0, 1])]
+        self.base2world_pose = [negate_pose(self.world2base_pose[0])]
         if self._robot_system._use_simulation:
-            if len(self._robot_system._simulation.base_body_name) == 0:
-                self.world2base_pose = [np.array([0, 0, 0, 0, 0, 0, 1])]
-                self.base2world_pose = [negate_pose(self.world2base_pose[0])]
-            else:
+            if len(self._robot_system._simulation.base_body_name) != 0:
                 self.world2base_pose = []
                 self.base2world_pose = []
                 for cur_base_body in self._robot_system._simulation.base_body_name:
                     cur_world2base = self._robot_system._simulation.get_body_pose(cur_base_body)
                     self.world2base_pose.append(cur_world2base)
                     self.base2world_pose.append(negate_pose(cur_world2base))
-            log.info(f'world2base: {self.world2base_pose}')
-            log.info(f'base2world: {self.base2world_pose}')
-        else:
-            # For real robots, initialize with identity transformation
-            self.world2base_pose = [np.array([0, 0, 0, 0, 0, 0, 1])]
-            self.base2world_pose = [negate_pose(self.world2base_pose[0])]
-            log.info(f'world2base (real robot): {self.world2base_pose}')
-            log.info(f'base2world (real robot): {self.base2world_pose}')
+        log.info(f'world2base (real robot): {self.world2base_pose}')
+        log.info(f'base2world (real robot): {self.base2world_pose}')
        
         self.ee_link = self._robot_motion_system.get_model_end_effector_link_list()
         log.info(f'ee links: {self.ee_link}')
@@ -125,13 +119,15 @@ class TeleoperationFactory:
                                         daemon=True)
         listen_keyboard_thread.start()
         
-        
         mocap_target_site = self._config.get('target_site_name', None)
         TCP_site = self._config.get("tcp_visualization_site", None)
         # @TODO: check how to integrate with hand
         self._init_pose = {}
-        # @TODO: BUG HERE FOR DIMENSION MATCHING
-        self._robot_index = ['left', 'right'] if len(self.ee_link) == 2 else ["single"]
+        self._robot_index = self._robot_motion_system.get_model_types()
+        self._ee_index = ['left', 'right'] if len(self.ee_link) > 1 else ['single']
+        
+        # performance profiler
+        PerformanceProfiler.clear_stats()
         
         # teleoperation loop
         log.info(f'teleoperation loop started!!')
@@ -142,28 +138,26 @@ class TeleoperationFactory:
             loop_start_time = time.perf_counter()
             
             # get interface target
-            inteface_output_mode = self._interface_output_mode
-            success_get_target, ee_target, tool_target  = \
-                self._interface.parse_data_2_robot_target(inteface_output_mode)
-            # log.info(f'[DEBUG] Interface: success={success_get_target}, ee_target_keys={list(ee_target.keys()) if ee_target else None}')
+            interface_output_mode = self._interface_output_mode
+            with timer("get_interface_target", "robot_teleoperation_"):
+                success_get_target, ee_target, tool_target  = \
+                    self._interface.parse_data_2_robot_target(interface_output_mode)
+                # log.info(f'[DEBUG] Interface: success={success_get_target}, ee_target_keys={list(ee_target.keys()) if ee_target else None}')
             
             # only for mujoco 
             if self._use_simulation_target and not mocap_target_site is None:
                 ee_target = {}
                 for i, target_site in enumerate(mocap_target_site):
-                    # @TODO: BUG HERE FOR DIMENSION MATCHING
-                    key = self._robot_index[i]
-                    # if i == 0 and len(mocap_target_site) == 1:
-                    #     key = 'single'
+                    key = self._ee_index[i]
                     cur_sim_target = self._robot_system._simulation.get_site_pose(target_site, 'xyzw')
                     cur_base_pose = self.base2world_pose[0] if len(self.base2world_pose) == 1 else self.base2world_pose[i]
                     cur_sim_target = transform_pose(cur_base_pose, cur_sim_target)
                     ee_target[key] = cur_sim_target
-                inteface_output_mode = 'absolute'
+                interface_output_mode = 'absolute'
             
             cur_tcp_pose = {}
             for i, cur_ee_link in enumerate(self.ee_link):
-                key = self._robot_index[i]
+                key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
                 cur_tcp_pose[key] =  self._robot_motion_system.get_frame_pose(cur_ee_link, key)
                 # visualize the curr tcp
                 if not TCP_site is None and self._robot_system._use_simulation:
@@ -177,45 +171,49 @@ class TeleoperationFactory:
                 
             if success_get_target or self._use_simulation_target:
                 high_level_command = np.array([])
-                for i, (key, cur_ee_target) in enumerate(ee_target.items()):
-                    # Incremental target on the ee pose
-                    if inteface_output_mode == 'relative':
-                        # hack!!!
-                        if len(self._init_pose) != len(ee_target):
-                            self._init_pose[key] = cur_tcp_pose[key]
+                with timer("parse_target", "robot_teleoperation_"):
+                    for i, (key, cur_ee_target) in enumerate(ee_target.items()):
+                        # Incremental target on the ee pose
+                        if interface_output_mode == 'relative':
+                            # hack!!!
+                            if len(self._init_pose) != len(ee_target):
+                                self._init_pose[key] = cur_tcp_pose[key]
+                            
+                            self._init_pose[key][:3] += cur_ee_target[:3]
+                            cur_mat = R.from_quat(self._init_pose[key][3:]).as_matrix()
+                            ee_mat = R.from_euler('xyz', cur_ee_target[3:]).as_matrix()
+                            # print(f'delta rot: {ee_mat}')
+                            ee_mat = cur_mat @ ee_mat
+                            self._init_pose[key][3:] = R.from_matrix(ee_mat).as_quat()
+                            ee_target[key] = self._init_pose[key]
+                        elif interface_output_mode == 'absolute_delta':
+                            # @TODO: update with teleoperation device command
+                            if tool_target[key][-1]:
+                                self._init_pose[key] = cur_tcp_pose[key]
+                                log.info(f'updated the robot neutral pose for {key}: {self._init_pose[key]}')
+                            # @TODO: check delta pose target
+                            ee_target[key] = transform_pose(self._init_pose[key], ee_target[key])
+                        elif interface_output_mode != "absolute":
+                            raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")
+                        # log.info(f'ee site target {key}: {ee_target[key]}')
                         
-                        self._init_pose[key][:3] += cur_ee_target[:3]
-                        cur_mat = R.from_quat(self._init_pose[key][3:]).as_matrix()
-                        ee_mat = R.from_euler('xyz', cur_ee_target[3:]).as_matrix()
-                        # print(f'delta rot: {ee_mat}')
-                        ee_mat = cur_mat @ ee_mat
-                        self._init_pose[key][3:] = R.from_matrix(ee_mat).as_quat()
-                        ee_target[key] = self._init_pose[key]
+                        # visualization of the target pose for ee 
+                        # (Not using simulation for target tracking)
+                        if not self._use_simulation_target and not mocap_target_site is None:
+                            cur_mocap_target_site = mocap_target_site[i]
+                            mocap_name = cur_mocap_target_site.split('_')[0]
+                            # target_tcp = copy.deepcopy(ee_target_7D)
+                            target_tcp = ee_target[key]
+                            cur_world2base = self.world2base_pose[0] if len(self.world2base_pose) == 1 else self.world2base_pose[i]
+                            target_tcp = transform_pose(cur_world2base, target_tcp)
+                            self._robot_system._simulation.set_target_mocap_pose(mocap_name, target_tcp)
                     
-                    # log.info(f'ee site target {key}: {ee_target[key]}')
-                    
-                    # visualization of the target pose for ee 
-                    # (Not using simulation for target tracking)
-                    if not self._use_simulation_target and not mocap_target_site is None and self._robot_system._use_simulation:
-                        cur_mocap_target_site = mocap_target_site[i]
-                        mocap_name = cur_mocap_target_site.split('_')[0]
-                        # target_tcp = copy.deepcopy(ee_target_7D)
-                        target_tcp = ee_target[key]
-                        cur_world2base = self.world2base_pose[0] if len(self.world2base_pose) == 1 else self.world2base_pose[i]
-                        target_tcp = transform_pose(cur_world2base, target_tcp)
-                        self._robot_system._simulation.set_target_mocap_pose(mocap_name, target_tcp)
-                
-                    high_level_command = np.hstack((high_level_command, ee_target[key]))
+                        high_level_command = np.hstack((high_level_command, ee_target[key]))
                 
                 if self._update_high_level_state:
                     self._robot_motion_system.update_high_level_command(high_level_command)
                 if success_get_target:
                     self._robot_system.set_tool_command(tool_target)
-                
-            # Direct gripper control - tool layer handles incremental vs binary mode
-            if success_get_target and tool_target:
-                self._robot_system.set_tool_command(tool_target)
-
             
             next_run_time += target_period
             current_time = time.perf_counter()
@@ -239,7 +237,6 @@ class TeleoperationFactory:
                 next_run_time = current_time
         log.info(f'Teleoperation thread for reading is stopped!')
     
-            
     def traj_visual_task(self, buffer: Buffer, lock: threading.Lock, sim: SimBase):
         while self._teleop_thread_running:
             start_time = time.perf_counter()
@@ -306,48 +303,28 @@ class TeleoperationFactory:
                 all_joint_states = self._robot_system.get_joint_states()
                 
                 # Get end effector links properly
-                ee_links = self.ee_link
-                if isinstance(ee_links, list):
-                    robot_index = ['left', 'right'] if len(ee_links) == 2 else ["single"]
-                    for i, cur_ee_link in enumerate(ee_links):
-                        key = robot_index[i]
-                        sliced_joint_states = self._robot_motion_system.get_type_joint_state(
-                                                        all_joint_states, key)
-                        joint_states[key] = {}
-                        joint_states[key]["position"] = sliced_joint_states._positions.tolist()
-                        joint_states[key]["velocitie"] = sliced_joint_states._velocities.tolist()
-                        joint_states[key]["acceleration"] = sliced_joint_states._accelerations.tolist()
-                        joint_states[key]["torque"] = sliced_joint_states._torques.tolist()
-                        cur_ee_pose = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
-                        ee_states[key] = cur_ee_pose.tolist()
-                        
+                for i, cur_ee_link in enumerate(self.ee_link):
+                    key = self._ee_index[i]
+                    sliced_joint_states = self._robot_motion_system.get_type_joint_state(
+                                                    all_joint_states, key)
+                    joint_states[key] = {}
+                    joint_states[key]["position"] = sliced_joint_states._positions.tolist()
+                    joint_states[key]["velocitie"] = sliced_joint_states._velocities.tolist()
+                    joint_states[key]["acceleration"] = sliced_joint_states._accelerations.tolist()
+                    joint_states[key]["torque"] = sliced_joint_states._torques.tolist()
+                    cur_ee_pose = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
+                    ee_states[key] = cur_ee_pose.tolist()
+                    
+                    if self._robot_system._tool is not None:
                         cur_tool_state = self._robot_system._tool.get_tool_state()
-                        if not isinstance(cur_tool_state, dict):
-                            tool_state = {"single": cur_tool_state}
-                        else: 
-                            tool_state = cur_tool_state
-                        gripper_state[key] = {}
-                        # @TODO: get tools info, all elements
-                        gripper_state[key]['position'] = tool_state[key]._position
-                elif isinstance(ee_links, dict):
-                    for key, cur_ee_link in ee_links.items():
-                        sliced_joint_states = self._robot_motion_system.get_type_joint_state(
-                                                        all_joint_states, key)
-                        joint_states[key] = {}
-                        joint_states[key]["position"] = sliced_joint_states._positions.tolist()
-                        joint_states[key]["velocitie"] = sliced_joint_states._velocities.tolist()
-                        joint_states[key]["acceleration"] = sliced_joint_states._accelerations.tolist()
-                        joint_states[key]["torque"] = sliced_joint_states._torques.tolist()
-                        cur_ee_pose = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
-                        ee_states[key] = cur_ee_pose.tolist()
-                        
-                        cur_tool_state = self._robot_system._tool.get_tool_state()
-                        if not isinstance(cur_tool_state, dict):
-                            tool_state = {"single": cur_tool_state}
-                        else: 
-                            tool_state = cur_tool_state
-                        gripper_state[key] = {}
-                        gripper_state[key]['position'] = tool_state[key]._position
+                    else: cur_tool_state = ToolState()
+                    if not isinstance(cur_tool_state, dict):
+                        tool_state = {"single": cur_tool_state}
+                    else: 
+                        tool_state = cur_tool_state
+                    gripper_state[key] = {}
+                    # @TODO: get tools info, all elements
+                    gripper_state[key]['position'] = tool_state[key]._position
                 
                 # get sensor readings
                 colors = None
@@ -418,12 +395,16 @@ class TeleoperationFactory:
             self._update_high_level_state = False
             self._robot_motion_system.update_execute_hardware(False)
             print(f"{'='*20}, Blocking the Motion process to reset the robot to init state{'='*20}")
-            self._robot_motion_system.move_to_start_blocking()
+            # @TODO: reset tools 
+            self._robot_motion_system.reset_robot_system()
+            # self._robot_motion_system.move_to_start_blocking()
+            self._robot_motion_system.clear_traj_buffer()
+            self._robot_motion_system.wait_buffer_empty()
             self._init_pose = {}
-            time.sleep(1.5)
+            if not self._robot_motion_system._use_traj_planner:
+                self._robot_motion_system.clear_high_level_command()
+            time.sleep(0.1)
             self._update_high_level_state = True
             self._robot_motion_system.update_execute_hardware(True)
-            self._robot_motion_system.clear_traj_buffer()
-            time.sleep(0.5)
             print(f"{'='*20}, Motion resumes normal!!!{'='*20}")
             

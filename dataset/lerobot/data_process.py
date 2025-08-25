@@ -248,7 +248,8 @@ class EpisodeWriter():
         
     def _add_images_to_item_data(self, idx, image_data, item_data, save_dir, image_desc):
         for id, (image_key, image_value) in enumerate(image_data.items()):
-            image_name = f'{str(idx).zfill(6)}_{image_key}.jpg'
+            extension = '.jpg' if '_color' in image_key else '.png'
+            image_name = f'{str(idx).zfill(6)}_{image_key}{extension}'
             if not cv2.imwrite(os.path.join(save_dir, image_name), image_value):
                 print(f"Failed to save {image_desc} image.")
             # @TODO: why not save the image path

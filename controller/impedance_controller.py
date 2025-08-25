@@ -54,10 +54,9 @@ class ImpedanceController(ControllerBase):
             # @TODO: check why the close loop damped system is not stable
             # task_inertial_sqrt = matrix_sqrt(task_inertial)
             # self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
-            self._damping = 2 * kp_sqrt
+            self._damping = 1 * kp_sqrt
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
         des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
-
         
         tau = np.zeros(self._robot_model.nv)
         if self._gravity_compensation:

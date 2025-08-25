@@ -15,30 +15,52 @@ from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from hardware.sensors.cameras.agibot_cameras import AgibotCamera
 from hardware.sensors.cameras.ros2_camera import Ros2Camera
-
+from hardware.sensors.ft_sensor.ati_ft import AtiFt
 import warnings
 import threading
+import time
 from hardware.base.utils import object_class_check
 from controller.utils.weighted_moving_filter import WeightedMovingFilter
 import numpy as np
-from typing import Optional
+from typing import Optional, Union, List
 import glog as log
+
+# Import smoother modules
+from smoother.smoother_base import SmootherBase
+from smoother.critical_damped_smoother import CriticalDampedSmoother
+from smoother.adaptive_critical_damped_smoother import AdaptiveCriticalDampedSmoother
+from smoother.ruckig_smoother import RuckigSmoother
+
+from tools.performance_profiler import timer
 
 # Used for loading one complete robot hw system from the factory
 class RobotFactory:
     _robot: ArmBase
     _tool: ToolBase
     _simulation: SimBase
+    _smoother: Optional[SmootherBase]
+    
     def __init__(self, config):
         self._config = config
         self._use_hardware = config['use_hardware']
         self._use_simulation = config['use_simulation']
         self._robot_type = config['robot']
-        self._gripper_type = config['gripper']
+        self._gripper_type = config.get('gripper', None)
         self._simulation_type = config["simulation"]
         self._sensor_dicts = config.get("sensor_dicts", None)
         self._sensors = {}
         self._tool = None
+        self._enable_hardware = False
+        
+        # Smoother configuration
+        self._use_smoother = config.get('use_smoother', False)
+        self._smoother = None
+        
+        # Async control mode
+        self._async_mode = False
+        self._async_thread = None
+        self._async_running = False
+        self._async_frequency = config.get('async_control_frequency', 800.0)
             
         # object classes
         self._robot_classes = {
@@ -63,6 +85,12 @@ class RobotFactory:
         self._simulation_classes = {
             'mujoco': MujocoSim
         }
+        
+        self._smoother_classes = {
+            'critical_damped': CriticalDampedSmoother,
+            'adaptive_critical_damped': AdaptiveCriticalDampedSmoother,
+            'ruckig': RuckigSmoother
+        }
     
     def create_robot_system(self):
         # platforms
@@ -73,31 +101,9 @@ class RobotFactory:
             
             # Initialize tool system - support both legacy _tool and modern _grippers
             # @TODO: get tool
-            if object_class_check(self._gripper_classes, self._gripper_type):
-                gripper_config = self._config["gripper_config"][self._gripper_type]
-                
-                # Check if this is a single tool (legacy) or dual gripper system
-                if 'left_gripper' in gripper_config or 'right_gripper' in gripper_config:
-                    # Modern dual gripper system
-                    self._grippers = {}
-                    
-                    # Initialize left gripper
-                    if 'left_gripper' in gripper_config and gripper_config['left_gripper'].get('ip'):
-                        self._grippers['left'] = self._gripper_classes[self._gripper_type](gripper_config['left_gripper'])
-                        log.info(f"Initialized left gripper: {self._gripper_type}")
-                    
-                    # Initialize right gripper (currently vacuum gripper - not implemented)
-                    if 'right_gripper' in gripper_config:
-                        right_config = gripper_config['right_gripper']
-                        if right_config.get('type') == 'vacuum_gripper':
-                            log.info(f"Right gripper (vacuum) configured but not implemented yet")
-                            # TODO: 实现吸盘夹爪控制
-                            # self._grippers['right'] = VacuumGripper(right_config)
-                        elif right_config.get('ip'):  # xarm gripper with IP
-                            self._grippers['right'] = self._gripper_classes[self._gripper_type](right_config)
-                            log.info(f"Initialized right gripper: {self._gripper_type}")
-            # @TODO: get tool
-            self._tool = self._gripper_classes[self._gripper_type](self._config["gripper_config"][self._gripper_type])
+            if self._gripper_type is not None:
+                if object_class_check(self._gripper_classes, self._gripper_type):
+                    self._tool = self._gripper_classes[self._gripper_type](self._config["gripper_config"][self._gripper_type])
             
             # sensors
             if self._sensor_dicts is not None:
@@ -127,11 +133,41 @@ class RobotFactory:
         
         # total dof
         total_dof = self.get_total_dofs()
-        self.filter = WeightedMovingFilter([1.0/total_dof] * total_dof, total_dof)
+        # Comment out filter as we'll use smoother instead when enabled
+        # self.filter = WeightedMovingFilter([1.0/total_dof] * total_dof, total_dof)
+        
+        # Create smoother if enabled
+        if self._use_smoother:
+            log.info('Creating smoother!!!!')
+            self._create_smoother(total_dof)
+            print("use smoother",self._use_smoother)
         
         # initialize all objects
         self._initialize()
         
+    def _create_smoother(self, dof: int) -> None:
+        """Create smoother instance based on configuration"""
+        try:
+            smoother_type = self._config.get('smoother_type', 'critical_damped')
+            self._smoother_config = self._config.get('smoother_config', {})[smoother_type]
+            
+            if not object_class_check(self._smoother_classes, smoother_type):
+                log.warning(f"Unknown smoother type: {smoother_type}, smoother disabled")
+                self._use_smoother = False
+                return
+            
+            # Create smoother instance
+            self._smoother = self._smoother_classes[smoother_type](self._smoother_config, dof)
+            
+            # Get initial joint positions for smoother initialization
+            # This will be properly initialized after robot initialization
+            log.info(f"Smoother created: {smoother_type} with omega_n={self._smoother_config.get('omega_n', 25.0)}")
+            
+        except Exception as e:
+            log.error(f"Failed to create smoother: {e}")
+            self._use_smoother = False
+            self._smoother = None
+    
     def _initialize(self):
         if self._use_hardware:
             if not self._robot.initialize():
@@ -146,8 +182,9 @@ class RobotFactory:
                         # Note: Not raising error to allow partial system operation
                         
             # Initialize sensors
-            if not self._tool.initialize():
-                raise ValueError(f"tool hardware {self._gripper_type} failed intialization")
+            if self._tool is not None:
+                if not self._tool.initialize():
+                    raise ValueError(f"tool hardware {self._gripper_type} failed intialization")
             if len(self._sensors) != 0:
                 possible_sensor_types = ['camera', 'FT_sensor', 'tactile', 'imu']
                 for sensor_type in possible_sensor_types:
@@ -157,6 +194,29 @@ class RobotFactory:
                             sensor_name = sensor["name"]
                             if not success:
                                 raise ValueError(f"{sensor_type} {sensor_name} failed to initialize!!!")
+        
+        # Initialize smoother with current joint positions
+        if self._use_smoother and self._smoother is not None:
+            try:
+                initial_joints = self.get_joint_states()
+                if initial_joints is not None:
+                    initial_positions = initial_joints._positions
+                    self._smoother.start(initial_positions)
+                    log.info("Smoother initialized and started")
+                else:
+                    log.warning("Could not get initial joint positions for smoother")
+                    self._use_smoother = False
+            except Exception as e:
+                log.error(f"Failed to initialize smoother: {e}")
+                self._use_smoother = False
+        
+        # Auto-enable async control if configured
+        self._auto_enable_async = self._config.get('auto_enable_async_control', False)
+        if self._auto_enable_async and self._use_smoother:
+            if self.enable_async_control():
+                log.info("Async control auto-enabled based on configuration")
+            else:
+                log.warning("Failed to auto-enable async control")
                 
     def get_joint_states(self):
         joint_states = None
@@ -197,74 +257,99 @@ class RobotFactory:
         for dof in dofs:
             total_dof += dof
         return total_dof
-    
-    def get_gripper(self, side: str = 'left'):
-        """Get gripper object for specified side (left/right)"""
-        if hasattr(self, '_grippers') and side in self._grippers:
-            return self._grippers[side]
-        return None
-    
-    def get_all_grippers(self):
-        """Get all available grippers"""
-        if hasattr(self, '_grippers'):
-            return self._grippers
-        return {}
-    
-    def control_gripper(self, side: str, position: float) -> bool:
-        """Control gripper position (0.0=close, 1.0=open)"""
-        gripper = self.get_gripper(side)
-        if gripper and gripper.valid():
-            return gripper.gripper_move(position)
-        else:
-            log.warning(f"Gripper {side} not available or invalid")
-            return False
         
     def set_joint_commands(self, joint_command, mode, execute_hardware: bool = False):
-        # log.info(f'Set joint commands: {joint_command}, dim: {len(joint_command)},mode: {mode}')
-        # filter command
-        self.filter.add_data(joint_command)
-        joint_command = self.filter.filtered_data
+        self._enable_hardware = execute_hardware
+        # Check if we should use smoother
+        should_use_smoother = self._should_use_smoother(mode)
+        # log.info(f"Should use smoother: {should_use_smoother}, mode: {mode}")
         
+        if should_use_smoother:
+            # Update smoother target
+            self._smoother.update_target(np.array(joint_command))
+            
+            # In async mode, just update target and return
+            # The async thread will handle sending commands
+            if self._async_mode:
+                return  # Early return in async mode
+            
+            # Synchronous mode: get smoothed command and send it
+            smoothed_command, is_active = self._smoother.get_command()
+            if is_active:
+                joint_command = smoothed_command
+        
+        # Only execute direct commands in synchronous mode or when smoother not used
+        if not self._async_mode or not should_use_smoother:
+            # log.info(f"Set joint command: mode: {mode}")
+            self.set_robot_joint_command(joint_command, mode, execute_hardware)
+                
+    def set_robot_joint_command(self, joint_command, mode, execute_hardware:bool = True):
         dofs = self.get_robot_dofs()
-        # log.info(f'mode: {mode}, command: {joint_command}')
         if self._use_simulation:
             # mode assignment
             sim_mode = [mode[0]] * dofs[0]
+            # log.info(f'mode: {mode}')
             if len(dofs) > 1:
-                # Use mode[1] if available, otherwise use mode[0] for both arms
-                # @TOOD: bug
-                right_mode = mode[1] if len(mode) > 1 else mode[0]
-                sim_mode_r = [right_mode] * dofs[1]
+                sim_mode_r = [mode[1]] * dofs[1]
                 sim_mode = np.hstack((sim_mode, sim_mode_r))
-            total_dof = self.get_total_dofs()
-            sim_mode = [mode[0]] * total_dof
+                # @TODO: handle dof other than arms @zyx
+                # total_dof = self.get_total_dofs()
+                # sim_mode = [mode[0]] * total_dof
             self._simulation.set_joint_command(sim_mode, joint_command)
         if self._use_hardware and execute_hardware: 
             if len(mode) == 1:
                 mode = mode[0]
             self._robot.set_joint_command(mode, joint_command)
-            
-    def set_tool_command(self, tool_command):
-        """
-        Send tool command to the tool system.
+    
+    def _should_use_smoother(self, mode: Union[str, List[str]]) -> bool:
+        """Check if smoother should be used for current mode"""
+        # log.info(f'mode: {mode}, use: {self._use_smoother}, smoother: {self._smoother}')
+        if not self._use_smoother or self._smoother is None:
+            return False
         
-        Args:
-            tool_command: Tool control data from teleoperation interface
-        """
-        if not self._use_hardware:
+        # Check if mode is position or velocity
+        if isinstance(mode, list):
+            # Check all modes
+            return all(m in ['position', 'velocity'] for m in mode)
+        else:
+            return mode in ['position', 'velocity']
+            
+    def set_tool_command(self, tool_command: dict[str, np.ndarray]):
+        if self._tool is None:
             return 
         
-        # Direct pass-through to tool layer which handles control mode logic
+        tool_type_dict = self._tool.get_tool_type_dict()
+        for key, tool_type in tool_type_dict.items():
+            if tool_type == ToolType.GRIPPER or tool_type == ToolType.SUCTION:
+                tool_command[key] = tool_command[key][:2]
+            else:
+                tool_command[key] = tool_command[key][2:]
+                
+        if 'single' in tool_command:
+            tool_command = tool_command["single"]
         self._tool.set_tool_command(tool_command)
 
     def close(self):
+        # Stop async control first if enabled
+        if self._async_mode:
+            self.disable_async_control()
+        
+        # Stop smoother if enabled
+        if self._use_smoother and self._smoother is not None:
+            try:
+                self._smoother.stop()
+                log.info('Smoother stopped successfully')
+            except Exception as e:
+                log.warning(f'Error stopping smoother: {e}')
+        
         if self._use_simulation:
             self._simulation.close()
         if self._use_hardware:
             self._robot.close()
             # @TODO: tools gradually add
-            self._tool.stop_tool()
-            log.info(f'All tools are successfully closed!!!')
+            if self._tool is not None:
+                self._tool.stop_tool()
+                log.info(f'All tools are successfully closed!!!')
             if len(self._sensors):
                 # @TODO: gradually add the sensors
                 possible_sensors = ['camera', 'FT_sensor', 'tactile', 'imu']
@@ -276,35 +361,185 @@ class RobotFactory:
         log.info(f'Robot systyem is closed successfully!!!')
         
     def get_cameras_infos(self):
-        cameras_data = []
-        
-        # Get simulation camera data
+        cameras_data = None
         if self._use_simulation:
-            sim_cameras_data = self._simulation.get_all_camera_images()
-            if sim_cameras_data is not None:
-                cameras_data.extend(sim_cameras_data)
-        
-        # Get hardware camera data  
-        if 'camera' in self._sensors and self._use_hardware:
+            cameras_data = self._simulation.get_all_camera_images()
+        if'camera' in self._sensors and self._use_hardware:
+            hw_camera_data = []
             cameras = self._sensors['camera']
-            cameras_data = []
-
             for cam in cameras:
                 camera_name = cam['name']
                 camera_object:CameraBase = cam['object']
                 img = camera_object.capture_all_data()
                 resolution = camera_object.get_resolution()
                 if not img['image'] is None:
-                    cameras_data.append({'name': camera_name+'_color', 'resolution': resolution,
+                    hw_camera_data.append({'name': camera_name+'_color', 'resolution': resolution,
                                         'img': img['image']})
                 if not img['depth_map'] is None:
-                    cameras_data.append({'name': camera_name+'_depth', 'resolution': resolution,
+                    hw_camera_data.append({'name': camera_name+'_depth', 'resolution': resolution,
                                         'img': img['depth_map']})
                 if not img['imu'] is None:
-                    cameras_data.append({'name': camera_name+'_imu', 'resolution': resolution,
+                    hw_camera_data.append({'name': camera_name+'_imu', 'resolution': resolution,
                                         'imu': img['imu']})
-        
-        return cameras_data if len(cameras_data) > 0 else None
+            if len(hw_camera_data):
+                cameras_data = hw_camera_data
+        return cameras_data
             
-    def move_to_start(self):
-        self._robot.move_to_start()
+    def move_to_start(self, joint_commands = None):
+        """
+        Move robot to start position
+        Args:
+            joint_commands: If provided, use smoother to move smoothly to target
+                           If None, use robot's default move_to_start (immediate)
+        """
+        if joint_commands is not None and self._use_smoother and self._smoother is not None:
+            # Use smoother to move smoothly to specified position
+            log.info(f"Moving to target position with smoother...")
+            
+            # Update smoother target
+            self._smoother.update_target(joint_commands, immediate=False)
+            
+            # Create temporary control loop to actually move the robot
+            self._smmother_blocking_execution(5.0)
+            
+        else:
+            # joint_commands is None: use robot's default move_to_start (immediate reset)
+            # Pause smoother before immediate movement
+            self.pause_smoother()
+            
+            # Execute immediate move to default start position
+            if self._use_simulation:
+                self._simulation.move_to_start(None)
+            if self._use_hardware:
+                self._robot.move_to_start(None)
+            
+            # Resume smoother and sync to current position
+            time.sleep(0.1)
+            self.resume_smoother()
+    
+    def pause_smoother(self) -> None:
+        """Pause smoother (for reset/special operations)"""
+        if self._use_smoother and self._smoother is not None:
+            self._smoother.pause()
+            log.info("Smoother paused")
+    
+    def resume_smoother(self, sync_to_current: bool = True) -> None:
+        """Resume smoother after pause"""
+        if self._use_smoother and self._smoother is not None:
+            if sync_to_current:
+                # Sync to current joint positions
+                current_joints = self.get_joint_states()
+                if current_joints is not None:
+                    self._smoother.update_target(current_joints._positions, immediate=True)
+            self._smoother.resume(sync_to_current)
+            log.info("Smoother resumed")
+    
+    def set_smoother_omega_n(self, omega_n: float) -> None:
+        """Update smoother natural frequency (if adaptive smoother)"""
+        if self._use_smoother and self._smoother is not None:
+            if hasattr(self._smoother, '_omega_n'):
+                self._smoother._omega_n = np.clip(omega_n, 10.0, 50.0)
+                log.info(f"Smoother omega_n set to {omega_n:.1f} rad/s")
+    
+    def get_smoother_state(self) -> Optional[dict]:
+        """Get current smoother state for debugging"""
+        if self._use_smoother and self._smoother is not None:
+            return self._smoother.get_motion_state()
+        return None
+    
+    def enable_async_control(self) -> bool:
+        """
+        Enable async control mode - smoother runs in background thread and directly sends commands
+        This creates true decoupling between low-freq planning and high-freq control
+        
+        Returns:
+            bool: True if successfully enabled, False otherwise
+        """
+        if not hasattr(self, '_config'):
+            auto_enable_async = self._config.get('auto_enable_async_control', False)
+            if not auto_enable_async or not hasattr(self, 'enable_async_control'):
+                log.error("Auto enable async is failed by user config")
+                return False
+        
+        if not self._use_smoother or self._smoother is None:
+            log.error("Cannot enable async control without smoother")
+            return False
+        
+        if self._async_mode:
+            log.warning("Async control already enabled")
+            return True
+        
+        # Start async command thread
+        self._async_running = True
+        self._async_thread = threading.Thread(
+            target=self._async_command_loop,
+            daemon=True,
+            name="AsyncControlLoop"
+        )
+        self._async_thread.start()
+        self._async_mode = True
+        
+        log.info(f"Async control enabled at {self._async_frequency}Hz")
+        return True
+    
+    def disable_async_control(self) -> None:
+        """Disable async control mode and return to synchronous mode"""
+        if not self._async_mode:
+            return
+        
+        # Stop async thread
+        self._async_running = False
+        if self._async_thread and self._async_thread.is_alive():
+            self._async_thread.join(timeout=1.0)
+            if self._async_thread.is_alive():
+                log.warning("Async control thread did not stop cleanly")
+        
+        self._async_mode = False
+        self._async_thread = None
+        log.info("Async control disabled, returned to synchronous mode")
+    
+    def _async_command_loop(self) -> None:
+        """
+        Async command loop - continuously sends smoothed commands to robot
+        This runs in a separate thread at high frequency (e.g., 800Hz)
+        """
+        dt = 1.0 / self._async_frequency
+        next_time = time.perf_counter()
+        slow_loop_count = 0
+        
+        log.info(f"Starting async command loop at {self._async_frequency}Hz")
+        
+        dofs = self.get_robot_dofs()
+        while self._async_running:
+            loop_start = time.perf_counter()
+            
+            # Get smoothed command from smoother
+            with timer("async_smoother", "robot_factory"):
+                if self._smoother is not None:
+                    smoothed_command, is_active = self._smoother.get_command()
+                    
+                    if is_active:
+                        try:
+                            mode = ["position"] * len(dofs)
+                            self.set_robot_joint_command(smoothed_command, mode,
+                                                execute_hardware=self._enable_hardware)
+                                
+                        except Exception as e:
+                            log.error(f"Error in async command loop: {e}")
+            
+            # Timing management
+            next_time += dt
+            sleep_time = next_time - time.perf_counter()
+            
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                # Performance warning
+                slow_loop_count += 1
+                if slow_loop_count % 1000 == 1:
+                    actual_dt = time.perf_counter() - loop_start
+                    log.warning(f"Async control loop running slow: {actual_dt*1000:.1f}ms "
+                              f"(target: {dt*1000:.1f}ms)")
+                next_time = time.perf_counter()
+        
+        log.info("Async command loop stopped")

@@ -1,4 +1,4 @@
-from teleop.xr.meta_quest3 import MetaQuest3
+from teleop.XR.quest3.meta_quest3 import MetaQuest3
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from multiprocessing import shared_memory
 from cfg_handling import get_cfg

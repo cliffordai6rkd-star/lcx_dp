@@ -4,7 +4,7 @@
 """
 
 from teleop.base.teleoperation_base import TeleoperationDeviceBase
-from hardware.base.utils import convert_homo_2_7D_pose, negate_transform, transform_quat, convert_quat_to_rot_matrix, convert_rot_matrix_to_quat, compute_pose_diff
+from hardware.base.utils import convert_homo_2_7D_pose, negate_transform, transform_quat, fast_mat_inv, compute_pose_diff
 from vuer import Vuer
 from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoPlane, WebRTCStereoVideoPlane
 from multiprocessing import Value, Array, Process, shared_memory
@@ -66,6 +66,7 @@ class MetaQuest3(TeleoperationDeviceBase):
     CONST_HEAD_POSE = np.eye(4)
     CONST_HAND_ROT = np.tile(np.eye(3)[None, :, :], (25, 1, 1))
     ROT_THRESHOLD = np.pi / 2.0
+    INIT_TARGET_POSE = [np.eye(4), np.eye(4)]
     
     def __init__(self, config):
         self._binocular = config["binocular"]
@@ -97,82 +98,41 @@ class MetaQuest3(TeleoperationDeviceBase):
         self._ngork = config.get("ngork", False)
         self._webrtc = config.get("webrtc", False)
         self._img_shm: Optional[shared_memory.SharedMemory] = None
+        self._device_enabled = False
         
         # initialize and thread starting
         super().__init__(config)
 
-    def _init_image_shared_memory(self) -> shared_memory.SharedMemory:
-        """初始化图像共享内存段。
-        
-        根据配置中的image_shape计算所需内存大小，创建共享内存段用于图像数据传输。
-        支持双目和单目图像模式的自动识别。
-        
-        Returns:
-            shared_memory.SharedMemory: 创建的共享内存对象，包含name属性供后续连接使用
-            
-        Raises:
-            ValueError: 当image_shape配置为空或格式错误时
-            OSError: 当系统无法创建共享内存时（权限不足、内存不足等）
-        """
-        if not self._img_shape or len(self._img_shape) < 2:
-            raise ValueError(f"Invalid image_shape configuration: {self._img_shape}")
-        
-        # Add channel dimension if missing (assume RGB)
-        if len(self._img_shape) == 2:
-            self._img_shape = (self._img_shape[0], self._img_shape[1], 3)
-        
-        # Calculate binocular mode based on aspect ratio
-        ASPECT_RATIO_THRESHOLD = 2.0
-        if self._img_shape[1] / self._img_shape[0] > ASPECT_RATIO_THRESHOLD:
-            self._binocular = True
-        
-        # Calculate total memory size needed
-        memory_size = np.prod(self._img_shape) * np.uint8().itemsize
-        
-        try:
-            img_shm = shared_memory.SharedMemory(create=True, size=memory_size)
-            log.info(f"Created shared memory segment: {img_shm.name}, size: {memory_size} bytes")
-            return img_shm
-        except OSError as e:
-            log.error(f"Failed to create shared memory of size {memory_size}: {e}")
-            raise
-        
     def initialize(self) -> bool:
         if self._is_initialized:
             return True
         
-        try:
-            # Initialize image shared memory
-            self._img_shm = self._init_image_shared_memory()
+        cur_path = os.path.dirname(os.path.abspath(__file__))
+        if self._cert_file is None:
+            self._cert_file = os.path.join(cur_path, 'certifications', "meta_quest3_cert.pem")
+        else:
+            self._cert_file = os.path.join(cur_path, "../../..", self._cert_file)
+        if self._key_file is None:
+            self._key_file = os.path.join(cur_path, 'certifications', "meta_quest3_key.pem")
+        else:
+            self._key_file = os.path.join(cur_path, "../../..", self._key_file)
             
-            cur_path = os.path.dirname(os.path.abspath(__file__))
-            if self._cert_file is None:
-                self._cert_file = os.path.join(cur_path, 'certifications', "meta_quest3_cert.pem")
-            # else:
-            #     self._cert_file = os.path.join(cur_path, "../..", self._cert_file)
-            if self._key_file is None:
-                self._key_file = os.path.join(cur_path, 'certifications', "meta_quest3_key.pem")
-            # else:
-            #     self._key_file = os.path.join(cur_path, "../..", self._key_file)
-                
-            if self._ngork:
-                self._vuer = Vuer(host='0.0.0.0', queries=dict(grid=False), queue_len=3)
-            else:
-                self._vuer = Vuer(host='0.0.0.0', cert=self._cert_file, 
-                                  key=self._key_file, queries=dict(grid=False), queue_len=3)
-                
-            self._vuer.add_handler("CAMERA_MOVE")(self._on_cam_move)
-            if self._use_hand_tracking:
-                self._vuer.add_handler("HAND_MOVE")(self._on_hand_move)
-            else:
-                self._vuer.add_handler("CONTROLLER_MOVE")(self._on_controller_move)
+        if self._ngork:
+            self._vuer = Vuer(host='0.0.0.0', queries=dict(grid=False), queue_len=3)
+        else:
+            self._vuer = Vuer(host='0.0.0.0', cert=self._cert_file, 
+                                key=self._key_file, queries=dict(grid=False), queue_len=3)
+            
+        self._vuer.add_handler("CAMERA_MOVE")(self._on_cam_move)
+        if self._use_hand_tracking:
+            self._vuer.add_handler("HAND_MOVE")(self._on_hand_move)
+        else:
+            self._vuer.add_handler("CONTROLLER_MOVE")(self._on_controller_move)
 
-            # Connect to the shared memory we just created
-            self._img_array = np.ndarray(self._img_shape, dtype=np.uint8, buffer=self._img_shm.buf)
-        except (OSError, ValueError) as e:
-            log.error(f"Failed to initialize MetaQuest3: {e}")
-            return False
-
+        # Connect to the shared memory we just created
+        existing_shm = shared_memory.SharedMemory(name=self._img_shm_name)
+        self._img_array = np.ndarray(self._img_shape, dtype=np.uint8, buffer=existing_shm.buf)
+        
         if self._binocular and not self._webrtc:
             self._vuer.spawn(start=False)(self._main_image_binocular)
         elif not self._binocular and not self._webrtc:
@@ -246,15 +206,12 @@ class MetaQuest3(TeleoperationDeviceBase):
         data = self.parse_data_2_robot_target("absolute")
         log.info(f'pose: {data[1]}')
         
-    def apply_init_offset(self, pose, id, need_posi_offset=True):
+    def apply_init_offset(self, pose, id):
         new_pose = copy.deepcopy(pose)
         # basis convertion (mainly for rot)
         if self._init_pose is not None:
             init_rot = self._init_pose_rot[id]
-            init_trans = self._init_pose_trans[id]
             new_pose[3:] = transform_quat(pose[3:], init_rot)
-            if need_posi_offset:
-                new_pose[:3] += np.array(init_trans)
         
         # @TODO: try to add a threshold 
         # no need posi offset means need head posi to calib
@@ -273,8 +230,8 @@ class MetaQuest3(TeleoperationDeviceBase):
             warnings.warn("The meta quest 3 xr device is not initialized!!!")
             return False, None, None
         
-        if mode != "absolute":
-            warnings.warn(f'meta quest3 only support absolute mode!!!!')
+        if mode != "absolute" or mode != "absolute_delta":
+            warnings.warn(f'meta quest3 only support absolute related mode!!!!')
             return False, None, None
         
         pose_target = {}
@@ -315,6 +272,9 @@ class MetaQuest3(TeleoperationDeviceBase):
             pose_right[:3] += self._init_pose_trans[1]
        
         # Generate pose targets based on config and data validity
+        if self._device_enabled:
+            pose_left = self._get_diff_trans(pose_left, 0)
+            pose_right = self._get_diff_trans(pose_right, 0)
         if not self._output_left or not left_arm_valid:
             if right_arm_valid:
                 pose_target['single'] = pose_right
@@ -364,6 +324,7 @@ class MetaQuest3(TeleoperationDeviceBase):
                 right_hand_pose = np.einsum('ij, nij -> nij', rightwrist2world_trans, right_hand_pose)
             left_hand_pose_7d = np.zeros((n, 7))
             right_hand_pose_7d = np.zeros((n, 7))
+            # 4 9 14 19 24 for right fingertip from thumb to the right
             for i in range(n):
                 left_hand_pose_7d[i, :] = convert_homo_2_7D_pose(left_hand_pose[i])
                 right_hand_pose_7d[i, :] = convert_homo_2_7D_pose(right_hand_pose[i])
@@ -372,6 +333,8 @@ class MetaQuest3(TeleoperationDeviceBase):
                 self.apply_init_offset(right_hand_pose_7d[i], 1) 
             tool_left = left_hand_pose_7d
             tool_right = left_hand_pose_7d
+            # @TODO: find a way to init the pose target
+            self._device_enabled = True
         else:
             # controller tracking for gripper control
             # state (bool) & value (float): contains triggers , squezzes, thumb sticks, buttons (bool)
@@ -397,6 +360,14 @@ class MetaQuest3(TeleoperationDeviceBase):
             right_data = np.hstack((right_trigger_state, right_trigger_value, right_squeeze_state,
                                    right_squeeze_value, right_a_button, right_b_button, 
                                    right_thumb_stick_state, right_thumb_stick_value))
+            # update init_pose target
+            if left_a_button and left_arm_valid and right_arm_valid:
+                self.INIT_TARGET_POSE[0] = pose_left
+                self.INIT_TARGET_POSE[1] = pose_right
+                self._device_enabled = True
+                log.info(f"{'='*10}INIT TARGET POSE is successfully updated, and could start teleoperation{'='*10}")
+                return False, None, None
+            
             # data: (state, value combination), trigger, squeeze, a,b button, thumb stick
             tool_left = left_data
             tool_right = right_data
@@ -408,8 +379,19 @@ class MetaQuest3(TeleoperationDeviceBase):
             tool_target['left'] = tool_left
             tool_target['right'] = tool_right
         
-        return True, pose_target, tool_target
+        if self._device_enabled:
+            return True, pose_target, tool_target
+        else: return False, None, None
         
+    
+    # helper functions
+    def _get_diff_trans(self, cur_pose, index):
+        init_pose = self.INIT_TARGET_POSE[index]
+        init_pose_inv = fast_mat_inv(init_pose)
+        diff_pose = cur_pose @ init_pose_inv
+        return diff_pose
+    
+    # related to vuer xr helper function
     async def _on_cam_move(self, event, session, fps=60):
         # print(f'triggered cam move!!!!!')
         # print(f'cam key: {event.key} value: {event.value}')
@@ -829,4 +811,4 @@ class MetaQuest3(TeleoperationDeviceBase):
         with self._right_bButton_shared.get_lock():
             return self._right_bButton_shared.value
         
-        
+    

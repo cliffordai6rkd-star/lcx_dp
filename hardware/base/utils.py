@@ -4,7 +4,7 @@ import pinocchio as pin
 import yaml
 import warnings
 from collections import deque
-import copy
+import copy, time
 from enum import Enum
 
 class RobotJointState:
@@ -46,10 +46,10 @@ class GripperControlMode(Enum):
 class ToolState:
     _position: np.float32
     # contact force
-    _force: np.float32
+    _force: np.float32 | np.ndarray = 0.0
     # grasp status
-    _is_grasped: bool
-    _tool_type: ToolType
+    _is_grasped: bool = False
+    _tool_type: ToolType = ToolType.GRIPPER
     
 class TrajectoryState:
     # size: [num_state, dim_traj]
@@ -62,12 +62,14 @@ class Buffer:
     _size: float
     _dim: float
     _data: deque
+    _time_stamp: deque
     def __init__(self, size, dim):
         self._size = size
         self._dim = dim
         self._data = deque()
+        self._time_stamp = deque()
         
-    def push_data(self, data):
+    def push_data(self, data, stamp):
         if len(data) != self._dim:
             warnings.warn(f"The data dim: {len(data)} is not matched with buffer data dim {self._dim}")
             return False
@@ -75,6 +77,7 @@ class Buffer:
         if len(self._data) == self._size:
             self.pop_data()
         self._data.append(data)
+        self._time_stamp.append(stamp)
         return True
         
     def pop_data(self) -> tuple[bool , np.ndarray | None]:
@@ -85,16 +88,26 @@ class Buffer:
                 np.array with size _dim
         """
         if len(self._data) == 0:
-            return False, None
+            return False, None, None
         
         poped_data = self._data.popleft()
-        return True, poped_data
+        poped_stamp = self._time_stamp.popleft()
+        return True, poped_data, poped_stamp
     
     def size(self):
         return len(self._data)
     
     def clear(self):
         self._data.clear()
+        self._time_stamp.clear()
+        
+    def clear_outdated_data(self, cur_stamp):
+        while True:
+            success, data, stamp = self.pop_data()
+            if not success: return
+            criterion = (cur_stamp - stamp) < 0.01
+            if criterion: return
+            self.pop_data()
     
 def check_traj_size(traj: TrajectoryState, size: int) -> bool:
     if len(traj._zero_order_values[0]) != size:
@@ -280,3 +293,8 @@ def transform_pose(pose1, pose2):
     T_ac = np.concatenate([t_ac, rot_ac.as_quat()])
     return T_ac
 
+def fast_mat_inv(mat):
+    ret = np.eye(4)
+    ret[:3, :3] = mat[:3, :3].T
+    ret[:3, 3] = -mat[:3, :3].T @ mat[:3, 3]
+    return ret

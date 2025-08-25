@@ -53,6 +53,7 @@ class WholeBodyIk(ControllerBase):
             if self.tracking_frames[i]["require_trans"] and self.tracking_frames[i]["require_rot"]:
                 target_homo = convert_7D_2_homo(value)
                 self.opti.set_value(self.parameters[i+1], target_homo)
+            # @TODO: support obly trans or only rot
             elif self.tracking_frames[i]["require_trans"]:
                 self.opti.set_value(self.parameters[i+1], value[:3])
             elif self.tracking_frames[i]["require_rot"]:
@@ -66,7 +67,7 @@ class WholeBodyIk(ControllerBase):
             q_target = self.opti.value(self.var_q)
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
-            return True, q_target, "position"
+            return True, q_target, ["position"] * len(self.tracking_frames)
         except Exception as e:
             print(f"ERROR in convergence{e}")
             return False, None, "position"

@@ -99,20 +99,23 @@ class CartesianImpedanceController(ControllerBase):
         ee_pose = convert_homo_2_7D_pose(ee_pose_homo)
         
         position_current = np.array(ee_pose[:3])
-        orientation_current = R.from_quat(ee_pose[3:])
         
         position_target = np.array(target_pose[:3])
         orientation_target = R.from_quat(target_pose[3:])
         
         self.position_d = self.filter_params * position_target + (1.0 - self.filter_params) * self.position_d
         
-        # Use Slerp for quaternion interpolation
+        # Use Slerp for quaternion interpolation with shortest path
         q_d_current = R.from_quat(self.orientation_d)
         q_d_target = orientation_target
         
-        # Create Slerp interpolator
+        # Ensure shortest path rotation
+        if np.dot(q_d_current.as_quat(), q_d_target.as_quat()) < 0:
+            q_d_target = R.from_quat(-q_d_target.as_quat())
+        
+        # Create Slerp interpolator with correct key frames
         key_times = [0.0, 1.0]
-        key_rots = R.concatenate([q_d_current, q_d_target])
+        key_rots = R.from_quat(np.vstack([q_d_current.as_quat(), q_d_target.as_quat()]))
         slerp = Slerp(key_times, key_rots)
         
         # Interpolate
@@ -124,23 +127,14 @@ class CartesianImpedanceController(ControllerBase):
         for i in range(3):
             error[i] = np.clip(error[i], self.translational_clip_min[i], self.translational_clip_max[i])
         
-        q_current = orientation_current.as_quat()
-        q_current_obj = orientation_current
-        q_d_obj = R.from_quat(self.orientation_d)
+        # Use log mapping for orientation error (consistent with LOCAL_WORLD_ALIGNED Jacobian)
+        R_current = ee_pose_homo[:3, :3]
+        R_desired = R.from_quat(self.orientation_d).as_matrix()
         
-        if np.dot(q_current, self.orientation_d) < 0:
-            q_current = -q_current
-            q_current_obj = R.from_quat(q_current)
-        
-        # Match C++ version: orientation.inverse() * orientation_d_
-        error_quaternion = q_current_obj.inv() * q_d_obj
-        # Use quaternion imaginary part as error (matching C++ implementation)
-        # C++ uses: error_.tail(3) << error_quaternion.x(), error_quaternion.y(), error_quaternion.z()
-        error_quat_components = error_quaternion.as_quat()  # [x, y, z, w]
-        error_quat_vec = error_quat_components[:3]  # [x, y, z]
-        
-        R_ee = ee_pose_homo[:3, :3]
-        error[3:] = -R_ee @ error_quat_vec
+        # World-aligned orientation error using log map
+        # error = log(R_des * R_cur^T) expressed in world frame
+        error_rotation_matrix = R_desired @ R_current.T
+        error[3:] = -pin.log3(error_rotation_matrix)
         
         for i in range(3):
             error[i+3] = np.clip(error[i+3], self.rotational_clip_min[i], self.rotational_clip_max[i])
@@ -216,7 +210,26 @@ class CartesianImpedanceController(ControllerBase):
         self.position_d = np.array(ee_pose[:3])
         self.orientation_d = ee_pose[3:]
         self.q_d_nullspace = np.asarray(robot_state._positions).flatten().copy()
+        
+        # Initialize last_tau_d to compensation torques instead of zero
+        C = self._robot_model.get_coriolis_matrix(robot_state._positions, robot_state._velocities, self.arm_joint_idxes)
+        dq = robot_state._velocities
+        if self.arm_joint_idxes is not None:
+            dq = robot_state._velocities[self.arm_joint_idxes]
+        dq = ensure_column_vector(dq)
+        tau_coriolis = (C @ dq).flatten()
+        
         self.last_tau_d = np.zeros(self._robot_model.nv)
+        if self._gravity_compensation:
+            tau_gravity = self._robot_model.get_gravity_vector(robot_state._positions, self.arm_joint_idxes)
+            tau_compensation = tau_gravity + tau_coriolis
+        else:
+            tau_compensation = tau_coriolis
+        
+        if self.arm_joint_idxes is not None:
+            self.last_tau_d[self.arm_joint_idxes] = tau_compensation
+        else:
+            self.last_tau_d = tau_compensation
     
     def set_stiffness(self, translational_stiffness=None, rotational_stiffness=None):
         if translational_stiffness is not None:
@@ -234,3 +247,53 @@ class CartesianImpedanceController(ControllerBase):
     
     def reset_integral_error(self):
         self.error_integral = np.zeros(6)
+    
+    def reset(self, frame_name: str, robot_state: RobotJointState) -> None:
+        """
+        Reset controller internal state to current robot state
+        
+        Args:
+            frame_name: End-effector frame name
+            robot_state: Current robot joint state
+        """
+        # Update kinematics for current state
+        self._robot_model.update_kinematics(
+            ensure_flat_array(robot_state._positions),
+            ensure_flat_array(robot_state._velocities),
+            ensure_flat_array(robot_state._accelerations)
+        )
+        
+        # Re-align desired pose to current measured pose
+        ee_pose_homo = self._robot_model.get_frame_pose(frame_name)
+        ee_pose = convert_homo_2_7D_pose(ee_pose_homo)
+        self.position_d = np.array(ee_pose[:3])
+        self.orientation_d = np.array(ee_pose[3:])
+        
+        # Reset nullspace target to current joint positions
+        self.q_d_nullspace = np.asarray(robot_state._positions).flatten().copy()
+        
+        # Clear integral error
+        self.reset_integral_error()
+        
+        # Initialize last_tau_d to compensation torques (not zero)
+        C = self._robot_model.get_coriolis_matrix(robot_state._positions, robot_state._velocities, self.arm_joint_idxes)
+        dq = robot_state._velocities
+        if self.arm_joint_idxes is not None:
+            dq = robot_state._velocities[self.arm_joint_idxes]
+        dq = ensure_column_vector(dq)
+        tau_coriolis = (C @ dq).flatten()
+        
+        self.last_tau_d = np.zeros(self._robot_model.nv)
+        if self._gravity_compensation:
+            tau_gravity = self._robot_model.get_gravity_vector(robot_state._positions, self.arm_joint_idxes)
+            tau_compensation = tau_gravity + tau_coriolis
+        else:
+            tau_compensation = tau_coriolis
+        
+        if self.arm_joint_idxes is not None:
+            self.last_tau_d[self.arm_joint_idxes] = tau_compensation
+        else:
+            self.last_tau_d = tau_compensation
+        
+        # Force re-initialization on next compute
+        self.initialized = False

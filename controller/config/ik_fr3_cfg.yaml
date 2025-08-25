@@ -2,6 +2,6 @@
   damping_weight: 0.3
   # ["gaussian_newtown", "pyroki"， "dls", "lm"]
   # pyroki 慎用， 关节会有跳变
-  ik_type: "gaussian_newtown"
-  tolerance: 0.0001
-  max_iteration: 1000
+  ik_type: "lm"
+  tolerance: 0.000001
+  max_iteration: 3000

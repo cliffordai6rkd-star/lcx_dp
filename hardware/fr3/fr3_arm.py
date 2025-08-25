@@ -1,6 +1,5 @@
 from hardware.base.arm import ArmBase
 import numpy as np
-import warnings
 import panda_py
 from panda_py import controllers 
 # import panda_py.constants
@@ -53,24 +52,28 @@ class Fr3Arm(ArmBase):
                 sleep_time = (1.0 / read_frequency) - dt
                 time.sleep(sleep_time)
             # elif dt > 2.0 / read_frequency:
-            #     warnings.warn(f"Reading fr3 robot state is slower than the read frequency "
+            #     log.warn(f"Reading fr3 robot state is slower than the read frequency "
             #                   f"{read_frequency}Hz, actual: {1.0 / dt}Hz")
         print(f'Fr3 with ip {self._ip} stopped its thread!!!')
             
     def initialize(self):
-        # self._fr3_robot.stop_controller()
+        # Stop any existing controller to avoid concurrent operation errors
+        self._fr3_robot.stop_controller()
+        
         if self._control_mode is None:
             self._panda_py_controller = controllers.JointPosition()
             self._control_mode = "position"
 
         # pandapy low level controller parameters
-        if not self._damping is None: 
+        if not self._damping is None and \
+            not isinstance(self._panda_py_controller, controllers.PureTorque): 
             self._panda_py_controller.set_damping(self._damping)
         if not self._stiffness is None and \
-            not isinstance(self._panda_py_controller, controllers.AppliedTorque):
+            not isinstance(self._panda_py_controller, controllers.PureTorque):
             self._panda_py_controller.set_stiffness(self._stiffness)
         if not self._filter_coefficient is None and \
-            not isinstance(self._panda_py_controller, controllers.IntegratedVelocity):
+            not isinstance(self._panda_py_controller, controllers.IntegratedVelocity) and \
+            not isinstance(self._panda_py_controller, controllers.PureTorque):
             self._panda_py_controller.set_filter(self._filter_coefficient)
         # controller start
         self._fr3_robot.start_controller(self._panda_py_controller)    
@@ -97,7 +100,7 @@ class Fr3Arm(ArmBase):
                    
     def update_arm_states(self):
         if not self._fr3_state_update_flag:
-            warnings.warn(f'The fr3 state is still not ready for robot state to update!')
+            log.warn(f'The fr3 state is still not ready for robot state to update!')
             return 
         
         self._joint_states._positions = np.array(self._fr3_state.q)
@@ -114,27 +117,31 @@ class Fr3Arm(ArmBase):
     def set_joint_command(self, mode, command):
         # controller setting or controller change
         if not self._is_initialized or self._control_mode != mode:
+            # Stop current controller before switching modes
+            if self._control_mode != mode and self._control_mode is not None:
+                self.stop_controller()
+            
             if mode == 'position':
                 self._panda_py_controller = controllers.JointPosition()
             elif mode == 'velocity':
                 self._panda_py_controller = controllers.IntegratedVelocity()
             elif mode == 'torque':
-                self._panda_py_controller = controllers.AppliedTorque()
+                self._panda_py_controller = controllers.PureTorque()
             else:
-                warnings.warn(f"Unsupported control mode: {mode}")
+                log.warn(f"Unsupported control mode: {mode}")
                 return False
             self._control_mode = mode
             self._is_initialized = self.initialize()
 
         # set command, checking
         if len(command) != self._dof:
-            warnings.warn(f"the command dimension does not match with the arm dof: "
+            log.warn(f"the command dimension does not match with the arm dof: "
                     f"expect: {self._dof}, get: {len(command)}")
             return False
         
         # checking error state
         if self.recover():
-            warnings.warn(f'The robot falls in error state and finished recover!!!')
+            log.warn(f'The robot falls in error state and finished recover!!!')
             return False
         
         # set command
@@ -145,7 +152,7 @@ class Fr3Arm(ArmBase):
         elif mode == 'torque':
             self.set_joint_torque(command)
         else:
-            warnings.warn(f'fr3 did not support control mode {mode}')
+            log.warn(f'fr3 did not support control mode {mode}')
             return False
         return True
             
@@ -187,17 +194,41 @@ class Fr3Arm(ArmBase):
             self._fr3_robot.raise_error()
             return False
         except:
-            self._fr3_robot.recover()
+            # Stop controller before recovery to avoid concurrent operation error
             self.stop_controller()
+            
+            # Only acquire lock for the actual recover call
+            self._lock.acquire()
+            try:
+                self._fr3_robot.recover()
+            finally:
+                self._lock.release()
+            
             self.initialize()
             return True
-        
-    def move_to_start(self):
-        if self._init_joint_positions is None:
-            self._fr3_robot.move_to_start()
+    
+    # @TODO: check move2start bug
+    def move_to_start(self, joint_commands = None):
+        if self._init_joint_positions is None \
+            and joint_commands is None:
+            # Stop controller before move_to_start to avoid concurrent operation
             self.stop_controller()
+            
+            # Only acquire lock for the actual move_to_start call
+            self._lock.acquire()
+            try:
+                self._fr3_robot.move_to_start()
+            finally:
+                self._lock.release()
         else:
-            self.set_joint_command('position', self._init_joint_positions)
+            if joint_commands is not None:
+                if len(joint_commands) != 7:
+                    log.warn(F'The reset joint position len is not 7 but got {len(joint_commands)}')
+                    return 
+                command = joint_commands
+            else:
+                command = self._init_joint_positions
+            self.set_joint_command('position', command)
 
     def set_collision_threshold(self, torque_min: float | list[float],
                                 torque_max: float | list[float],
@@ -206,23 +237,23 @@ class Fr3Arm(ArmBase):
         if not isinstance(torque_min, list):
             torque_min = [torque_min] * 7
         elif len(torque_min) != 7:
-            warnings.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
+            log.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
             return False
         if not isinstance(torque_max, list):
             torque_max = [torque_max] * 7
         elif len(torque_max) != 7:
-            warnings.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
+            log.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
             return False
         
         if not isinstance(force_min, list):
             force_min = [force_min] * 6
         elif len(force_min) != 6:
-            warnings.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
+            log.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
             return False
         if not isinstance(force_max, list):
             force_max = [force_max] * 6
         elif len(force_max) != 6:
-            warnings.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
+            log.warn(f'The collision threshold for fr3 {self._ip} failed to be updated!')
             return False
         
         self._fr3_robot.get_robot().set_collision_behavior(torque_min, torque_max,

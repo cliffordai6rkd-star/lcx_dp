@@ -52,7 +52,7 @@ def test_trajectory_buffer():
     points_consumed = []
     while True:
         lock.acquire()
-        success, point = buffer.pop_data()
+        success, point, time_stamp = buffer.pop_data()
         buffer_size = buffer.size()
         lock.release()
         

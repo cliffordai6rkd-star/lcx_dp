@@ -65,6 +65,11 @@ class SimBase(abc.ABC, metaclass=abc.ABCMeta):
     def close(self):
         """close the simulation"""
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def move_to_start(self, joint_commands=None):
+        """move the joint commands to go to the reset pose"""
+        raise NotImplementedError
     
     def update_trajectory_data(self, data):
         self._visulize_traj_data.append(data)

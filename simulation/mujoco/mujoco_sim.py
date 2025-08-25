@@ -8,7 +8,6 @@ import time
 from hardware.base.utils import RobotJointState, transform_pose, negate_pose
 import copy
 from simulation.base.sim_base import SimBase
-import warnings
 from simulation.mujoco.mujoco_env_creator import MujocoEnvCreator
 from xml.etree import ElementTree as ET
 import cv2
@@ -44,7 +43,8 @@ class MujocoSim(SimBase):
         self.lock = threading.Lock()
         self._thread = threading.Thread(target=self.sim_thread)
         self._thread.start()
-        time.sleep(1.5)
+        # @TODO: decide sleep time
+        time.sleep(1.0)
     
     def sim_thread(self):
         if self._model is None or self._data is None:
@@ -81,7 +81,7 @@ class MujocoSim(SimBase):
                 if time_until_next_step > 0:
                     time.sleep(0.2*time_until_next_step)
                 elif time_until_next_step > 1.2 * self._dt:
-                    warnings.warn(f"Mujoco node frequency is not enough, "
+                    log.warn(f"Mujoco node frequency is not enough, "
                                   f"actual: {used_time}, expected: {self._dt}")
             viewer.close()
             print(f'The mujoco simulation thread successfully stopped!')
@@ -141,7 +141,7 @@ class MujocoSim(SimBase):
         
         for i, target in enumerate(actuator_action):
             if mode[i] != self._actuator_mode[i]:
-                warnings.warn(f"The mode for {i} th actuator differs from the command!, "
+                log.error(f"The mode for {i} th actuator differs from the command!, "
                               f"expected: {self._actuator_mode[i]}, actual:{mode[i]}")
                 break
             
@@ -180,12 +180,12 @@ class MujocoSim(SimBase):
                 quat_seq: sequence of the quat in pose, ['xyzw', 'wxyz']
         """
         if self._model is None:
-            warnings.warn("The model for the mujoco simulation is not correctly configured")
+            log.warn("The model for the mujoco simulation is not correctly configured")
             return None
         
         site_id = self._model.site(site_name).id
         if site_id < 0:
-            warnings.warn("The specific site could not be found from the mujoco model!!!")
+            log.warn("The specific site could not be found from the mujoco model!!!")
             return None
         
         pose = np.zeros(7)
@@ -207,12 +207,12 @@ class MujocoSim(SimBase):
                 quat_seq: sequence of the quat in pose, ['xyzw', 'wxyz']
         """
         if self._model is None:
-            warnings.warn("The model for the mujoco simulation is not correctly configured")
+            log.warn("The model for the mujoco simulation is not correctly configured")
             return None
 
         body_id = self._model.body(body_name).id
         if body_id < 0:
-            warnings.warn(f"The specific body {body_name} could not be found from the mujoco model!!!")
+            log.warn(f"The specific body {body_name} could not be found from the mujoco model!!!")
             return None
         
         pose = np.zeros(7)
@@ -300,7 +300,7 @@ class MujocoSim(SimBase):
 
     def set_joint_position(self, values):
         if len(values) != len(self._joint_names):
-            warnings.warn("The target position dim does not match with defined joint names")
+            log.warn("The target position dim does not match with defined joint names")
         
         log.info(f'set joint position: {values}')
         log.info(f'joint names: {self._joint_names}')
@@ -391,6 +391,12 @@ class MujocoSim(SimBase):
         
     def get_dof(self):
         return self._dof
+
+    def move_to_start(self, joint_commands=None):
+        if joint_commands is None:
+            commands = self._init_pose
+        else: commands = joint_commands
+        self.set_joint_command(["position"] * len(self._actuator_mode), commands)
     
 if __name__ == '__main__':
     import yaml
