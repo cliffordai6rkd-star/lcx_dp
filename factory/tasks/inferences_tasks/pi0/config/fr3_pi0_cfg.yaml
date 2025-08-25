@@ -1,0 +1,11 @@
+# gym
+max_step_nums: 150
+action_type: "joint_position"
+reset_space: "joint"
+model_cfg_name: "pi0_fast_hirol_fr3_peg_in_hole"
+model_dir: "/home/yuxuan/Code/hirol/pi0/checkpoints/pi0_fast_hirol_fr3_peg_in_hole/hirol_test/29999"
+tasks:  ["pick up the peg on the table and put it in the holestep1: find the peg on the table. step2: go to the location of the peg step3: pick up the obly peg on the table. stpe4: find the only hole in the peg station. step5: go to the top of the hole. step6: place the peg into the holepick up the peg on the table and place it in the correct hole",
+        ]
+
+# robot + motion factory
+motion_config: !include factory/components/motion_configs/fr3_with_franka_hand_ik.yaml

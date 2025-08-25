@@ -123,9 +123,9 @@ class RobotModel(ModelBase):
                 need_update: if set false, you need to update the pinocchio
                 joint state first by calling `update_kinematics`
         """
-        # @TODO @ yx
-        # if model_type != "single":
-        #     raise ValueError("This is a single urdf model, please check your model type!!!")
+        # @TODO: @ yx, check
+        if model_type != "single":
+            raise ValueError(f"This is a single urdf model, but you get {model_type}!!!")
         
         if need_update:
             if joint_positions is None:

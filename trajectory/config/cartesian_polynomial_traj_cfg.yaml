@@ -2,14 +2,15 @@
 
 cart_polynomial:
   interpolation_type: "quintic"
-  dt: 0.02
-  max_velocity: 0.8
-  enable_motion: true 
+  dt: 0.008
+  max_velocity: 1.2
+  enable_motion: false 
+  enable_online_planning: true
 
 buffer:
-  size: 60
+  size: 20
   dim: 7
 
 duo_buffer:
-  size: 60
+  size: 25
   dim: 14

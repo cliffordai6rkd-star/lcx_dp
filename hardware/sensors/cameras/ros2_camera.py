@@ -2,9 +2,47 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from rclpy.executors import SingleThreadedExecutor
-
 from sensor_msgs.msg import Image, Imu
-from cv_bridge import CvBridge, CvBridgeError
+
+# 条件导入 cv_bridge
+try:
+    from cv_bridge import CvBridge, CvBridgeError
+    CV_BRIDGE_AVAILABLE = True
+except ImportError:
+    CV_BRIDGE_AVAILABLE = False
+    print("Warning: cv_bridge not available, using mock implementation")
+    
+    import numpy as np
+    
+    class CvBridgeError(Exception):
+        pass
+    
+    class MockCvBridge:
+        def __init__(self):
+            pass
+            
+        def imgmsg_to_cv2(self, msg, desired_encoding="bgr8"):
+            """Mock implementation of cv_bridge imgmsg_to_cv2"""
+            try:
+                if desired_encoding in ["bgr8", "rgb8"]:
+                    # 8-bit color image
+                    image_array = np.frombuffer(msg.data, dtype=np.uint8)
+                    image = image_array.reshape((msg.height, msg.width, 3))
+                elif desired_encoding == "16UC1":
+                    # 16-bit depth image
+                    image_array = np.frombuffer(msg.data, dtype=np.uint16)
+                    image = image_array.reshape((msg.height, msg.width))
+                elif desired_encoding == "32FC1":
+                    # 32-bit float depth image
+                    image_array = np.frombuffer(msg.data, dtype=np.float32)
+                    image = image_array.reshape((msg.height, msg.width))
+                else:
+                    raise CvBridgeError(f"Unsupported encoding: {desired_encoding}")
+                return image
+            except Exception as e:
+                raise CvBridgeError(f"Mock cv_bridge conversion failed: {e}")
+    
+    CvBridge = MockCvBridge
 
 from hardware.base.camera import CameraBase
 import threading

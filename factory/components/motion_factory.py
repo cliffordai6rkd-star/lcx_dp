@@ -20,6 +20,11 @@ import glog as log
 
 # Import performance profiler
 from tools.performance_profiler import PerformanceProfiler, timer
+from enum import Enum
+
+class Robot_Space(Enum):
+    CARTESIAN_SPACE = 0,
+    JOINT_SPACE = 1,
 
 # Used for different robot component into one robot system
 class MotionFactory:
@@ -40,6 +45,7 @@ class MotionFactory:
             self._trajectory_planner_type = config["trajectory_planner_type"]
             self._traj_frequency = config["traj_frequency"]
         self._high_level_command = None
+        self.enable_high_level_update = True
         self._high_level_updated = False
         self._control_frequency = config["control_frequency"]
         self._robot_system = robot
@@ -102,6 +108,12 @@ class MotionFactory:
         log.info("[DEBUG] MotionFactory._initialize() starting")
         self._robot_system.create_robot_system()
         
+        # Auto-enable async control if configured
+        if self._robot_system.enable_async_control():
+            log.info("Async control enabled in MotionFactory based on configuration")
+        else:
+            log.warning("Failed to enable async control in MotionFactory")
+        
         # thread starting
         self._controller_thread_running = True
         self._controller_thread = threading.Thread(target=self._controller_task)
@@ -111,6 +123,8 @@ class MotionFactory:
             self._traj_thread_running = True
             self._traj_thread = threading.Thread(target=self._traj_task)
             self._traj_thread.start()
+        
+        self._ee_links = self.get_model_end_effector_link_list()
         
     def _controller_task(self):
         log.info('Controller thread started!!!')
@@ -132,8 +146,13 @@ class MotionFactory:
                         self._high_level_updated = True
                     elif self._use_traj_planner:
                         self._buffer_lock.acquire()
-                        get_data, data = self._buffer.pop_data()
+                        get_data, data, time_stamp = self._buffer.pop_data()
                         self._buffer_lock.release()
+                        # @TODO: test
+                        current_time_stamp = time.perf_counter()
+                        if get_data and current_time_stamp - time_stamp > 0.1:
+                            self._buffer.clear_outdated_data(current_time_stamp)
+                            get_data = False
                         # log.info(f'data: {data}, get data: {get_data}, buffer size: {self._buffer.size()}')
                         if get_data:
                             target = self._get_controller_target(data)
@@ -150,15 +169,20 @@ class MotionFactory:
                 with timer("controller_computation", "motion_factory_"):
                     success, joint_target, joint_mode = self._controller.compute_controller(
                                                         target, robot_state=curr_joint_state)
-                    # log.info(f'Controller output - success: {success}, joint_target: {joint_target}, joint_mode: {joint_mode}')
                 
                 with timer("hardware_execution", "motion_factory_"):
                     if success:
                         joint_mode = joint_mode if isinstance(joint_mode, list) else [joint_mode]
+                        # log.info(f'controller mode: {joint_mode}')
                         self._robot_system.set_joint_commands(joint_target, joint_mode,
                                                             self._execute_hardware)
                     else:
-                        self._robot_system.set_joint_commands(curr_joint_state._positions, ["position"], False)
+                        # if use hardware; directly map the hardware joints to sim
+                        if self._robot_system._use_hardware \
+                            and self._robot_system._use_simulation:
+                            joint_mode = ["position"] * len(self._ee_links)
+                            self._robot_system.set_joint_commands(curr_joint_state._positions, joint_mode, False)
+                            # self._robot_system._simulation.move_to_start(curr_joint_state._positions) 
                         log.warning(f"Controller failed to compute valid joint commands for target: {target}")
             
             next_run_time += ctrl_period
@@ -192,24 +216,33 @@ class MotionFactory:
     def _traj_task(self):
         log.info('Trajectory thread started!!!')
         
-        ee_links = self.get_model_end_effector_link_list()
-        model_types = ["left", "right"] if isinstance(self._robot_model, DuoRobotModel) else ["single"]
+        model_types = self.get_model_types()
         while self._traj_thread_running:
             start_time = time.perf_counter()
             
             if self._high_level_updated and not self._blocking_motion:
                 nums_target = 0
-                tcp = np.array([])
-                for i, cur_ee_link in enumerate(ee_links):
-                    cur_tcp = self.get_frame_pose(cur_ee_link, model_types[i])
+                tcp = np.array([]); twist = np.array([]); acc = np.array([])
+                for i, cur_ee_link in enumerate(self._ee_links):
+                    model_type = model_types[i] if len(model_types) > 1 else model_types[0]
+                    frame_motion = self.get_frame_pose(cur_ee_link, model_type, need_vel=True, need_acc=True)
+                    cur_tcp = frame_motion[:7]
                     tcp = np.hstack((tcp, cur_tcp))
+                    twist = np.hstack((twist, frame_motion[7:13], 0))
+                    frame_motion[13:19] = np.zeros(6)
+                    # @TODO: figure out how to clear buffer
+                    acc = np.hstack((acc, frame_motion[13:19], 0))
                     nums_target += 1
-                        
+                if len(tcp) != len(self._high_level_command):
+                    log.warn(f'dim not match for tcp and high level command: {len(tcp)}, {self._high_level_command}')
+                    continue
                 traj_target = TrajectoryState()
                 traj_target._zero_order_values = np.vstack((tcp,
                                                             self._high_level_command))
-                traj_target._first_order_values = np.zeros((2,7*nums_target))
-                traj_target._second_order_values = np.zeros((2,7*nums_target))
+                traj_target._first_order_values = np.vstack((twist,
+                                                             np.zeros(7*nums_target)))
+                traj_target._second_order_values = np.vstack((acc,
+                                                             np.zeros(7*nums_target)))
                 self._high_level_updated = False
                 # traj planning
                 self._trajectory.plan_trajectory(traj_target)
@@ -218,18 +251,40 @@ class MotionFactory:
             if use_time < (1.0 / self._traj_frequency):
                 sleep_time = (1.0 / self._traj_frequency) - use_time
                 time.sleep(sleep_time)
-            else:
-                warnings.warn(f"The trajectory frequency is slow, expected: {self._traj_frequency} "
-                              f"actual: {1.0 / use_time}")
+            # else:
+            #     warnings.warn(f"The trajectory frequency is slow, expected: {self._traj_frequency} "
+            #                   f"actual: {1.0 / use_time}")
         
         log.info(f'Motion factory trajectory thread stopped!!!')
     
+    def set_next_pose_target(self, pose_target):
+        target_dim = 7 if len(self._ee_links) == 1 else 14
+        if len(pose_target) != target_dim:
+            log.warn(f'The high level command has wrong len, expected: {target_dim}, but get: {len(pose_target)}')
+            return
+        self._high_level_command = copy.deepcopy(pose_target)
+        self._high_level_updated = True
+    
     def update_high_level_command(self, command):
         '7d pose or two 7d pose'
-        self._high_level_command = copy.deepcopy(command)
-        self._high_level_updated = True
+        if not self.enable_high_level_update:
+            return 
+       
+        self.set_next_pose_target(command)
+    
+    def clear_high_level_command(self):
+        self._high_level_command = None    
+    
+    def set_joint_positions(self, joint_commands, is_continous_joint_command = True):
+        self._blocking_motion = True
+        position_mode = ["position"]
+        if len(self.get_model_end_effector_link_list()) > 1: position_mode = position_mode * 2
+        self._robot_system.set_joint_commands(joint_commands, position_mode, 
+                                              self._execute_hardware)
+        if not is_continous_joint_command:
+            self._blocking_motion = False
         
-    def get_frame_pose(self, frame_name, model_type):
+    def get_frame_pose(self, frame_name, model_type, need_vel = False, need_acc = False):
         """
             @brief: get frame pose in 7D format [x, y, z, qx, qy, qz, qw]
             @params:
@@ -241,7 +296,52 @@ class MotionFactory:
         pose = self._robot_model.get_frame_pose(frame_name, joint_states._positions,
                                                 need_update=True, model_type=model_type)
         pose = convert_homo_2_7D_pose(pose)
+        if need_vel:
+            twist = self._robot_model.get_frame_twist(frame_name, joint_states._positions,
+                                                    joint_states._velocities, need_update=True,
+                                                    model_type=model_type)
+            pose = np.hstack((pose, twist))
+        if need_acc:
+            acc = self._robot_model.get_frame_acc(frame_name, joint_states._positions,
+                                                joint_states._velocities, joint_states._accelerations,
+                                                need_update=True, model_type=model_type)
+            pose = np.hstack((pose, acc))
         return pose
+    
+    def reset_robot_system(self, arm_command: list[float] | None = None, 
+                           space: Robot_Space = Robot_Space.JOINT_SPACE,
+                           tool_command: dict[str, np.ndarray] = None):
+        if space == Robot_Space.CARTESIAN_SPACE:
+            if arm_command is not None:
+                self.enable_high_level_update = False
+                self.update_execute_hardware(False)
+                # wait for the trajectory done
+                self.clear_traj_buffer()
+                self.wait_buffer_empty()
+                log.info('Trajectory buffer has all been consumed for cartesian space reset!!!')
+                # @TODO: attach to current tcp
+                self.set_next_pose_target(arm_command)
+                self.update_execute_hardware(True)
+                self.enable_high_level_update = True
+            else:
+                self.move_to_start_blocking()
+        else:
+            self.move_to_start_blocking(arm_command)
+        
+        # Reset controller if it has a reset method
+        if hasattr(self._controller, 'reset'):
+            # Get current robot state and end-effector frame name
+            robot_state = self._robot_system.get_joint_states()
+            ee_links = self.get_model_end_effector_link_list()
+            if ee_links:
+                # Use the first end-effector link as the frame name
+                frame_name = ee_links[0]
+                log.info(f'Resetting controller with frame: {frame_name}')
+                self._controller.reset(frame_name, robot_state)
+                log.info('Controller reset completed')
+        
+        if tool_command is not None:
+            self._robot_system.set_tool_command(tool_command)
     
     def update_execute_hardware(self, enable_hardware):
         self._execute_hardware = enable_hardware
@@ -294,14 +394,20 @@ class MotionFactory:
             sliced_joint_states = get_joint_slice_value(dofs[1], dofs[1]+dofs[2], joint_states)
         return sliced_joint_states
     
-    def move_to_start_blocking(self):
-        if not self._robot_system._use_hardware:
-            return 
-    
+    def move_to_start_blocking(self, joint_commands = None):
         self._blocking_motion = True
-        self._robot_system.move_to_start()
+        self._robot_system.move_to_start(joint_commands)
         self._blocking_motion = False
         
     def clear_traj_buffer(self):
         if self._use_traj_planner:
             self._buffer.clear()
+
+    def wait_buffer_empty(self):
+        if self._use_traj_planner:
+            while self._buffer.size():
+                time.sleep(0.001)
+
+    def get_model_types(self):
+        return ['single'] if self._model_type == 'model' else ['left', 'right']
+    

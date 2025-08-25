@@ -91,7 +91,7 @@ class SpaceMouse(TeleoperationDeviceBase):
             if  dt < (1.0 / self._frequency):
                 sleep_time = (1.0 / self._frequency) - dt 
                 time.sleep(sleep_time)
-            else:
+            elif dt > 1.3 / self._frequency:
                 warnings.warn("The frequency for reading the space mouse data is slower than the" 
                               f"use specified frequency, expected: {self._frequency}, actual: {1.0 /dt}!")
             

@@ -47,6 +47,12 @@ class CoreneticGripper(ToolBase):
         try:
             self.hardware = RobotLib("192.168.11.3:50051", "", "")
             log.info(f"Corenetic gripper connected to hardware at 192.168.11.3")
+
+            success = self.hardware.clean_gripper_err_code(self._component_type)
+            log.info(success)
+            success,error_code = self.hardware.get_gripper_err_code(self._component_type)
+            log.info(success,error_code)
+            
         except Exception as e:
             log.error(f"Failed to initialize Corenetic gripper hardware: {e}")
             self.is_valid = False

@@ -1,6 +1,5 @@
 import abc
 import numpy as np
-import numpy as np
 from hardware.base.utils import RobotJointState
 from hardware.base.safety_checker import SafetyChecker, SafetyLevel, SafetyLimits
 import threading

@@ -65,11 +65,11 @@ if __name__ == '__main__':
     print(f'buffer: {buff._data}')
     buff.push_data(np.array([3.0,4.0,5.3]).tolist())
     print(f'buffer: {buff._data}')
-    data = buff.pop_data()
+    success, data, time_stamp = buff.pop_data()
     print(f'data: {data}, buff: {buff._data}')
-    data = buff.pop_data()
+    success, data, time_stamp = buff.pop_data()
     print(f'data: {data}, buff: {buff._data}')
-    data = buff.pop_data()
+    success, data, time_stamp = buff.pop_data()
     print(f'data: {data}, buff: {buff._data}')
     
     values = [2,3]

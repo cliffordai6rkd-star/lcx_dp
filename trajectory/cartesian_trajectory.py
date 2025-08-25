@@ -3,16 +3,15 @@ import numpy as np
 from scipy.interpolate import CubicSpline, interp1d
 from hardware.base.utils import TrajectoryState, check_traj_size
 from scipy.spatial.transform import Rotation, Slerp
-import warnings
 from hardware.base.utils import Buffer
 import threading
 import time
 import glog as log
+
 # Directly support the dual target interpolation
 class CartessianTrajectory(TrajectoryBase):
     def __init__(self, config, buffer: Buffer, lock: threading.Lock):
         super().__init__(config, buffer, lock)
-        self.trajectory_idle = True
         self._enable_motion = config.get("enable_motion", False)
         # if buffer dim is 7, single cartesian targte; 
         # 14 for duo cartesian target
@@ -31,7 +30,10 @@ class CartessianTrajectory(TrajectoryBase):
         
         flag = check_traj_size(target, self._buffer._dim)
         if not flag:
-            warnings.warn("target dim is different with buffer dim!!!")
+            log.warn("target dim is different with buffer dim!!!")
+            log.warn(f'target shape in cartesian traj: {target._zero_order_values.shape},'
+                     f'buffer size: {self._buffer._dim}')
+            self.trajectory_idle = True
             return
         
         finish_time = -1 if finish_time is None else finish_time
@@ -48,7 +50,7 @@ class CartessianTrajectory(TrajectoryBase):
             self.trajectory_idle = True
             return 
         
-        # profile generation
+        # profile generation, @TODO: vel and acc consideration
         trans_coeff, slerp = self._generate_traj_profile(target, end_time)
         
         # profile_time = time.time() - start_time
@@ -58,8 +60,10 @@ class CartessianTrajectory(TrajectoryBase):
         # total_points = 0
         
         cur_time = 0.0 
-        while cur_time < end_time:
+        start_time = time.perf_counter()
+        while cur_time < end_time and not self._interrupt_planning:
             cur_time += self.dt
+            start_time += self.dt
             if cur_time > end_time:
                 cur_time = end_time
                 
@@ -74,9 +78,10 @@ class CartessianTrajectory(TrajectoryBase):
             
             # update buffer
             self._buffer_lock.acquire()
-            self._buffer.push_data(curr_point)
+            time_stamp = start_time
+            self._buffer.push_data(curr_point, time_stamp)
             self._buffer_lock.release()
-            time.sleep(0.85*self.dt)
+            # time.sleep(self.dt)
             
             # time printing
         #     loop_time = time.time() - start_time

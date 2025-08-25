@@ -48,7 +48,7 @@ class PerformanceProfiler:
     _active_timers: Dict[str, float] = {}  # Per-thread active timers
     _call_counts: Dict[str, int] = defaultdict(int)
     _enabled = True
-    _print_threshold_ms = 0.1  # Only print operations > 0.1ms by default
+    _print_threshold_ms = 0.01  # Only print operations > 0.1ms by default
     
     def __init__(self, name_prefix: str = ""):
         """Initialize profiler instance

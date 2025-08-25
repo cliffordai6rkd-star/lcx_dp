@@ -1,0 +1,101 @@
+# SERL Configuration for FR3 Robot
+# Based on fr3_with_hand_impedance.yaml with SERL-specific modifications
+
+motion_config:
+  # Platform settings
+  use_hardware: true
+  use_simulation: true  # Disable simulation when using real hardware
+  
+  # Robot and gripper configuration - inherit from base configs
+  robot: "fr3"
+  robot_config: !include /home/hanyu/code/HIROLRobotPlatform/hardware/fr3/config/fr3_cfg.yaml
+  gripper: "franka_hand"
+  gripper_config: !include /home/hanyu/code/HIROLRobotPlatform/hardware/fr3/config/franka_hand_cfg.yaml
+  
+  # SERL-specific settings
+  use_smoother: false  # SERL handles its own trajectory smoothing
+  auto_enable_async_control: false  # SERL manages control loop
+  use_trajectory_planner: false  # Direct position commands
+  
+  # Control settings
+  control_frequency: 800
+  controller_type: "cartesian_impedance"
+  controller_config:
+    cartesian_impedance:
+      enable_gravity_compensation: false
+      
+      # Default compliance for normal operation (softer than base config)
+      translational_stiffness: 1500.0
+      translational_damping: 80.0
+      rotational_stiffness: 100.0
+      rotational_damping: 10.0
+      
+      # No integral control for reactive behavior
+      translational_ki: 0.0
+      rotational_ki: 0.0
+      
+      # Wider error bounds for smooth motion
+      translational_clip_min: [-0.1, -0.1, -0.1]
+      translational_clip_max: [0.1, 0.1, 0.1]
+      rotational_clip_min: [-0.5, -0.5, -0.5]
+      rotational_clip_max: [0.5, 0.5, 0.5]
+      
+      # Torque saturation for safety
+      saturation:
+        min: [-40, -40, -40, -40, -40, -40, -40]
+        max: [40, 40, 40, 40, 40, 40, 40]
+  
+  # Model configuration
+  model_type: "model"
+  model_config:
+    name: "fr3_franka_hand"
+    cfg: !include /home/hanyu/code/HIROLRobotPlatform/motion/config/robot_model_fr3_cfg.yaml
+  
+  # Buffer and trajectory settings (disabled for SERL)
+  buffer_type: "buffer"
+  trajectory_planner_type: "cart_polynomial"
+  plan_type: "cartesian"
+  trajectory_config: !include /home/hanyu/code/HIROLRobotPlatform/trajectory/config/cartesian_polynomial_traj_cfg.yaml
+  traj_frequency: 450
+  
+  # Simulation configuration
+  simulation: "mujoco"
+  simulation_config: !include /home/hanyu/code/HIROLRobotPlatform/simulation/config/mujoco_fr3_scene.yaml
+  target_site_name: ["target_site"]
+  tcp_visualization_site: ["TCP_site"]
+
+# SERL-specific parameters (used by SerlRobotInterface)
+serl_params:
+  # Control frequency for environment
+  env_hz: 10
+  
+  # Default compliance parameters
+  default_compliance:
+    translational_stiffness: 1500.0
+    translational_damping: 80.0
+    rotational_stiffness: 100.0
+    rotational_damping: 10.0
+  
+  # Precision mode for accurate reset operations
+  precision_compliance:
+    translational_stiffness: 2000.0
+    translational_damping: 89.0
+    rotational_stiffness: 150.0
+    rotational_damping: 7.0
+  
+  # Reset compliance parameters (intermediate stiffness)
+  reset_compliance:
+    translational_stiffness: 1800.0
+    translational_damping: 85.0
+    rotational_stiffness: 120.0
+    rotational_damping: 8.0
+  
+  # Gripper parameters
+  gripper_sleep: 0.5  # Wait time after gripper commands
+  
+  # Safety limits (can be task-specific)
+  workspace_limits:
+    xyz_min: [0.3, -0.3, 0.1]
+    xyz_max: [0.7, 0.3, 0.6]
+    rpy_min: [-3.14, -0.5, -3.14]
+    rpy_max: [3.14, 0.5, 3.14]

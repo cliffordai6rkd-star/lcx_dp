@@ -145,12 +145,11 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
         # Button 1 - close gripper
         elif buttons[1]:
             new_position = max(self._current_position - self._step_size, 0.0)
-            
         # Update state if position changed
         if new_position != self._current_position:
             self._current_position = new_position
             self._last_move_time = current_time
-            
+
         return new_position
     
     def _extract_binary_value(self, target) -> float:

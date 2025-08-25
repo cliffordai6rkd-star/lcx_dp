@@ -22,7 +22,10 @@ class TrajectoryBase(abc.ABC, metaclass=abc.ABCMeta):
         self.dt = config["dt"]
         self._max_vel = config["max_velocity"]
         self._interpolation_type = config["interpolation_type"]
-    
+        self.trajectory_idle = True
+        self._enable_online_planning  = config.get("enable_online_planning", False)
+        self._interrupt_planning = False
+        # self._need_clear_buffer = False
     
     @abc.abstractmethod
     def plan_trajectory(self, target:TrajectoryState, finish_time: float | None = None):
@@ -31,6 +34,11 @@ class TrajectoryBase(abc.ABC, metaclass=abc.ABCMeta):
                 trajectory planner with the current and target pose
         """
         pass
+    
+    def interrupt_current_planning(self):
+        if not self._enable_online_planning:
+            return
+        self._interrupt_planning = True
     
     # basic general useful method
     def _auto_generate_end_time(self, start: np.ndarray, end: np.ndarray, user_specified_time: float) -> List[float]:
@@ -41,7 +49,7 @@ class TrajectoryBase(abc.ABC, metaclass=abc.ABCMeta):
         tranlation_time = np.linalg.norm(pose_diff[:3]) / self._max_vel
         rotation_time = np.linalg.norm(pose_diff[3:]) /  self._max_vel
         finish_time = max(max(tranlation_time, rotation_time),user_specified_time)
-        if finish_time < 0.1 * self.dt:
+        if finish_time < 1 * self.dt:
             finish_time = -1
         return finish_time
 

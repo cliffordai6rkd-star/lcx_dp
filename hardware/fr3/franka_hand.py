@@ -21,11 +21,10 @@ class FrankaHand(ToolBase):
         self._lock = threading.Lock()
         # self._update_thread.start()
         
-        
     def initialize(self):
         self._gripper = Gripper(self._ip)
         # move to home
-        success = self._gripper.move(0.08, 0.02)
+        success = self._gripper.homing()
         state = self._gripper.read_once()
         self._max_width = state.max_width
         return success
