@@ -12,27 +12,23 @@ smoother_type: "ruckig" #critical_damped
 smoother_config: !include smoother/config/monte_smoother_cfg.yaml
 # Async control configuration
 # This creates true decoupling between low-freq planning and high-freq control
-async_control_frequency: 500.0     # Async thread sends commands at this rate (Hz)
+async_control_frequency: 1000.0     # Async thread sends commands at this rate (Hz)
 auto_enable_async_control: true    # Auto-enable async mode on initialization (new!)
 
 sensor_dicts:
   cameras:
     - name: "left_ee_cam"
       type: "network_camera"
-      cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_left.yaml
-      # type: "ros2_camera"
-      # cfg: !include hardware/sensors/cameras/config/obec_336_config.yaml
+      cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_left_monte.yaml
     - name: "right_ee_cam"
       type: "network_camera"
-      cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_right.yaml
-
+      cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_right_monte.yaml
     - name: "third_person_cam"
       type: "network_camera"
-      # cfg: !include hardware/sensors/cameras/config/obec_bolt_config.yaml
-      cfg: !include hardware/sensors/cameras/config/netcam_cfg_third_person.yaml
+      cfg: !include hardware/sensors/cameras/config/netcam_cfg_third_person_monte.yaml
       
 
-control_frequency: 500
+control_frequency: 800
 controller_type: "duo_controller"
 controller_config: !include controller/config/duo_ik_cfg.yaml
 

@@ -1,0 +1,12 @@
+pika_tracker:
+  serial_ports: 
+    left: "/dev/ttyUSB1"
+    right: null
+  target_device: 
+    left: "WM0" 
+    right: null
+  output_left: true
+  output_right: false
+  init_pose:
+    initial_pose_left: [0, 0, 0, 0, 0, 0, 1]
+    initial_pose_right: [0, 0, 0, 0, 0, 0, 1]

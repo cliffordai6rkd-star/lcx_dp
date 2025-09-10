@@ -8,7 +8,7 @@ motion_config: !include factory/components/motion_configs/fr3_with_franka_hand_i
 robot_type: "fr3"
 
 # Checkpoint path for ACT model
-checkpoint_path: "learning/ckpts/fr3_bs_0916_50ep_ds"
+checkpoint_path: "factory/tasks/inferences_tasks/act/ckpts/fr3_bs_0916_50ep_ds"
 # checkpoint_path: "learning/ckpts/fr3_pih_0918_48ep_ds"
 # checkpoint_path: "learning/ckpts/fr3_liquid_transfer_0920_50ep_ds"
 # checkpoint_path: "learning/ckpts/fr3_st_0928_56ep_rs"

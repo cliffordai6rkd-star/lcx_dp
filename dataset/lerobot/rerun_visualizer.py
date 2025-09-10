@@ -9,14 +9,29 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import rerun as rr
 import rerun.blueprint as rrb
-from dataset.lerobot.reader import RerunEpisodeReader
+from dataset.lerobot.reader import RerunEpisodeReader, ActionType
 from datetime import datetime
+import logging_mp
 os.environ["RUST_LOG"] = "error"
 
+# Initialize logger for the module
+logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
+
+def transform_pose(pose1, pose2):
+        pose = np.zeros(7)
+        
+        pose[:3] = pose1[:3] + pose2[:3]
+        rot1 = R.from_quat(pose1[3:])
+        rot2 = R.from_quat(pose2[3:])
+        pose[3:] = (rot1 * rot2).as_quat()
+        return pose
+    
 class RerunLogger:
-    def __init__(self, task_dir, prefix = "", IdxRangeBoundary = 30, memory_limit = None, example_item_data = None):
+    def __init__(self, task_dir, prefix = "", IdxRangeBoundary = 30, memory_limit = None, 
+                 example_item_data = None, action_type = ActionType.JOINT_POSITION):
         self._task_dir = task_dir
         self.prefix = prefix
+        self._action_type = action_type
         self.IdxRangeBoundary = IdxRangeBoundary
         self.ee_trajectories = {}  # Store ee trajectories (positions) for each ee_key
         self.ee_orientations = {}  # Store ee orientations (quaternions) for each ee_key
@@ -34,6 +49,7 @@ class RerunLogger:
     def setup_blueprint(self, example_item_data):
         joint_states_views = []
         action_views = []
+        action_pose_views = []
         ee_states_views = []
         image_views = []
 
@@ -71,6 +87,21 @@ class RerunLogger:
                 )
                 action_views.append(action_view)
                 logger_mp.info(f'Created action view for: {action_key}')
+        
+        if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
+            for action_key in actions.keys():
+                action_pose_view = rrb.Spatial3DView(
+                    origin = f"{self.prefix}{action_key}_action_pose/actions/pose",
+                    time_ranges=[
+                        rrb.VisibleTimeRange(
+                            "idx",
+                            start = rrb.TimeRangeBoundary.cursor_relative(seq = -self.IdxRangeBoundary),
+                            end = rrb.TimeRangeBoundary.cursor_relative(),
+                        )
+                    ],
+                )
+                action_pose_views.append(action_pose_view)
+                logger_mp.info(f'Created action view for: {action_key} pose')
 
         # Dynamically create ee_states views based on example data
         ee_states = example_item_data.get('ee_states', {})
@@ -110,10 +141,15 @@ class RerunLogger:
         joint_states_column = rrb.Vertical(contents=joint_states_views)
         actions_column = rrb.Vertical(contents=action_views)
         ee_states_row = rrb.Horizontal(contents=ee_states_views)
+        if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
+            action_pose_row = rrb.Horizontal(contents=action_pose_views)
         images_column = rrb.Vertical(contents=image_views)
         
         first_row = rrb.Horizontal(contents=[joint_states_column, actions_column])
-        first_col = rrb.Vertical(contents=[first_row, ee_states_row])
+        if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
+            first_col = rrb.Vertical(contents=[first_row, action_pose_row, ee_states_row])
+        else:
+            first_col = rrb.Vertical(contents=[first_row, ee_states_row])
         grid = rrb.Horizontal(contents=[first_col, images_column])
         
         # Add control panels
@@ -125,14 +161,14 @@ class RerunLogger:
         rr.send_blueprint(rrb.Vertical(contents=blueprint_content))
 
     
-    def _log_trajectory_with_orientation(self, ee_key):
+    def _log_trajectory_with_orientation(self, ee_key, log_name):
         """Log trajectory with orientation visualization using coordinate axes"""
         positions = np.array(self.ee_trajectories[ee_key])
         orientations = np.array(self.ee_orientations[ee_key])
         
         # Log trajectory line in the pose space
         if len(positions) > 1:
-            rr.log(f"{self.prefix}{ee_key}/ee_states/pose/trajectory_line", 
+            rr.log(f"{self.prefix}{log_name}/trajectory_line", 
                    rr.LineStrips3D([positions], colors=[0, 255, 255], radii=[0.002]))  # Cyan trajectory
         
         # Log coordinate axes at each point to show orientation
@@ -155,7 +191,7 @@ class RerunLogger:
                     z_axis = rot.apply([0, 0, axis_length])  # Local Z axis
                     
                     # Log coordinate axes at this trajectory point (without background labels)
-                    rr.log(f"{self.prefix}{ee_key}/ee_states/pose/trajectory_orientations/point_{i}_axes", 
+                    rr.log(f"{self.prefix}{log_name}/trajectory_orientations/point_{i}_axes", 
                            rr.Arrows3D(
                                origins=[pos, pos, pos],
                                vectors=[x_axis, y_axis, z_axis],
@@ -170,11 +206,11 @@ class RerunLogger:
         # Log current position as a highlighted point in pose space
         if len(positions) >= 1:
             current_pos = positions[-1]
-            rr.log(f"{self.prefix}{ee_key}/ee_states/pose/current_position", 
+            rr.log(f"{self.prefix}{log_name}/current_position", 
                    rr.Points3D(positions=[current_pos], colors=[255, 0, 255], radii=[0.008]))  # Magenta point
         
         # Also log all trajectory points for better visualization
-        rr.log(f"{self.prefix}{ee_key}/ee_states/pose/trajectory_points", 
+        rr.log(f"{self.prefix}{log_name}/trajectory_points", 
                rr.Points3D(positions=positions, colors=[100, 255, 100], radii=[0.003]))  # Light green points
 
     def log_item_data(self, item_data: dict):
@@ -198,9 +234,83 @@ class RerunLogger:
                     rr.log(f"{self.prefix}{action_key}/actions/qpos/{idx}", rr.Scalars([val]))
             else:
                 logger_mp.warning(f'Could not find {action_key} for action_key')
-
-        # Log ee_states (end-effector states) - 7D array: position (3D) + quaternion (4D)
+                
+        # log action pose
         ee_states = item_data.get('ee_states', {}) or {}
+        if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
+            for i, (action_key, action_val) in enumerate(actions.items()):
+                original_key = action_key
+                action_key = action_key + "_action_pose"
+                action_val = action_val[:-1]
+                if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
+                    action_val = transform_pose(ee_states[original_key]["pose"], action_val)
+                
+                position = np.array(action_val[:3])  # First 3 elements: position
+                quaternion = np.array(action_val[3:7])  # Next 4 elements: quaternion (qx, qy, qz, qw)
+                
+                # Validate position and quaternion
+                if not np.all(np.isfinite(position)):
+                    logger_mp.warning(f'Invalid position values for {action_key}: {position}')
+                    continue
+                if not np.all(np.isfinite(quaternion)):
+                    logger_mp.warning(f'Invalid quaternion values for {action_key}: {quaternion}')
+                    continue
+                
+                # Normalize quaternion to ensure it's valid
+                quat_norm = np.linalg.norm(quaternion)
+                if quat_norm > 0:
+                    quaternion = quaternion / quat_norm
+                else:
+                    logger_mp.warning(f'Zero quaternion for {action_key}, using identity quaternion')
+                    quaternion = np.array([0, 0, 0, 1])  # Identity quaternion
+                
+                # Initialize trajectory storage if needed
+                if action_key not in self.ee_trajectories:
+                    self.ee_trajectories[action_key] = []
+                    self.ee_orientations[action_key] = []
+                
+                # Add current position and orientation to trajectory
+                self.ee_trajectories[action_key].append(position.copy())
+                self.ee_orientations[action_key].append(quaternion.copy())
+                
+                # Log coordinate axes at origin in the pose space
+                axis_length = 0.1  # 10cm axes
+                rr.log(f"{self.prefix}{action_key}/actions/pose/coordinate_axes", 
+                        rr.Arrows3D(
+                            origins=[[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                            vectors=[[axis_length, 0, 0], [0, axis_length, 0], [0, 0, axis_length]],
+                            colors=[[255, 0, 0], [0, 255, 0], [0, 0, 255]]  # Red X, Green Y, Blue Z
+                        ))
+                
+                # Color-coded arrows are self-explanatory: Red=X, Green=Y, Blue=Z
+                
+                # Log current 3D pose with position and rotation
+                rr.log(f"{self.prefix}{action_key}/actions/pose", 
+                        rr.Transform3D(
+                            translation=position,
+                            rotation=rr.Quaternion(xyzw=quaternion),
+                        ))
+                
+                # Log end-effector coordinate frame at current position
+                rr.log(f"{self.prefix}{action_key}/actions/pose/ee_frame", 
+                        rr.Arrows3D(
+                            origins=[position, position, position],
+                            vectors=[
+                                [axis_length, 0, 0],  # X-axis
+                                [0, axis_length, 0],  # Y-axis  
+                                [0, 0, axis_length]   # Z-axis
+                            ],
+                            colors=[[255, 100, 100], [100, 255, 100], [100, 100, 255]] # Light RGB
+                        ))
+                
+                # Light color-coded arrows for current EE frame: Light Red=X, Light Green=Y, Light Blue=Z
+                
+                # Log trajectory with orientation visualization
+                if len(self.ee_trajectories[action_key]) >= 1:
+                    self._log_trajectory_with_orientation(action_key, f'{action_key}/actions/pose')
+                    logger_mp.info(f'Logged {len(self.ee_trajectories[action_key])} trajectory points for {action_key}')
+            
+        # Log ee_states (end-effector states) - 7D array: position (3D) + quaternion (4D)
         logger_mp.info(f'EE states data: {list(ee_states.keys())}')
         for ee_key, ee_state in ee_states.items():
             if ee_state is not None:
@@ -271,7 +381,7 @@ class RerunLogger:
                     
                     # Log trajectory with orientation visualization
                     if len(self.ee_trajectories[ee_key]) >= 1:
-                        self._log_trajectory_with_orientation(ee_key)
+                        self._log_trajectory_with_orientation(ee_key, f'{ee_key}/ee_states/pose')
                         logger_mp.info(f'Logged {len(self.ee_trajectories[ee_key])} trajectory points for {ee_key}')
                            
                 else:
@@ -308,21 +418,20 @@ class RerunLogger:
 
 if __name__ == "__main__":
     import logging_mp
+    from dataset.lerobot.reader import ActionType
     logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
     # # TEST DATA OF data_dir
-    # /home/yuxuan/Code/hirol/teleoperated_trajectory/block_stacking
-    # /home/yuxuan/Code/hirol/teleoperated_trajectory/pick_N_place
-    # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/pick_N_place"
-    data_dir = "/workspace/dataset/data/peg_in_hole"
-    data_dir = "/workspace/dataset/data/block_stacking"
-    episode_data_number = 1
+    # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
+    data_dir = "/home/yuxuan/Code/HIROLRobotPlatform/dataset/data/solid_transfer"
+    episode_data_number = 3
     fps = 40
     skip_step_nums = 1
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
-        episode_reader2 = RerunEpisodeReader(task_dir = data_dir)
+        episode_reader2 = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
+                                             action_prediction_step=1, action_ori_type="quaternion")
         user_input = input("Please enter the start signal (enter 'on' to start the subsequent program):\n")
         episode_data = episode_reader2.return_episode_data(episode_data_number, skip_step_nums)
         logger_mp.info(f'Successfully load the episode data')
@@ -330,7 +439,8 @@ if __name__ == "__main__":
             # logger_mp.info("Starting offline visualization with fixed idx size...")
             # Use first episode data as example for blueprint setup
             example_data = episode_data[0] if episode_data else None
-            online_logger = RerunLogger(task_dir=data_dir, prefix="offline/", IdxRangeBoundary = 60, memory_limit="2GB", example_item_data=example_data)
+            online_logger = RerunLogger(task_dir=data_dir, prefix="offline/", IdxRangeBoundary = 60, memory_limit="2GB", 
+                    example_item_data=example_data, action_type=ActionType.END_EFFECTOR_POSE)
             for item_data in episode_data:
                 # logger_mp.info(f'item data: {item_data}')
                 online_logger.log_item_data(item_data)

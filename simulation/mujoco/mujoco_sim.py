@@ -46,7 +46,7 @@ class MujocoSim(SimBase):
         self._thread = threading.Thread(target=self.sim_thread)
         self._thread.start()
         # @TODO: decide sleep time
-        time.sleep(1.0)
+        time.sleep(0.4)
     
     def sim_thread(self):
         if self._model is None or self._data is None:

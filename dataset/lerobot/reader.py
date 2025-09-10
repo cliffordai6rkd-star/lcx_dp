@@ -51,6 +51,8 @@ class RerunEpisodeReader:
         # Loop over the data entries and process each one
         counter = 0
         skip_steps_nums = int(skip_steps_nums)
+        if skip_steps_nums > self._action_prediction_step:
+            self._action_prediction_step = skip_steps_nums
         len_json_file = len(json_file['data'])
         json_data = json_file['data']
         # @TODO: maybe pose-process for time synchronization
@@ -75,9 +77,9 @@ class RerunEpisodeReader:
                                             action_state=json_data[action_state_id]["joint_states"],
                                             attribute_name="position")
             elif self.action_type == ActionType.END_EFFECTOR_POSE:
-                # @TODO: attribute name "pose"
                 cur_actions = self._get_absolute_action(item_data.get("ee_states", {}),
-                                            action_state=json_data[action_state_id]["ee_states"])
+                                            action_state=json_data[action_state_id]["ee_states"],
+                                            attribute_name="pose")
                 if self._action_ori_type == 'euler':
                     modified_action = {}
                     for key, action in cur_actions.items():
@@ -96,23 +98,23 @@ class RerunEpisodeReader:
                 ee_states = item_data.get("ee_states", {})
                 if i + 1 >= len_json_file: continue
                 next_state_data = json_data[i+1].get("ee_states", {})
-                next_state_data = self.convert_quat_to_euler_pose(next_state_data)
-                all_ee_euler = self.convert_quat_to_euler_pose(ee_states)
-                # @TODO: attribute name "pose"
-                cur_actions = self._get_delta_action(all_ee_euler, next_state_data)
-                if self._action_ori_type == "quaternion":
+                cur_actions = {}
+                for key, pose in ee_states.items():
+                    cur_actions[key] = np.zeros(7)
+                    cur_actions[key][:3] = np.array(next_state_data[key]["pose"][:3]) - np.array(pose["pose"][:3])
+                    cur_actions[key][3:] = self.get_quat_diff(next_state_data[key]["pose"][3:], pose["pose"][3:])
+                if self._action_ori_type == "euler":
                     modified_action = {}
                     for key, action in cur_actions.items():
-                        modified_action[key] = np.zeros(7)
+                        modified_action[key] = np.zeros(6)
                         modified_action[key][:3] = action[:3]
-                        modified_action[key][3:] = R.from_euler(action[3:], "xyz").as_quat()
+                        modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz")
                     cur_actions = modified_action
-                elif self._action_ori_type != "euler":
+                elif self._action_ori_type != "quaternion":
                     raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
             else:
                 raise ValueError(f'The action type {self.action_type} is not supported for reading episode data')
             
-            # @TODO: add the gripper states as action for check
             tool_states = item_data.get("tools", {})
             for key, tool_state in tool_states.items():
                 cur_actions[key] = np.hstack((cur_actions[key], tool_state["position"]))
@@ -148,8 +150,15 @@ class RerunEpisodeReader:
             json_file = json.load(jsonf)
 
         text_info = json_file["text"]
+        steps = ""
+        if isinstance(text_info["steps"], dict):
+            for step_number, cur_step in text_info["steps"].items():
+                steps += cur_step
+                steps += " "
+        else: steps = text_info["steps"]
+        
         text_info = 'description: ' + text_info["desc"] + ' ' \
-                + 'steps: ' + text_info["steps"] + ' ' + 'goal: ' + text_info["goal"]        
+                + 'steps: ' + steps + ' ' + 'goal: ' + text_info["goal"]        
         return text_info
     
     def _get_absolute_action(self, states, action_state, attribute_name = None):
@@ -173,13 +182,20 @@ class RerunEpisodeReader:
             cur_action[key] = np.array(next_state_value[key]) - np.array(state_value)
         return cur_action
 
+    def get_quat_diff(self, q1, q2):
+        rot1 = R.from_quat(q1)
+        rot2 = R.from_quat(q2)
+        
+        rot_diff = rot2.inv() * rot1
+        return rot_diff.as_quat()
+    
     def convert_quat_to_euler_pose(self, all_ee_states):
         all_ee_states_euler = {}
         # @TODO: attribute name "pose"
         for key, state in all_ee_states.items():
             all_ee_states_euler[key] = np.zeros(6)
-            all_ee_states_euler[key][:3] = state[:3]
-            all_ee_states_euler[key][3:] = R.from_quat(state[3:]).as_euler('xyz', degrees=False)
+            all_ee_states_euler[key][:3] = state["pose"][:3]
+            all_ee_states_euler[key][3:] = R.from_quat(state["pose"][3:]).as_euler('xyz', degrees=False)
         return all_ee_states_euler
     
     def _process_images(self, item_data, data_type, dir_path):

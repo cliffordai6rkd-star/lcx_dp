@@ -3,10 +3,22 @@ from __future__ import annotations
 from controller.controller_base import ControllerBase
 from motion.pin_model import RobotModel
 import numpy as np
-from hardware.base.utils import RobotJointState, compute_pose_diff, convert_homo_2_7D_pose
+from hardware.base.utils import RobotJointState, compute_pose_diff, convert_homo_2_7D_pose, convert_7D_2_homo
 import pinocchio as pin
 from hardware.base.utils import matrix_sqrt
 
+def get_pose_error(pose1, pose2):
+    """
+        @ pose: np.ndarray (4x4)
+        @ output: return pose1 - pose2
+    """
+    SE3_1 = pin.SE3(pose1[:3,:3], pose1[:3, 3])
+    SE3_2 = pin.SE3(pose2[:3,:3], pose2[:3, 3])
+    
+    T_err = SE3_2.actInv(SE3_1)
+    err = pin.log6(T_err).vector
+    return err
+    
 class ImpedanceController(ControllerBase):
     def __init__(self, config, robot_model: RobotModel):
         super().__init__(config, robot_model)
@@ -31,6 +43,8 @@ class ImpedanceController(ControllerBase):
         self._robot_model.update_kinematics(robot_state._positions, robot_state._velocities, 
                                             robot_state._accelerations)
         ee_pose_homo = self._robot_model.get_frame_pose(frame_name)
+        # target_homo = convert_7D_2_homo(target)
+        # pose_error = get_pose_error(target_homo, ee_pose_homo)
         ee_pose = convert_homo_2_7D_pose(ee_pose_homo)
         pose_error = compute_pose_diff(target, ee_pose)
         # print(f'pose err: {pose_error}, norm: {np.linalg.norm(pose_error)}')
@@ -56,7 +70,7 @@ class ImpedanceController(ControllerBase):
             # @TODO: check why the close loop damped system is not stable
             # task_inertial_sqrt = matrix_sqrt(task_inertial)
             # self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
-            self._damping = 3.5 * kp_sqrt
+            self._damping = 2.0 * kp_sqrt
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
         # @TODO: check acceleration not stable
         des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
@@ -73,13 +87,15 @@ class ImpedanceController(ControllerBase):
                 
         # nullspace 
         if self.Kp_nullspace is not None and self.q_des is not None:
+            # - np.diag(self.dq_damping * np.sqrt(self.Kp_nullspace)) @ robot_state._velocities
             null_err = np.diag(self.Kp_nullspace) @ (self.q_des - robot_state._positions) \
-                        - np.diag(self.dq_damping * np.sqrt(self.Kp_nullspace)) @ robot_state._velocities
+                        - np.diag(self.dq_damping * np.ones((self._robot_model.nv, self._robot_model.nv))) @ robot_state._velocities
             J_bar = M_inv @ J.T @ task_inertial
             tau_nullsapce = (np.eye(self._robot_model.nv) - J.T @ J_bar.T) @ null_err
             # print(f'nullspace tau: {tau_nullsapce}')
             tau += tau_nullsapce
 
+        # tau=np.zeros(7)
         # saturation
         if not self.saturation_values is None:
             tau = np.clip(tau, self.saturation_values["min"], self.saturation_values["max"])

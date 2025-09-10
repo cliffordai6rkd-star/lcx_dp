@@ -122,11 +122,11 @@ class SpaceMouse(TeleoperationDeviceBase):
 
         self.lock.acquire()
         # self._data.pitch, self._data.roll
-        data = [-self._data.y, self._data.x, self._data.z,
-                self._data.roll, self._data.pitch, self._data.yaw]
+        data = np.array([-self._data.y, self._data.x, self._data.z,
+                self._data.roll, self._data.pitch, self._data.yaw])
         # data = [0,0,0,
         #         0, self._data.roll,0]
-        buttons = [self._data.buttons[0], self._data.buttons[1]]
+        buttons = np.array([self._data.buttons[0], self._data.buttons[1]])
         self.lock.release()
         
         if mode == 'absolute':
@@ -142,7 +142,7 @@ class SpaceMouse(TeleoperationDeviceBase):
             pose_target = {'single': target}
             if self._tool_control_mode == ToolControlMode.BINARY:
                 # 上升沿检查
-                rising_edge = self._rising_edge_detector.update(buttons[0])
+                rising_edge = self._rising_edge_detector.update(float(buttons[0]))
                 if rising_edge:
                     self._last_command = not bool(self._last_command)
                 buttons[0] = float(self._last_command)

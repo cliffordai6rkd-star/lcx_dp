@@ -18,6 +18,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._action_type = dict_str2action_type[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
         self._obs_contain_ee = config.get("obs_contain_ee", False)
+        self._tool_position_dof = config.get("tool_position_dof", 1)
         self._num_episodes = config.get("num_episodes", 10)
         
         # display
@@ -40,12 +41,13 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             for j in range(dof):
                 joint_state_names.append(f'{index[i]}_joint{j}')
                 action_names.append(f'{index[i]}_action{j}')
-        # hack for tools @TODO: zyx
-        joint_state_names.append(f'gripper_state')
-        action_names.append(f'gripper_action')
-        # self._plotter = AnimationPlotter(joint_state_names, action_names)
-        # self._plotter.start_animation()
-        # self._plotter.start_main_thread_updater()
+            joint_state_names.append(f'{index[i]}_gripper_state')
+            action_names.append(f'{index[i]}_gripper_action')
+        # Check if plotting should be enabled (can be disabled for performance)
+        enable_plotting = config.get("enable_plotting", False)
+        self._plotter = AnimationPlotter(joint_state_names, action_names, enable_display=enable_plotting)
+        self._plotter.start_animation()
+        self._plotter.start_main_thread_updater()
     
     @abc.abstractmethod
     def convert_from_gym_obs(self):
@@ -65,6 +67,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
     
+    @abc.abstractmethod
     def close(self):
         pass
     

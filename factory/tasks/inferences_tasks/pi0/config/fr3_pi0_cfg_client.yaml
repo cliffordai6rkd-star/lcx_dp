@@ -1,0 +1,27 @@
+# gym
+# reset_arm_command: [3.69019823e-01,  1.99873044e-04,  3.64437265e-01,  9.99989858e-01,
+#                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
+# reset_space: "cartesian"
+max_step_nums: 150
+action_type: "joint_position"
+action_orientation_type: "quat"
+obs_contain_ee: false
+num_episodes: 10
+is_debug: false
+reset_space: "joint"
+# reset_arm_command: [-0.0016708960744338654, -0.7861180279768628, 
+#                       0.0011242960248884306, -2.3515749674770583, 
+#                       -0.0019059956649008665, 1.581831610375827, 
+#                       0.7904221443917989]
+execution_step: 10
+display_window_name: "pi0 client inference"
+async_execution: true
+
+# prompt guidance
+# tasks: "pick up the blue cube and place it onto the top of red cube and then pick up the yellow cube and place it onto the blue cube"
+# tasks: "pick up the peg out of the stack and put it into the hole"
+# tasks: "grasp the right cup and pour it into the left cup"
+tasks: "collect a portion of rice with spoon and transfer it into the bowl"
+
+# robot + motion factory
+motion_config: !include factory/components/motion_configs/fr3_with_franka_hand_ik.yaml

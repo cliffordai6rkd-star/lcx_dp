@@ -1,4 +1,4 @@
-import time, os, copy
+import time, os, copy, threading
 import glog as log
 import numpy as np
 from typing import Dict, Any, List
@@ -15,7 +15,7 @@ import torch
 import dill
 import hydra
 from omegaconf import OmegaConf
-import sys
+import sys, cv2, random
 
 # Add diffusion_policy to path
 dp_path = "/home/yuxuan/Code/hirol/new_dp/dp_hirol"
@@ -40,19 +40,28 @@ class DP_Inferencer(InferenceBase):
         
         # DP-specific configurations
         self._frequency = config.get("frequency", 800.0)
+        self._async_execution = config.get('aync_execution', False)
         self._dt = 1.0 / self._frequency
+        self._last_gripper_open = True
+        
+        seed = config["seed"]
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
 
         # Load DP model and initialize inference parameters
         self._device = torch.device(config.get("device", "cuda") if torch.cuda.is_available() else "cpu")
         log.info(f"Using device: {self._device}")
         
-        self._dp_policy = self._load_dp_model(config["checkpoint_path"])
+        self._dp_policy = self._load_dp_model(config["checkpoint_path"], config)
         self._n_obs_steps = getattr(self._dp_policy, 'n_obs_steps', 2)
-        self._n_action_steps = getattr(self._dp_policy, 'n_action_steps', 1)
+        self._n_action_steps = getattr(self._dp_policy, 'n_action_steps', 8)
         self._action_horizon = getattr(self._dp_policy, 'horizon', 16)
+        log.info(f'To: {self._n_obs_steps}, Ta: {self._n_action_steps}, Tp: {self._action_horizon}')
         
         self._obs_queue = deque(maxlen=self._n_obs_steps)
         self._action_interruption = False
+        self._execution_thread = None
         
         log.info(f"DP model loaded. obs_steps: {self._n_obs_steps}, action_horizon: {self._action_horizon}")
         
@@ -66,6 +75,7 @@ class DP_Inferencer(InferenceBase):
             self._dp_policy.reset()
             self._obs_queue.clear()
             self._status_ok = True
+            self._last_gripper_open = True
             log.info(f'Starting episode {episode_num}')
             
             while self._status_ok:
@@ -73,14 +83,19 @@ class DP_Inferencer(InferenceBase):
                     dp_obs = self.convert_from_gym_obs()
                     
                 with timer("dp_inference_time", "dp_inferencer"):
-                    result = self._dp_policy.predict_action(dp_obs)
-                    action_np = result['action'][0][:self._n_action_steps].detach().cpu().numpy()
+                    with torch.no_grad():
+                        start_time = time.perf_counter()
+                        result = self._dp_policy.predict_action(dp_obs)
+                        log.info(f'infer used time: {time.perf_counter() - start_time}')
+                        log.info(f'dp result action: {result["action"].shape}')
+                        action_np = result['action'][0][:self._n_action_steps].detach().cpu().numpy()
                     
                 with timer("gym_step", "dp_inferencer"):
+                    if self._execution_thread and self._execution_thread.is_alive() and self._async_execution:
+                        self._action_interruption = True
+                        self._execution_thread.join()
+                        self._action_interruption = False
                     self.convert_to_gym_action(action_np)
-                    
-                # Process matplotlib events for animation plotter
-                plt.pause(0.001)
                     
     def convert_from_gym_obs(self) -> Dict[str, torch.Tensor]:
         """Convert gym observations to DP format.
@@ -102,7 +117,7 @@ class DP_Inferencer(InferenceBase):
         # Wait until we have enough observations
         if len(self._obs_queue) < self._n_obs_steps:
             log.info(f"Collecting observations... ({len(self._obs_queue)}/{self._n_obs_steps})")
-            time.sleep(0.1)
+            time.sleep(0.01)
             return self.convert_from_gym_obs()  # Recursive call until enough obs
         
         # Stack observations across time dimension
@@ -114,6 +129,7 @@ class DP_Inferencer(InferenceBase):
                     obs_dict_np[key] = value  
                 else:
                     obs_dict_np[key] = np.concatenate((obs_dict_np[key], value), axis=0)
+                # log.info(f'{i}th key: {key}, dp obs shape: {obs_dict_np[key].shape}')
         
         # Convert to torch tensors and add batch dimension[1, T, C, H, W]
         obs_dict = dict_apply(obs_dict_np, 
@@ -131,6 +147,7 @@ class DP_Inferencer(InferenceBase):
             dp_action: Action array from DP model
         """
         gym_actions = self._convert_dp_action_to_gym_format(dp_action)
+        # log.info(f'gym action" {gym_actions}')
         self._execute_action_sequence(gym_actions)
         
     def _execute_action_sequence(self, gym_actions: List[Dict]) -> None:
@@ -139,26 +156,45 @@ class DP_Inferencer(InferenceBase):
         Args:
             gym_actions: List of gym action dictionaries
         """
-        for action in gym_actions:
-            if self._action_interruption:
-                log.info("Action execution interrupted")
-                break
+        def async_execute():
+            log.info(f'start to exeute action!!!!!')
+            for action in gym_actions:
+                log.info(f'async action: {action["tool"]}')
+                if self._action_interruption:
+                    log.info("Action execution interrupted")
+                    break
+                    
+                # Process gripper action, @TODO: 耦合状态 for fr3
+                if self._last_gripper_open:
+                    log.info(f'open action["tool"][0]')
+                    action["tool"][0] = 1.0 if action["tool"][0] > 0.076 else 0.0
+                else:
+                    log.info(f'close action["tool"][0]')
+                    action["tool"][0] = 1.0 if action["tool"][0] > 0.0785 else 0.0
+                self._last_gripper_open = True if action["tool"][0] > 0.01 else False
                 
-            # Process gripper action, @TODO: 耦合状态
-            action["tool"] = 1.0 if action["tool"] > 0.001 else 0.0
-            
-            self._gym_robot.step(action)
-            time.sleep(self._dt)
+                start_time = time.perf_counter()
+                self._gym_robot.step(action)
+                log.info(f'step used time: {time.perf_counter() - start_time}')
+                if self._async_execution:
+                    time.sleep(self._dt)
+            log.info(f'execution action finished!!!!!1')
         
-    def _load_dp_model(self, checkpoint_path: str) -> BaseImagePolicy:
+        self._execution_thread = threading.Thread(target=async_execute)
+        self._execution_thread.start()
+        if not self._async_execution:
+            self._execution_thread.join()
+        
+    def _load_dp_model(self, checkpoint_path: str, config: Dict[str, Any]) -> BaseImagePolicy:
         """Load DP model from checkpoint.
-        
+
         Args:
             checkpoint_path: Path to checkpoint file
-            
+            config: Configuration dictionary containing inference settings
+
         Returns:
             Loaded DP model
-            
+
         Raises:
             ValueError: If checkpoint file not found or invalid
         """
@@ -179,11 +215,77 @@ class DP_Inferencer(InferenceBase):
         
         # Configure inference parameters
         if hasattr(policy, 'num_inference_steps'):
-            policy.num_inference_steps = max(10, getattr(policy, 'num_inference_steps', 16))
-            
+            log.info(f"policy infer steps: {getattr(policy, 'num_inference_steps', 25)}")
+
+            # Setup DDIM scheduler if requested
+            if config.get('inference_scheduler_type', 'ddpm').lower() == 'ddim':
+                self._setup_ddim_scheduler(policy, config)
+            else:
+                policy.num_inference_steps = min(70, getattr(policy, 'num_inference_steps', 16))
+
+            policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
+            log.info(f'DP model num infer steps: {policy.num_inference_steps}, n action steps: {policy.n_action_steps}')
+
         log.info("DP model loaded successfully")
         return policy
-    
+
+    def _setup_ddim_scheduler(self, policy: BaseImagePolicy, config: Dict[str, Any]) -> None:
+        """Setup DDIM scheduler for the policy.
+
+        Args:
+            policy: The loaded diffusion policy
+            config: Configuration dictionary containing DDIM settings
+        """
+        try:
+            # Import DDIM scheduler
+            from diffusers.schedulers.scheduling_ddim import DDIMScheduler
+
+            # Get DDIM configuration parameters
+            ddim_steps = config.get('ddim_inference_steps', 16)
+            ddim_eta = config.get('ddim_eta', 0.0)
+
+            # Get original scheduler parameters if available
+            original_scheduler = getattr(policy, 'noise_scheduler', None)
+            if original_scheduler is not None:
+                # Create DDIM scheduler with original parameters
+                ddim_scheduler = DDIMScheduler(
+                    num_train_timesteps=getattr(original_scheduler, 'config', {}).get('num_train_timesteps', 100),
+                    beta_start=getattr(original_scheduler, 'config', {}).get('beta_start', 0.0001),
+                    beta_end=getattr(original_scheduler, 'config', {}).get('beta_end', 0.02),
+                    beta_schedule=getattr(original_scheduler, 'config', {}).get('beta_schedule', 'squaredcos_cap_v2'),
+                    clip_sample=getattr(original_scheduler, 'config', {}).get('clip_sample', True),
+                    set_alpha_to_one=True,
+                    steps_offset=0,
+                    prediction_type=getattr(original_scheduler, 'config', {}).get('prediction_type', 'epsilon')
+                )
+            else:
+                # Create DDIM scheduler with default parameters
+                ddim_scheduler = DDIMScheduler(
+                    num_train_timesteps=100,
+                    beta_start=0.0001,
+                    beta_end=0.02,
+                    beta_schedule='squaredcos_cap_v2',
+                    clip_sample=True,
+                    set_alpha_to_one=True,
+                    steps_offset=0,
+                    prediction_type='epsilon'
+                )
+
+            # Replace the scheduler
+            policy.noise_scheduler = ddim_scheduler
+            policy.num_inference_steps = ddim_steps
+
+            log.info(f"Successfully setup DDIM scheduler with {ddim_steps} inference steps and eta={ddim_eta}")
+
+        except ImportError as e:
+            log.error(f"Failed to import DDIM scheduler: {e}")
+            raise ValueError("DDIM scheduler not available. Please install diffusers library.")
+        except Exception as e:
+            log.error(f"Failed to setup DDIM scheduler: {e}")
+            # Fallback to original inference steps setting
+            policy.num_inference_steps = min(70, getattr(policy, 'num_inference_steps', 16))
+            log.warning("Falling back to original DDPM inference settings")
+
     def _resize_observation_tensors(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Resize observation tensors to match model expectations.
         
@@ -244,26 +346,29 @@ class DP_Inferencer(InferenceBase):
         
         # Process robot state
         state_components = np.array([])
-        self._lock.acquire()
-        self._joint_positions = np.array([])
+        temp_joint_posi = np.array([])
         for key, joint_state in gym_obs.get('joint_states', {}).items():
             # Extract components
-            self._joint_positions = np.hstack((self._joint_positions, joint_state["position"]))
             robot_state = np.array(joint_state["position"], dtype=np.float32)
             ee_pose = gym_obs.get('ee_states', {})
-            if self._obs_contain_ee: robot_state = np.hstack((robot_state, ee_pose[key]))
+            if self._obs_contain_ee: robot_state = np.hstack((robot_state, ee_pose[key]["pose"]))
             tools_data = gym_obs.get("tools", {})[key]["position"]
+            temp_joint_posi = np.hstack((temp_joint_posi, joint_state["position"], tools_data))
             
             # Combine state components
             state_components = np.hstack((state_components, robot_state, tools_data))
+        self._lock.acquire()
+        self._joint_positions = temp_joint_posi
         self._lock.release()
         
-        if state_components:
-            dp_obs["state"] = np.array(state_components, dtype=np.float32)[None]  # [1, state_dim]
+        dp_obs["state"] = np.array(state_components, dtype=np.float32)
         
         # Process camera observations
         for camera_name, img in gym_obs.get('colors', {}).items():
             assert img is not None and len(img.shape) == 3, f"Invalid image for {camera_name}"
+            
+            #resize
+            img = cv2.resize(img, (128, 128)) 
             
             # Normalize and format
             if img.dtype == np.uint8:
@@ -272,7 +377,7 @@ class DP_Inferencer(InferenceBase):
                 processed_img = np.clip(img.astype(np.float32), 0.0, 1.0)
             
             # Convert to [1, C, H, W] format
-            processed_img = np.transpose(processed_img, (2, 0, 1))[None]
+            processed_img = np.transpose(processed_img, (2, 0, 1))
             dp_obs[camera_name] = processed_img
         
         return dp_obs
@@ -286,16 +391,19 @@ class DP_Inferencer(InferenceBase):
         Returns:
             List of gym action dictionaries
         """
+        log.info(f'dp action shape: {dp_action.shape}')
         gym_actions = []
         
-        arm_action = np.array([]); gripper_action = np.hstack([])
         # @TODO: hack, zyx
-        gripper_position_dof = 1
+        gripper_position_dof = self._tool_position_dof
         dofs = self._gym_robot._robot_motion.get_model_dof_list()[1:]
-        action_index = 0
         for i in range(dp_action.shape[0]):
-            self._plotter.update_signal(self._joint_positions, dp_action[i])
-            plt.pause(0.001)
+            with self._lock:
+                joint_state = copy.deepcopy(self._joint_positions)
+            # self._plotter.update_signal(joint_state, dp_action[i])
+            
+            arm_action = np.array([]); gripper_action = np.array([])
+            action_index = 0
             for j in range(len(dofs)):
                 if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
                     index_l = gripper_position_dof*j + action_index
@@ -305,12 +413,13 @@ class DP_Inferencer(InferenceBase):
                 elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
                     pose_dof = 6 if self._action_ori_type == "euler" else 7
                     cur_arm_action = dp_action[i][action_index:action_index+pose_dof]
-                    action_index = action_index+pose_dof+gripper_position_dof 
+                    index_r = action_index+pose_dof
+                    action_index = index_r+gripper_position_dof 
                 else:
                     raise ValueError(f"Unsupported action type: {self._action_type}")
                 
                 arm_action = np.hstack((arm_action, cur_arm_action))
-                cur_tool_action = dp_action[i][index_r:index_r+gripper_action]
+                cur_tool_action = dp_action[i][index_r:index_r+gripper_position_dof]
                 gripper_action = np.hstack((gripper_action, cur_tool_action))
 
             gym_actions.append({
@@ -332,7 +441,7 @@ def main():
     arguments = {"config": {"short_cut": "-c",
                             "symbol": "--config",
                             "type": str, 
-                            "default": "factory/tasks/inferences_tasks/dp/config/fr3_dp_inference_cfg.yaml",
+                            "default": "factory/tasks/inferences_tasks/dp/config/fr3_dp_ddim_inference_cfg.yaml",
                             "help": "Path to the config file"}}
     args = parse_args("dp inference", arguments)
     

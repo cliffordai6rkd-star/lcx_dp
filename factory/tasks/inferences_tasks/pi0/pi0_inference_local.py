@@ -1,14 +1,11 @@
-from factory.components.gym_interface import GymApi
 import threading, time, cv2, os, random
 import glog as log
 import numpy as np
-from factory.tasks.inferences_tasks.utils import display_images
 from factory.tasks.inferences_tasks.inference_base import InferenceBase
-import einops, copy
-import matplotlib.pyplot as plt
+import copy
+from dataset.utils import ActionType
 
 # pi0 related
-from openpi.policies import hirol_fr3_policy
 from openpi.policies import policy_config as _policy_config
 from openpi.shared import download
 from openpi.training import config as _config
@@ -49,51 +46,86 @@ class PI0_Inferencer(InferenceBase):
                 with timer("pi0_inference_time", "pi0_inferencer"):
                     result = self._pi0_policy.infer(pi0_obs)
                     
+                    if execution_thread is not None:
+                        log.info(f'execute thread: {execution_thread.is_alive()}')
+                    else: log.info(f'Execution thread is None')
                     if execution_thread is not None and execution_thread.is_alive():
                         self._execution_interruption = True
                         execution_thread.join()
+                        log.info(f'Waiting for finishing the execution thread: {execution_thread.is_alive()}')
                     self._execution_interruption = False
                     execute_action = result["actions"]
                     # log.info(f'action shape: {execute_action[0].shape} for {episode_num}th episodes')
                     
                 def multi_step_tasks():
                     with timer("gym_step", "pi0_inferencer"):
-                        with self._lock:
-                            joint_state = copy.deepcopy(self._joint_positions)
+                        dofs = self._gym_robot._robot_motion.get_model_dof_list()[1:]
+                        log.info(f'dofs: {dofs}')
                         for i in range(self._execution_steps):
                             if self._execution_interruption or not self._status_ok:
                                 break
+                            
                             # @TODO: hack for fr3, zyx
+                            action_index = 0
                             cur_action = execute_action[i]
-                            self._plotter.update_signal(joint_state, cur_action)
-                            # Process matplotlib events for plotter updates
-                            plt.pause(0.001)  # Small pause to process GUI events
                             # log.info(f'Executing action for {i}th action: {cur_action}')
-                            cur_gripper = 1.0 if cur_action[-1] > 0.055 else 0.0
-                            action = {'arm': cur_action[:7], 'tool': np.array(cur_gripper)}
+                            with self._lock:
+                                joint_state = copy.deepcopy(self._joint_positions)
+                            # log.info(f"🚀 Calling update_signal: step {i}, joint_state_len={len(joint_state)}, cur_action_len={len(cur_action)}")
+                            self._plotter.update_signal(joint_state, cur_action)
+                            
+                            # iterates with the dof list
+                            action = {'arm': np.array([]), 'tool': np.array([])}
+                            gripper_position_dof = self._tool_position_dof
+                            log.info(f'len dof: {len(dofs)}')
+                            for j in range(len(dofs)):
+                                if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
+                                    index_l = gripper_position_dof*j + action_index
+                                    index_r = gripper_position_dof*j + dofs[j] + action_index
+                                    action_index = index_r+gripper_position_dof
+                                    log.info(f'arm index for joint: {index_l}, {index_r}')
+                                    cur_arm_action = cur_action[index_l:index_r]
+                                elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
+                                    pose_dof = 6 if self._action_ori_type == "euler" else 7
+                                    log.info(f'arm index for pose: {action_index}')
+                                    cur_arm_action = cur_action[action_index:action_index+pose_dof]
+                                    index_r = action_index+pose_dof
+                                    action_index = index_r+gripper_position_dof 
+                                else:
+                                    raise ValueError(f"Unsupported action type: {self._action_type}")
+                
+                                action["arm"] = np.hstack((action["arm"], cur_arm_action))
+                                cur_tool_action = cur_action[index_r:index_r+gripper_position_dof]
+                                log.info(f'cur tool action for {j}: {cur_tool_action}')
+                                # @TODO: 耦合fr3
+                                cur_tool_action[0] = 1.0 if cur_tool_action[0] > 0.055 else 0.0
+                                action["tool"] = np.hstack((action["tool"], cur_tool_action))
+                            log.info(f'gym action: {action}')
                             self._gym_robot.step(action)
                             time.sleep(0.001)
+                            
                 execution_thread = threading.Thread(target=multi_step_tasks)
                 execution_thread.start()
                 log.info(f'result action chunk shape: {execute_action.shape}')
                 
     def convert_from_gym_obs(self):
         gym_obs = super().convert_from_gym_obs()
-        self._joint_positions = np.array([])
         self.image_display(gym_obs)
             
         pi0_obs = {}
         # @TODO: coupling solution for testing
         pi0_obs["state"] = np.array([])
-        self._lock.acquire()
-        self._joint_positions = np.array([])
+        temp_joint_positions = np.array([])
         for key, joint_state in gym_obs['joint_states'].items():
             robot_state = joint_state["position"]
-            self._joint_positions = np.hstack((self._joint_positions, robot_state, gym_obs["tools"][key]["position"]))
+            temp_joint_positions = np.hstack((temp_joint_positions, robot_state, gym_obs["tools"][key]["position"]))
             if self._obs_contain_ee:
-                robot_state = np.hstack((gym_obs[key]["ee_states"]))
+                robot_state = np.hstack((gym_obs["ee_states"][key]["pose"]))
             pi0_obs["state"] = np.hstack((pi0_obs["state"], robot_state, 
                                         gym_obs["tools"][key]["position"]))
+        
+        self._lock.acquire()
+        self._joint_positions = temp_joint_positions
         self._lock.release()
             
         for key, img in gym_obs["colors"].items():

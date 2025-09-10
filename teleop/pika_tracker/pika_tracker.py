@@ -1,42 +1,59 @@
 from teleop.base.teleoperation_base import TeleoperationDeviceBase
 from pika.sense import Sense
 from pika.tracker.vive_tracker import PoseData
+from hardware.base.utils import convert_homo_2_7D_pose, negate_pose, transform_pose, transform_quat, pose_diff
 import glog as log
 import numpy as np
-import time, threading
-from sshkeyboard import listen_keyboard, stop_listening
+import time, threading, math
+# from sshkeyboard import listen_keyboard, stop_listening
+from pynput import keyboard
 from typing import Dict, Tuple, Optional
-from scipy.spatial.transform import Rotation
+import copy
 
 class PikaTracker(TeleoperationDeviceBase):
-    T_ROBOT_TRACKER = np.array([[ 0, 0,-1, 0],
-                           [-1, 0, 0, 0],
-                           [ 0, 1, 0, 0],
+    _tracker: dict[str, Sense]
+    
+    T_ROBOT_TRACKER = np.eye(4)
+    T_TRACKER_ROBOT = np.array([[1, 0, 0, 0],
+                           [0, -1, 0, 0],
+                           [0, 0, -1, 0],
                            [ 0, 0, 0, 1]])
-    T_TRACKER_ROBOT = np.array([[ 0,-1, 0, 0],
-                           [ 0, 0, 1, 0],
-                           [-1, 0, 0, 0],
-                           [ 0, 0, 0, 1]])
+    # T_TRACKER_ROBOT = np.eye(4)
     
     # init pose for absolute delta pose calculation
     INIT_TARGET_POSE = [[0,0,0,0,0,0,1], [0,0,0,0,0,0,1]]
     
     def __init__(self, config):
-        super().__init__(config)
         self._serial_port: dict = config.get("serial_ports")
         self._tracker = {}
         for key, port in self._serial_port.items():
-            tracker[key] = Sense(port=port)
+            log.info(f'{key} port: {port}')
+            if port is not None:
+                tracker = Sense(port=port)
+                self._tracker[key] = tracker
+            else: self._tracker[key] = None
+        self._rotation_enabled = config["rotation_enabled"]
+        for key, rot_enable in self._rotation_enabled.items():
+            if not rot_enable: continue
+            assert len(rot_enable) == 3, f"{key} rotation enabled need to have three elemets indicating rpy but get {len(rot_selec) == 3}"
 
         # Vive Tracker configuration
-        self._vive_config_path = config.get("vive_config_path")
-        self._vive_lh_config = config.get("vive_lh_config")
-        self._vive_args = config.get("vive_args")
+        self._vive_config_path = config.get("vive_config_path", None)
+        self._vive_lh_config = config.get("vive_lh_config", None)
+        self._vive_args = config.get("vive_args", None)
+        self._tracker_detection_attempts = config.get('num_attempts', 10)
         
         # Device configuration
-        self._device_id: dict[str, str] = config.get("target_device")  # Default tracker ID
+        self._device_id: dict[str, str] = config["target_device"]  # Default tracker ID
+        self._readed_device_id = None
         self._output_left = config.get("output_left", True)
         self._output_right = config.get("output_right", True)
+        if self._output_left and self._output_right:
+            self._index = {"left": 0, "right": 1}
+        elif not self._output_left: 
+            self._index = {"single": 1}
+        elif not self._output_right:
+            self._index = {"single": 0}
         
         # Initialize offset pose for relative positioning
         self._init_pose = config.get('init_pose', None)
@@ -48,6 +65,11 @@ class PikaTracker(TeleoperationDeviceBase):
             self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
                                     self._init_pose["initial_pose_right"][:3]]
         self._device_enabled = False
+        self._reset_pose_counter = 0
+        
+        super().__init__(config)
+        if not self._is_initialized:
+            raise ValueError
         
     def initialize(self) -> bool:
         """Initialize the Pika Sense device and Vive Tracker."""
@@ -55,75 +77,151 @@ class PikaTracker(TeleoperationDeviceBase):
             return True
         
         try:
-            # Connect to Pika Sense device
-            if not self._tracker.connect():
-                log.error("Failed to connect to Pika Sense device")
-                return False
-            
-            # Set up Vive Tracker configuration if provided
-            if self._vive_config_path or self._vive_lh_config or self._vive_args:
-                self._tracker.set_vive_tracker_config(
-                    config_path=self._vive_config_path,
-                    lh_config=self._vive_lh_config,
-                    args=self._vive_args
-                )
-            
+            get_right_device = {'left': False, 'right': False}
             # Initialize Vive Tracker
-            vive_tracker = self._tracker.get_vive_tracker()
-            if vive_tracker is None:
-                log.error("Failed to initialize Vive Tracker")
-                return False
-            
+            for i, (key, tracker) in enumerate(self._tracker.items()):
+                if not tracker:
+                    get_right_device[key] = True
+                    continue
+                
+                # Connect to Pika Sense device
+                if not tracker.connect():
+                    log.error("Failed to connect to Pika Sense device")
+                    return False
+                
+                # Set up Vive Tracker configuration if provided
+                if self._vive_config_path or self._vive_lh_config or self._vive_args:
+                    tracker.set_vive_tracker_config(
+                        config_path=self._vive_config_path,
+                        lh_config=self._vive_lh_config,
+                        args=self._vive_args
+                    )
+                
+                for j in range(self._tracker_detection_attempts):
+                    time.sleep(2.0)
+                    vive_tracker_device_names = tracker.get_tracker_devices()
+                    if len(vive_tracker_device_names) == 0:
+                        log.error("Failed to initialize Vive Tracker")
+                        continue
+                    else:
+                        log.info(f'{j}th {key} tracker device name: {self._readed_device_id}')
+                    
+                    if not self._readed_device_id or len(self._readed_device_id) < len(vive_tracker_device_names):
+                        self._readed_device_id = vive_tracker_device_names
+                    
+                    for device_name in self._readed_device_id:
+                        if device_name == self._device_id[key]:
+                            get_right_device[key] = True
+                            
+                    if get_right_device["left"] and get_right_device["right"]:
+                        break
+                    
+                if not get_right_device[key]:
+                    log.error(f'Failed to get the correct tracker device for {key} with {self._device_id}, but get {vive_tracker_device_names}')
+                    return False
+                
             # keyboard listening for update init pose
-            listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
-                                        kwargs={"on_press": self._keyboard_on_press, 
-                                                "until": None, "sequential": False,}, 
-                                        daemon=True)
-            listen_keyboard_thread.start()
+            self._key_pressed = False
+            self._keyboard_listener = keyboard.Listener(
+                on_press=self._on_key_press
+            )
+            self._keyboard_listener.start()
+            log.info("PikaTracker keyboard listener started")
             
             # Wait for tracker data to stabilize
             time.sleep(1.0)
             
-            log.info(f"PikaTracker initialized successfully with device: {self._target_device}")
+            log.info(f"PikaTracker initialized successfully with device: {self._serial_port} and device name: {self._device_id}")
             return True
             
         except Exception as e:
             log.error(f"Failed to initialize PikaTracker: {e}")
             return False
-        
-    def _keyboard_on_press(self, key):
-        if key == "i":
-            pose, _ = self.read_data()
-            if pose is None:
-                log.warning("Failed to read pose data for update init pose!!!")
-                return
-            self.INIT_TARGET_POSE[0] = pose["left"]
-            self.INIT_TARGET_POSE[1] = pose["right"]   
-            self._device_enabled = True 
-            log.info("init pose is updated!!!")
-
+    
     def read_data(self):
-        pose = self._tracker.get_pose(None)
-        if pose is None: return None, None
-        
+        tracker_pose = None
+        for key, tracker in self._tracker.items():
+            if not tracker: continue
+            
+            pose = tracker.get_pose(None)
+            if pose is None: return None, None
+            else:
+                if not tracker_pose or len(tracker_pose) < len(pose):
+                    tracker_pose = pose
+                
         pose_quat = {}
-        for device_name, cur_pose in pose.items():
+        all_pose_flag = {"left": False, "right": False}
+        if not self._output_left:
+            all_pose_flag["left"] = True
+        if not self._output_right:
+            all_pose_flag["right"] = True
+        for device_name, cur_pose in tracker_pose.items():
+            if all_pose_flag["left"] and all_pose_flag["right"]:
+                break
+            
             if self._output_left and self._device_id["left"] == device_name:
-                cur_pose = PoseData()
                 pose_quat["left"] = np.zeros(7)
                 pose_quat["left"][:3] = cur_pose.position
-                pose_quat["left"][3:] = [cur_pose.rotation[1:], cur_pose.rotation[0]]  # [qx, qy, qz, qw]
+                pose_quat["left"][3:] = cur_pose.rotation  # [qx, qy, qz, qw]
+                all_pose_flag["left"] = True
             if self._output_right and self._device_id["right"] == device_name:
-                cur_pose = PoseData()
                 pose_quat["right"] = np.zeros(7)
                 pose_quat["right"][:3] = cur_pose.position
-                pose_quat["right"][3:] = [cur_pose.rotation[1:], cur_pose.rotation[0]]  # [qx, qy, qz, qw]
+                pose_quat["right"][3:] = cur_pose.rotation  # [qx, qy, qz, qw]
+                all_pose_flag["right"] = True
         
         tool_data = {}
         for key, tracker in self._tracker.items():
+            if not tracker:
+                continue
+            
             encoder = tracker.get_encoder_data()["rad"]
-            tool_data[key] = encoder
+            distance = self._change_motor_rad_to_gripper_distance(encoder)
+            normalized_value = distance / 90.0
+            normalized_value = np.clip(normalized_value, 0.0, 1.0)
+            command = tracker.get_command_state()
+            tool_data[key] = np.array([normalized_value, command])
+            
+        if not self._output_left:
+            pose_quat = dict(single=pose_quat["right"])
+            tool_data = dict(single=tool_data["right"])
+        if not self._output_right:
+            pose_quat = dict(single=pose_quat["left"])
+            tool_data = dict(single=tool_data["left"])
         return pose_quat, tool_data
+
+    def _press_i(self):
+        pose, _ = self.read_data()
+        if pose is None:
+            log.warning("Failed to read pose data for update init pose!!!")
+            return
+        for i, (key, cur_pose) in enumerate(pose.items()):
+            cur_pose = self._process_raw_pose(cur_pose, key)
+            self.INIT_TARGET_POSE[self._index[key]] = cur_pose
+        self._device_enabled = True
+        self._key_pressed = True 
+        log.info("init pose is updated!!!")
+        
+    def _press_u(self):
+        self._device_enabled = False
+        log.info(f'Pika disabled!!!')
+
+    def _on_key_press(self, key):
+        try:
+            if key.char == 'i' and not self._device_enabled:
+                self._press_i()
+            elif key.char == 'u' and self._device_enabled:
+                self._press_u()
+        except AttributeError:
+              # ignore some hotkeys
+              pass
+          
+    def _process_raw_pose(self, pose):
+        res_pose = np.zeros(7)
+        tracker_robot_quat = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+        robot_tracker_quat = negate_pose(tracker_robot_quat)
+        res_pose = transform_pose(transform_pose(robot_tracker_quat, pose), tracker_robot_quat)
+        return res_pose
 
     def parse_data_2_robot_target(self, mode: str) -> Tuple[bool, Optional[Dict], Optional[Dict]]:
         """Parse Vive Tracker pose data to robot target format."""
@@ -135,36 +233,42 @@ class PikaTracker(TeleoperationDeviceBase):
             log.warning("Device not initialized")
             return False, None, None
         
-        # Get pose data from Vive Tracker
-        pose_quat, tool_encoder = self.read_data()
+        # Get pose data from Vive Tracker, all dict
+        pose_quat, tool_data = self.read_data()
         if pose_quat is None:
-            log.warn(f"No pose data available for device: {self._target_device}")
+            log.warn(f"No pose data available for device: {self._serial_port}")
             return False, None, None
-        
-        # @TODO: Initialize reference pose on first valid reading
-        if self._init_pose is None and command_state == 1:
-            self._init_pose = pose_7d.copy()
-            self._device_enabled = True
-            log.info("Reference pose initialized, teleoperation enabled")
-            return False, None, None
-        
+                
         # Prepare robot target dict
-        pose_target = {}
+        pose_target = {} 
         tool_target = {}
         
-        # Configure output based on settings
-        if self._output_left and self._output_right:
-            pose_target['left'] = pose_7d
-            pose_target['right'] = pose_7d  # Same pose for both arms
-            tool_target['left'] = np.array([gripper_distance, command_state])
-            tool_target['right'] = np.array([gripper_distance, command_state])
-        elif self._output_left:
-            pose_target['single'] = pose_7d
-            tool_target['single'] = np.array([gripper_distance, command_state])
-        else:  # output_right or default
-            pose_target['single'] = pose_7d
-            tool_target['single'] = np.array([gripper_distance, command_state])
+        for key, value in pose_quat.items():
+            # basis change
+            cur_pose = self._process_raw_pose(value, key)
+            
+            # @TODO: zyx, select rotation
+            # for i in range(3):
+            #     if self._rotation_enabled and not self._rotation_enabled[i]:
+            #         if mode == "absolute":
+            #             cur_pose[3+i] = self._init_pose_rot[self._index[key]][i]
+            #         else:
+            #             cur_pose[3+i] = self
+            
+            if mode == "absolute_delta" and self._device_enabled:
+                cur_pose = self._get_diff_trans(cur_pose, self._index[key])
+            elif mode == "absolute":
+                # rotation transform
+                cur_pose = self.apply_init_offset(cur_pose, self._index[key])
+            else: raise ValueError(f'{mode} mode is not supported for pika tracker')
+            pose_target[key] = cur_pose
+            tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
         
+        if self._key_pressed :
+            if self._reset_pose_counter > 8:
+                self._key_pressed = False
+                self._reset_pose_counter = 0
+            else: self._reset_pose_counter += 1
         if mode == "absolute" or (mode == "absolute_delta" and self._device_enabled):
             return True, pose_target, tool_target
         else: return False, None, None
@@ -175,117 +279,38 @@ class PikaTracker(TeleoperationDeviceBase):
     
     def close(self):
         """Clean up resources and disconnect devices."""
-        try:
-            self._device_enabled = False
-            
-            if self._tracker:
-                self._tracker.disconnect()
-                log.info("PikaTracker disconnected successfully")
-                
-        except Exception as e:
-            log.error(f"Error closing PikaTracker: {e}")
-            
+        if not self._is_initialized:
+            return 
+        
+        self._device_enabled = False
+        for key, tracker in self._tracker.items():
+            if tracker:
+                tracker.disconnect()
+        if self._keyboard_listener:
+            self._keyboard_listener.stop()
+        log.info("PikaTracker disconnected successfully")
         return True
-
-
-if __name__ == "__main__":
-    """Test script for PikaTracker."""
     
-    # Example configuration
-    test_config = {
-        "serial_port": "/dev/ttyUSB0",
-        "target_device": "tracker_LHR_CB1CD34E",  # Replace with your actual tracker ID
-        "output_left": True,
-        "output_right": False,
-        "vive_config_path": None,  # Set if you have a specific config file
-        "vive_lh_config": None,    # Set lighthouse config if needed  
-        "vive_args": None,         # Additional pysurvive arguments
-        "transform_matrix": [       # Identity matrix - modify as needed for coordinate transformation
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ]
-    }
+    def apply_init_offset(self, pose, id):
+        new_pose = copy.deepcopy(pose)
+        # basis convertion (mainly for rot)
+        if self._init_pose is not None:
+            init_rot = self._init_pose_rot[id]
+            new_pose[3:] = transform_quat(pose[3:], init_rot)
+        return new_pose
     
-    print("🎯 Testing PikaTracker Implementation")
-    print("=" * 50)
+    def _get_diff_trans(self, cur_pose, index):
+        diff_pose = pose_diff(cur_pose, self.INIT_TARGET_POSE[index])
+        return diff_pose
     
-    try:
-        # Initialize PikaTracker
-        print("1️⃣  Initializing PikaTracker...")
-        tracker = PikaTracker(test_config)
-        
-        if not tracker._is_initialized:
-            print("❌ Failed to initialize PikaTracker")
-            exit(1)
-        
-        print("✅ PikaTracker initialized successfully!")
-        
-        # Start data reading
-        print("\n2️⃣  Starting data reading...")
-        tracker.read_data()
-        
-        # Print available devices
-        print("\n3️⃣  Available Vive Tracker devices:")
-        devices = tracker._tracker.get_tracker_devices()
-        for i, device in enumerate(devices):
-            print(f"   {i+1}. {device}")
-        
-        if not devices:
-            print("   ⚠️  No Vive Tracker devices found!")
-            print("   Make sure your tracker is connected and SteamVR is running")
-        
-        # Test data parsing
-        print("\n4️⃣  Testing data parsing (press Command button to enable)...")
-        print("   Press Ctrl+C to stop")
-        
-        enabled_shown = False
-        for i in range(100):  # Test for ~10 seconds
-            success, pose_target, tool_target = tracker.parse_data_2_robot_target("absolute")
+    def _change_motor_rad_to_gripper_distance(self, angle_rad):
+        distance = (self._get_distance(angle_rad) - self._get_distance(0)) * 2.0
+        return distance
             
-            if success:
-                if not enabled_shown:
-                    print("   ✅ Teleoperation enabled!")
-                    enabled_shown = True
-                
-                if i % 10 == 0:  # Print every 10 iterations
-                    print(f"\n   📊 Data at iteration {i}:")
-                    if pose_target:
-                        for key, pose in pose_target.items():
-                            pos = pose[:3]
-                            quat = pose[3:]
-                            print(f"     {key} pose: pos=[{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}], "
-                                  f"quat=[{quat[0]:.3f}, {quat[1]:.3f}, {quat[2]:.3f}, {quat[3]:.3f}]")
-                    
-                    if tool_target:
-                        for key, tool in tool_target.items():
-                            print(f"     {key} tool: gripper={tool[0]:.2f}mm, command={tool[1]}")
-            
-            elif i % 20 == 0:  # Show waiting message less frequently
-                print("   ⏳ Waiting for valid data... (press Command button to enable)")
-            
-            time.sleep(0.1)
-        
-        print("\n5️⃣  Final device status:")
-        tracker.print_data()
-        
-    except KeyboardInterrupt:
-        print("\n⛔ Test interrupted by user")
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        print("\n6️⃣  Cleaning up...")
-        if 'tracker' in locals():
-            tracker.close()
-        print("✅ Test completed!")
+    def _get_distance(self, angle):
+        angle = (180.0 - 43.99) / 180.0 * math.pi - angle
+        height = 0.0325 * math.sin(angle)
+        width_d = 0.0325 * math.cos(angle)
+        width = math.sqrt(0.058**2 - (height - 0.01456)**2) + width_d
+        return width*1000
     
-    print("\n" + "=" * 50)
-    print("💡 Usage Notes:")
-    print("• Make sure SteamVR is running and tracker is connected")
-    print("• Update 'target_device' in config with your actual tracker ID")
-    print("• Press the Command button on Pika Sense to enable teleoperation")
-    print("• Modify 'transform_matrix' for coordinate system alignment")
-    print("=" * 50)

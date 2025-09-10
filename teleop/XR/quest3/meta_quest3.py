@@ -396,15 +396,15 @@ class MetaQuest3(TeleoperationDeviceBase):
                 if tool_mode == "binary":
                     control_value = self._rising_edges[i].update(float(cur_trigger))
                     if control_value:
-                        self._last_tool_values[key] = not self._last_tool_values[key]
-                    cur_tool_data[0] = float(self._last_tool_values[key])
+                        self._last_tool_values[key] = float(not self._last_tool_values[key])
                 else:
                     cur_squezze = left_squeeze_state if i == 0 else right_squeeze_state
                     if cur_trigger:
                         self._last_tool_values[key] += self._tool_step_sizes[key]
                     elif cur_squezze : 
                         self._last_tool_values[key] -= self._tool_step_sizes[key]
-                    cur_tool_data[0] = self._last_tool_values[key]
+                self._last_tool_values[key] = np.clip(self._last_tool_values[key], 0, 1)
+                cur_tool_data[0] = float(self._last_tool_values[key])
                     
             tool_left = left_data
             tool_right = right_data
@@ -423,7 +423,6 @@ class MetaQuest3(TeleoperationDeviceBase):
         else: 
             log.warn(f'mode: {mode}, device enabled: {self._device_enabled}')
             return False, None, None
-        
     
     # helper functions
     def _get_diff_trans(self, cur_pose, index):

@@ -68,14 +68,14 @@
     <mesh name="right_arm_link_7" file="right_arm_link_7.STL"/>
     <mesh name="hand_link" file="hand_link.STL"/>
     <!-- <mesh file="end_tool.stl"/> -->
-    <mesh name="gripper_base_link" file="gripper/base_link.STL"/>
-    <mesh name="gripper_drive_gear" file="gripper/drive_gear.STL"/>
-    <mesh name="gripper_left_outer_knuckle" file="gripper/left_outer_knuckle.STL"/>
-    <mesh name="gripper_left_finger" file="gripper/left_finger.STL"/>
-    <mesh name="gripper_left_inner_knuckle" file="gripper/left_inner_knuckle.STL"/>
-    <mesh name="gripper_right_outer_knuckle" file="gripper/right_outer_knuckle.STL"/>
-    <mesh name="gripper_right_finger" file="gripper/right_finger.STL"/>
-    <mesh name="gripper_right_inner_knuckle" file="gripper/right_inner_knuckle.STL"/>
+    <mesh name="gripper_base_link" file="gripper_base_link.STL"/>
+    <mesh name="gripper_drive_gear" file="drive_gear.STL"/>
+    <mesh name="gripper_left_outer_knuckle" file="left_outer_knuckle.STL"/>
+    <mesh name="gripper_left_finger" file="left_finger.STL"/>
+    <mesh name="gripper_left_inner_knuckle" file="left_inner_knuckle.STL"/>
+    <mesh name="gripper_right_outer_knuckle" file="right_outer_knuckle.STL"/>
+    <mesh name="gripper_right_finger" file="right_finger.STL"/>
+    <mesh name="gripper_right_inner_knuckle" file="right_inner_knuckle.STL"/>
   </asset>
 
   <worldbody>

@@ -19,16 +19,20 @@ class GymApi(gym.Env):
         self._action_type = dict_str2action_type[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
         robot_motion_cfg = config["motion_config"]
+        self._tool_position_dof = config.get("tool_position_dof", 1)
         
         self._reset_space = config.get("reset_space", "joint")
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
-        self._reset_joint_position = config.get("reset_position", None)
+        self._reset_arm_command = config.get("reset_arm_command", None)
         self._is_debug = config.get("is_debug", True)
+        self._use_hardware = config.get("use_hardware", True)
+        log.info(f'execute hardware: {self._use_hardware}')
         
         self._robot_system = RobotFactory(robot_motion_cfg)
         self._robot_motion = MotionFactory(robot_motion_cfg, self._robot_system)
         self._robot_motion.create_motion_components()
-        self._robot_motion.update_execute_hardware(True)
+        if self._use_hardware:
+            self._robot_motion.update_execute_hardware(True)
         log.info("The robot motion component is successfully created in gym api!")
         
         # variable used for gym api
@@ -44,7 +48,7 @@ class GymApi(gym.Env):
         execute_arm_action = np.array([]); execute_tool_action = []
               
         # @TODO: hack
-        gripper_position_dof = 1
+        gripper_position_dof = self._tool_position_dof
         if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
             dofs = self._robot_motion.get_model_dof_list()[1:]
             cur_joint_position = self.get_joint_state()
@@ -58,7 +62,7 @@ class GymApi(gym.Env):
                 if self._action_type == ActionType.JOINT_POSITION_DELTA:
                     cur_arm_action += jps
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
-                self.set_joint_position(execute_arm_action)
+            self.set_joint_position(execute_arm_action)
         elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
             cur_ee_pose = self.get_ee_state()
             action_index = 0
@@ -76,22 +80,26 @@ class GymApi(gym.Env):
                     cur_arm_action = np.hstack((cur_arm_action, [0]))
                     cur_arm_action[3:] = R.from_euler(cur_arm_action[3:6]).as_quat()
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
-                   cur_arm_action = transform_pose(pose, cur_arm_action)
+                   cur_arm_action = transform_pose(pose, cur_arm_action, False)
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
-                self.set_ee_pose(execute_arm_action)
+            self.set_ee_pose(execute_arm_action)
         else:
             raise ValueError(f"Unsupported action type: {self._action_type}")
         
         # tool execution
-        tool_action = action['tool']
+        tool_action = np.array(action['tool'])
         tool_type_dict = self._robot_system.get_tool_dict_state()
         tool_index = 0
         if tool_type_dict is not None:
             for j in range(len(tool_type_dict)):
                 index_r = tool_index + gripper_position_dof
-                execute_tool_action.append(np.array(tool_action[tool_index:index_r]))
+                if tool_action.ndim == 0:
+                    execute_tool_action.append(np.array(tool_action))
+                else:
+                    execute_tool_action.append(np.array(tool_action[tool_index:index_r]))
                 tool_index = index_r
-            self._robot_motion.set_tool_command(tool_action)
+            log.info(f'tool action: {tool_action}')
+            self._robot_motion.set_tool_command(np.array(tool_action))
         
         # obs
         observation = self.get_observation()
@@ -102,8 +110,8 @@ class GymApi(gym.Env):
         return observation, reward, done, False, info
         
     def reset(self, *, seed = None, options = None):
-        self._robot_motion.reset_robot_system(arm_command=None,
-                                              space=Robot_Space.JOINT_SPACE,
+        self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
+                                              space=self._reset_space,
                                               tool_command=dict(single=np.array([1])))
     
     def get_joint_state(self):
@@ -117,7 +125,6 @@ class GymApi(gym.Env):
             joint_states[key]["position"] = sliced_joint_states._positions
             joint_states[key]["velocity"] = sliced_joint_states._velocities
             joint_states[key]["acceleration"] = sliced_joint_states._accelerations
-        self._robot_system.get_joint_states()
         return joint_states
     
     def get_tool_state(self):
@@ -196,8 +203,8 @@ class GymApi(gym.Env):
                     current_position = self._robot_system.get_joint_states()._positions
                     self._robot_motion.set_joint_positions(current_position)
                     self._wait_key('c', 'please press c to execute hardware!!!!')
-                    break                    
-        self._robot_motion.update_execute_hardware(True)
+                    break             
+        self._robot_motion.update_execute_hardware(self._use_hardware)
         self._robot_motion.set_joint_positions(positions, True)
         if self._is_debug:
             self._wait_key('c', 'please press c to proceed next command!!!!')
@@ -213,7 +220,7 @@ class GymApi(gym.Env):
                     self._robot_motion.update_high_level_command(cur_pose)
                     self._wait_key('c', 'please press c to execute in hardware!!!!')
                     break
-        self._robot_motion.update_execute_hardware(True)
+        self._robot_motion.update_execute_hardware(self._use_hardware)
         self._robot_motion.update_high_level_command(poses)
         if self._is_debug:
             self._wait_key('c', 'please press c to proceed next command!!!!')

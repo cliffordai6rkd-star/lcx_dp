@@ -15,7 +15,11 @@ class LerobotLoader(DataLoaderBase):
         self._repo_name = config.get("repo_name", "peg_in_hole")
         self._task_list = config.get("task_list", None)
         self._output_root_path = config.get("root_path", "../assets/data")
+        cur_path = os.path.dirname(os.path.abspath(__file__))
+        self._output_root_path = os.path.join(cur_path, self._output_root_path)
         self._load_fps = config.get("fps", 10)
+        self._num_writer_thread = config.get(f'num_writer_thread', 1)
+        self._num_writer_process = config.get(f'num_writer_process', 1)
         # 一种是只给一个task的文件夹
         if self._task_list is None:
             self._task_list = [self._task_dir]
@@ -79,14 +83,15 @@ class LerobotLoader(DataLoaderBase):
                                     "names": ["actions"],}
         
         save_path = os.path.join(self._output_root_path, self._repo_name)
+        log.info(f'save_path: {save_path}')
         self._lerobot_dataset = LeRobotDataset.create(
             root= save_path,
             repo_id=self._repo_name,
             robot_type=self._robot_name,
             fps=self._load_fps,
             features=feature_dicts,
-            image_writer_threads=3,
-            image_writer_processes=1,
+            image_writer_threads=self._num_writer_thread,
+            image_writer_processes=self._num_writer_process,
         )
         
         state_dismatch_list = []; action_dismatch_list = []
@@ -115,9 +120,8 @@ class LerobotLoader(DataLoaderBase):
                     ee_states = step["ee_states"]
                     # state: [arm state, tool state, another_arm_state, another_tool_state]
                     for key, value in step["joint_states"].items():
-                        # @TODO: ee_state has pose attribute
                         robot_state = np.array(value["position"])
-                        if self._contain_ee_obs: robot_state = np.hstack((ee_states[key], robot_state))
+                        if self._contain_ee_obs: robot_state = np.hstack((ee_states[key]["pose"], robot_state))
                         cur_feature_state = np.hstack((robot_state, tool_states[key]["position"]))
                         frame_feature["state"] = np.hstack((frame_feature["state"], cur_feature_state))
                     # print(f'state: {frame_feature["state"]}')  # 注释掉频繁的调试输出
@@ -172,7 +176,6 @@ class LerobotLoader(DataLoaderBase):
                 license="apache-2.0",
             )
         return self._lerobot_dataset
-    
     
 if __name__ == '__main__':
     import yaml

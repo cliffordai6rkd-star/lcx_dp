@@ -1,6 +1,7 @@
 from teleop.base.teleoperation_base import TeleoperationDeviceBase
 from teleop.space_mouse.space_mouse import SpaceMouse, DuoSpaceMouse
 from teleop.XR.quest3.meta_quest3 import MetaQuest3, init_image_shared_mem
+from teleop.pika_tracker.pika_tracker import PikaTracker
 from factory.components.motion_factory import MotionFactory, Robot_Space
 from factory.components.robot_factory import RobotFactory
 from simulation.base.sim_base import SimBase
@@ -31,6 +32,7 @@ class TeleoperationFactory:
         self._config = config
         self._robot_motion_system = robot_motion
         self._teleop_interface_type = config["teleop_interface"]
+        self._teleop_target = None
         self._interface_output_mode = config["inteface_output_mode"]
         self._use_simulation_target = config["use_simulation_target"]
         self._teleoperation_loop_time = config["teleoperation_loop_time"]
@@ -66,7 +68,8 @@ class TeleoperationFactory:
         self._interface_classes = {
             'space_mouse': SpaceMouse,
             'duo_space_mouse': DuoSpaceMouse,
-            'meta_quest3': MetaQuest3
+            'meta_quest3': MetaQuest3,
+            'pika_tracker': PikaTracker,
         }
 
     def create_robot_teleoperation_system(self) -> bool:
@@ -182,15 +185,14 @@ class TeleoperationFactory:
                             self._init_pose[key][3:] = R.from_matrix(ee_mat).as_quat()
                             ee_target[key] = self._init_pose[key]
                         elif interface_output_mode == 'absolute_delta':
-                            # @TODO: update with teleoperation device command
-                            if tool_target[key][-1]:
+                            if tool_target[key][-1] and len(self._init_pose) != len(self.ee_link):
                                 self._init_pose[key] = cur_tcp_pose[key]
                                 log.info(f"{'='*10} updated the robot neutral pose for {key}: {self._init_pose[key]} {'='*10} ")
                             if len(self._init_pose) == 0: break
-                            # @TODO: check delta pose target
-                            ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target, False)
+                            ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target, True)
                         elif interface_output_mode != "absolute":
                             raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")
+                        # @TODO: if mode is absolute your reset target will be same as before 
                         
                         # visualization of the target pose for ee 
                         # (Not using simulation for target tracking)
@@ -204,15 +206,15 @@ class TeleoperationFactory:
                     
                         high_level_command = np.hstack((high_level_command, ee_target[key]))
                     
-                    # skip the current
+                    # skip the current, bug here to check @TODO: zyx
                     if len(high_level_command) == 0: 
                         log.info(f'Len of high level command is 0!')
                         success_get_target = False
                     else:
                         self._robot_motion_system.update_high_level_command(high_level_command)
+                        self._teleop_target = high_level_command
                 
                 if success_get_target:
-                    # log.info(f'tool target: {tool_target}')
                     # coupling with vr
                     if self._teleop_interface_type == "meta_quest3":
                         whether_to_reset_hardware = self._reset_rising_edges["reset_hardware"].update(float(tool_target['reset'][0]))
@@ -227,19 +229,24 @@ class TeleoperationFactory:
                         if whether_to_quit:
                             self.close()
                     
+                    # log.info(f'tool target: {tool_target}')
+                    # tool_target = dict(single=np.array([0,0]))
                     self._robot_system.set_tool_command(tool_target)
-                    # update action, hack: @TODO: zyx
                     tool_type_dict = self._robot_system.get_tool_type_dict()
-                    if self._enable_recording:
+                    if self._enable_recording and tool_type_dict is not None:
                         with self._tool_action_lock:
                             for key, tool_command in tool_target.items():
-                                if tool_type_dict is None or \
-                                    tool_type_dict[key] == ToolType.GRIPPER or \
+                                if tool_type_dict[key] == ToolType.GRIPPER or \
                                    tool_type_dict[key] == ToolType.SUCTION:
-                                    # tool_command = tool_command
-                                    pass
+                                    if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
+                                        tool_command = tool_command[0].astype(np.float32)
+                                if not isinstance(tool_command, np.ndarray):
+                                    tool_command = float(tool_command)
                                 self._tool_action[key] = dict(tool=dict(
                                     position=tool_command, time_stamp=time.perf_counter()))
+            # for torque control
+            elif self._teleop_target is not None and self._update_high_level_state:
+                self._robot_motion_system.update_high_level_command(self._teleop_target)
 
             next_run_time += target_period
             current_time = time.perf_counter()
@@ -268,7 +275,6 @@ class TeleoperationFactory:
         
         start_time = time.time()
         while self._teleop_thread_running:
-            # parse camera data, @TODO: timestamp
             cameras_data = self._robot_system.get_cameras_infos()
             image_list = []
             if cameras_data is not None:
@@ -306,8 +312,9 @@ class TeleoperationFactory:
                 # Get end effector links properly
                 for i, cur_ee_link in enumerate(self.ee_link):
                     key = self._ee_index[i]
+                    robot_key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
                     sliced_joint_states = self._robot_motion_system.get_type_joint_state(
-                                                    all_joint_states, key)
+                                                    all_joint_states, robot_key)
                     joint_states[key] = {}
                     joint_states[key]["position"] = sliced_joint_states._positions.tolist()
                     joint_states[key]["velocity"] = sliced_joint_states._velocities.tolist()
@@ -320,11 +327,11 @@ class TeleoperationFactory:
                     ee_states[key]["pose"] = cur_ee_pose[:7].tolist()
                     ee_states[key]["twist"] = cur_ee_pose[7:13].tolist()
                     ee_states[key]["time_stamp"] = sliced_joint_states._time_stamp
+                    # @TODO: parse FT sensor data
                 
                     # get tool state
                     if tool_state_dict is not None:
                         gripper_state[key] = {}
-                        # @TODO: get tools info, all elements
                         gripper_state[key]['position'] = tool_state_dict[key]._position
                         gripper_state[key]["time_stamp"] = tool_state_dict[key]._time_stamp
 
@@ -347,9 +354,10 @@ class TeleoperationFactory:
                 if motion_action is not None and len(self._tool_action) != 0:
                     with self._tool_action_lock:
                         actions = copy.deepcopy(self._tool_action)
-                        for key in list(actions.keys()):
-                            actions[key]["joint"] = motion_action[key]["joint"]
-                            actions[key]["ee"] = motion_action[key]["ee"]
+                    for key in list(actions.keys()):
+                        actions[key]["joint"] = motion_action[key]["joint"]
+                        actions[key]["ee"] = motion_action[key]["ee"]
+                    # log.info(f'action: {actions}, type:{type(actions["single"]["tool"]["position"])}')
                     
                     self.data_recorder.add_item(colors=colors, depths=depths, tools=gripper_state,
                                                 joint_states=joint_states, ee_states=ee_states,
@@ -399,7 +407,6 @@ class TeleoperationFactory:
         # move to start
         self._update_high_level_state = False
         log.info(f"{'='*20}, Blocking the Motion process to reset the robot to init state{'='*20}")
-        # @TODO: reset tools 
         self._robot_motion_system.reset_robot_system(self._reset_arm_command, self._reset_space,
                                                         self._reset_tool_command)
         self._init_pose = {}
@@ -408,10 +415,15 @@ class TeleoperationFactory:
             self._robot_motion_system.wait_buffer_empty()
             self._robot_motion_system.clear_high_level_command()
         time.sleep(0.01)
+        self._teleop_target = None
+        # @TODO: Reset target!!!!
         self._update_high_level_state = True
         log.info(f"{'='*20}, Motion resumes normal!!!{'='*20}")
     
     def _reset_hardware(self):
+        if self._enable_hardware:
+            return 
+        
         self._enable_hardware = not self._enable_hardware
         log.info(f"{'='*15}Hardware execution status {self._enable_hardware}!!!.{'='*15}")
         self._robot_motion_system.update_execute_hardware(
@@ -420,7 +432,7 @@ class TeleoperationFactory:
     def close(self):
         log.info(f"{'='*15}Closing the teleoperation thread!!!{'='*15}")
         self._update_high_level_state = False
-        self._robot_motion_system._execute_hardware(False)
+        self._robot_motion_system.update_execute_hardware(False)
         stop_listening()
         self._teleop_thread_running = False
         self._data_recording_thread.join()

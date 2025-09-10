@@ -27,7 +27,7 @@ class AtiFt(FTBase):
         
         ft_data = self._ati.measurement()
         ft_data[:3] = [data / 1e6 for data in ft_data[:3]]
-        ft_data[3:] = [data / 1e4 for data in ft_data[3:]]
+        ft_data[3:] = [data / 1e6 for data in ft_data[3:]]
         return ft_data
         
     def close(self):

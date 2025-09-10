@@ -24,11 +24,11 @@ test_scene.xml
 *hal.txt
 *episode_*
 dataset/data
-dependencies/a2d_sdk
 *.pem
 dependencies/corenetic_ros2_ws
 hardware/base/__pycache__/arm.cpython-310.pyc
 learning/ckpts
+factory/tasks/inferences_tasks/act/ckpts
 /logs
 CLAUDE.md
 CLAUDE.local.md
