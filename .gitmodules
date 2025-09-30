@@ -16,3 +16,6 @@
 [submodule "dependencies/act"]
 	path = dependencies/act
 	url = git@github.com:linkage-x/act.git
+[submodule "dependencies/pika_sdk"]
+	path = dependencies/pika_sdk
+	url = git@github.com:agilexrobotics/pika_sdk.git

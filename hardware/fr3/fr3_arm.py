@@ -34,10 +34,10 @@ class Fr3Arm(ArmBase):
     def update_robot_state_thread(self):
         read_frequency = 800
         
-        last_read_time = time.time()
+        last_read_time = time.perf_counter()
         while self._thread_running:
-            dt = time.time() - last_read_time
-            last_read_time = time.time()
+            dt = time.perf_counter() - last_read_time
+            last_read_time = time.perf_counter()
             
             # diff acceleration
             self._fr3_state = self._fr3_robot.get_state()
@@ -46,14 +46,13 @@ class Fr3Arm(ArmBase):
             self._last_velocities = np.array(self._fr3_state.dq)
 
             # update state
-            self._lock.acquire()
-            self.update_arm_states()
-            self._lock.release()
+            with self._lock:
+                self.update_arm_states()
             
             # @TODO: check why the reading thread is slow
-            if dt < 1.0 / read_frequency:
-                sleep_time = (1.0 / read_frequency) - dt
-                time.sleep(sleep_time)
+            read_dt = 1.0 / read_frequency 
+            if dt < read_dt:
+                time.sleep(read_dt - dt)
             # elif dt > 2.0 / read_frequency:
             #     log.warn(f"Reading fr3 robot state is slower than the read frequency "
             #                   f"{read_frequency}Hz, actual: {1.0 / dt}Hz")
@@ -100,14 +99,9 @@ class Fr3Arm(ArmBase):
     def close(self):
         self._thread_running = False
 
-        if hasattr(self, '_state_thread') and self._thread.is_alive():
+        if hasattr(self, '_thread') and self._thread.is_alive():
             self._thread.join(timeout=2.0) # 給予2秒的等待時間
 
-        if hasattr(self, '_state_thread') and self._state_thread.is_alive():
-            log.error("FR3狀態執行緒在2秒內未能停止！")
-        else:
-            log.info("FR3狀態執行緒已成功停止。")
-            
         self._fr3_robot.stop_controller()
         log.info(f'Fr3 robot with ip {self._ip} is closed!!')        
                    

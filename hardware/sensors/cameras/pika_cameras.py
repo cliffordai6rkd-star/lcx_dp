@@ -27,7 +27,7 @@ class PikaCameras(CameraBase):
         
         self._fish_eye_camera = FisheyeCamera(camera_width=self._img_shape[1], 
                                               camera_height=self._img_shape[0],
-                                              device_id=self._fish_eye_camera())
+                                              device_id=self._fisheye_index)
         if not self._fish_eye_camera.connect():
             log.error(f'Connect pika fish eye camera failed!!')
             return False

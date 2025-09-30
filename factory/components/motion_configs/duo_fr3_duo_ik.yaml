@@ -12,15 +12,24 @@ gripper_config: !include hardware/config/duo_franka_hand_cfg.yaml
 # sensor infos
 # sensor_dicts:
 #   cameras:
-#     # - name: "left_ee_cam"
-#     #   type: "realsense_camera"
-#     #   cfg: !include hardware/sensors/cameras/config
-#     # - name: "right_ee_cam"
-#     #   type: "realsense_camera"
-#     #   cfg: !include hardware/sensors/cameras/config
-#     - name: "third_person_cam"
-#       type: "realsense_camera"
-#       cfg: !include hardware/sensors/cameras/config/d435i_cfg.yaml
+#     - name: "ee_cam_right"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_right_fr3.yaml
+#     - name: "ee_cam_left"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_ee_left_fr3.yaml
+#     - name: "third_person_right_cam"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_third_person_right_fr3.yaml
+#     - name: "third_person_left_cam"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_third_person_left_fr3.yaml
+#     - name: "side_right_cam"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_side_right_fr3.yaml
+#     - name: "side_left_cam"
+#       type: "network_camera"
+#       cfg: !include hardware/sensors/cameras/config/netcam_cfg_side_left_fr3.yaml
         
 control_frequency: 800
 controller_type: "duo_controller"

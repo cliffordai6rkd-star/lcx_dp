@@ -1,0 +1,38 @@
+# gym interface configuration
+max_step_nums: 150
+num_episodes: 10
+action_type: "joint_position"
+reset_space: "joint"
+obs_contain_ee: false
+is_debug: false
+display_window_name: "dp ddim inference"
+
+# diffusion policy model configuration
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0917/pick_n_place_abs_jps/epoch=0250-train_loss=0.002411.ckpt"
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0917/block_stacking_abs_jps/epoch=0250-train_loss=0.002415.ckpt"
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0918/peg_in_hole/latest.ckpt"
+#  latest.ckpt, 128x128
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0926/block_stacking_ds/epoch=2200-train_loss=0.000471.ckpt"
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0926/peg_in_hole_ds/latest.ckpt"
+# checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0926/water_pouring_ds/latest.ckpt"
+checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0926/solid_transfer/latest.ckpt"
+
+
+# DDIM inference parameters
+seed: 42
+device: "cuda"  # "cuda" or "cpu"
+enable_display: true     # show camera feeds
+frequency: 800.0          # Control frequency in Hz
+aync_execution: true
+
+# DDIM specific settings
+inference_scheduler_type: "ddim"  # "ddim" or "ddpm"
+ddim_inference_steps: 16          # DDIM推理步数 (通常8-16步)
+num_train_timesteps: 100
+ddim_eta: 0.0                     # DDIM eta参数，0.0为确定性采样
+
+# logging configuration
+log_level: "info"  # "debug", "info", "warning", "error"
+
+# robot + motion factory
+motion_config: !include factory/components/motion_configs/fr3_with_franka_hand_ik.yaml

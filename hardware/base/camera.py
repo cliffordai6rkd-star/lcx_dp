@@ -45,7 +45,7 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
         if not self._is_initialized or self._image_data is None:
             warnings.warn(f"The camera is not initialized {self._is_initialized} or "
                           f"still not retrieve the image{self._image_data is None}")
-            return False, None
+            return False, None, None
         self._lock.acquire()
         image = copy.deepcopy(self._image_data)
         time_stamp = copy.deepcopy(self._time_stamp)

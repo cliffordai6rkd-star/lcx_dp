@@ -1,5 +1,8 @@
 motion_config: !include factory/components/motion_configs/agibot_g1_wbik.yaml
 
+teleop_interface: "meta_quest3"
+interface_config: !include teleop/xr/meta_quest3_cfg.yaml
+inteface_output_mode: "relative"
 
 target_site_name: ["targetL_site", "targetL_site"]
 tcp_visualization_site: ["TCPL_site", "TCPR_site"]

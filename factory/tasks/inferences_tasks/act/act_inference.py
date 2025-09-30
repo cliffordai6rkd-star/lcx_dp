@@ -302,7 +302,7 @@ class ACT_Inferencer(InferenceBase):
             self.step_count = 0  # 🆕 全局步数计数器
 
             while self._status_ok:
-                step_start_time = time.time()
+                step_start_time = time.perf_counter()
 
                 # Check if maximum steps reached
                 if step_count >= self._max_step_nums:
@@ -332,7 +332,7 @@ class ACT_Inferencer(InferenceBase):
                         log.info(f"📊 Executed {step_count} steps (max: {self._max_step_nums})")
 
                 # Control frequency
-                elapsed = time.time() - step_start_time
+                elapsed = time.perf_counter() - step_start_time
                 sleep_time = max(0, self._dt - elapsed)
                 if sleep_time > 0:
                     time.sleep(sleep_time)

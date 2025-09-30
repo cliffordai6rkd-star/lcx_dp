@@ -8,6 +8,8 @@ from hardware.duo_arm import DuoArm
 from hardware.agibot_g1.agibot_g1 import AgibotG1
 from hardware.monte01.monte01 import Monte01
 from hardware.fr3.franka_hand import FrankaHand
+from hardware.unitreeG1.unitree_g1 import UnitreeG1
+from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.duo_tool import DuoTool
 from simulation.mujoco.mujoco_sim import MujocoSim
 from hardware.base.camera import CameraBase
@@ -82,12 +84,14 @@ class RobotFactory:
             'fr3': Fr3Arm,
             'agibot_g1': AgibotG1,
             'monte01': Monte01,
-            'duo_arm': DuoArm
+            'duo_arm': DuoArm,
+            'unitree_g1': UnitreeG1
         }
        
         self._gripper_classes = {
             'franka_hand': FrankaHand,
-            'duo_tool': DuoTool
+            'duo_tool': DuoTool,
+            'dex3_hand': Dex3Hand
         }
         
         self._camera_classes = {
@@ -352,18 +356,24 @@ class RobotFactory:
     
     def set_robot_joint_command(self, joint_command, mode, execute_hardware:bool = True,
                                 update_action = False):
+        # log.info(f'mode: {mode}')
         dofs = self.get_robot_dofs()
+        if len(dofs) > 2:
+            arm_dofs = dofs[-2:]
+        else: arm_dofs = dofs
+        
         if self._use_simulation:
             # mode assignment
-            sim_mode = [mode[0]] * dofs[0]
-            # log.info(f'mode: {mode}')
-            if len(dofs) > 1:
-                sim_mode_r = [mode[1]] * dofs[1]
+            sim_mode = [mode[0]] * arm_dofs[0]
+            if len(arm_dofs) > 1:
+                sim_mode_r = [mode[1]] * arm_dofs[1]
                 sim_mode = np.hstack((sim_mode, sim_mode_r))
-                # @TODO: handle dof other than arms @zyx
+            # handle dof other than arms 
+            if len(dofs) > 2:
                 total_dof = self.get_total_dofs()
                 sim_mode = [mode[0]] * total_dof
             self._simulation.set_joint_command(sim_mode, joint_command)
+        
         if self._use_hardware and execute_hardware: 
             if len(mode) == 1:
                 mode = mode[0]
@@ -410,18 +420,19 @@ class RobotFactory:
             log.debug(f'Tool is not connected')
             return False
         
+        cur_tool_command = copy.deepcopy(tool_command)
         tool_type_dict = self._tool.get_tool_type_dict()
         for key, tool_type in tool_type_dict.items():
             if tool_type == ToolType.GRIPPER or tool_type == ToolType.SUCTION:
-                tool_command[key] = np.array(tool_command[key])
-                if tool_command[key].ndim != 0: 
-                    tool_command[key] = tool_command[key][0]
+                cur_tool_command[key] = np.array(cur_tool_command[key])
+                if cur_tool_command[key].ndim != 0: 
+                    cur_tool_command[key] = cur_tool_command[key][0]
             else:
-                tool_command[key] = np.array(tool_command[key][::-1])
+                cur_tool_command[key] = np.array(cur_tool_command[key][::-1])
                 
-        if 'single' in tool_command:
-            tool_command = tool_command["single"]
-        return self._tool.set_tool_command(tool_command)
+        if 'single' in cur_tool_command:
+            cur_tool_command = cur_tool_command["single"]
+        return self._tool.set_tool_command(cur_tool_command)
     
     def get_tool_type_dict(self):
         if self._tool is None:
@@ -513,18 +524,15 @@ class RobotFactory:
                            If None, use robot's default move_to_start (immediate)
         """
         if joint_commands is not None and self._use_smoother and self._smoother is not None:
-            # Use smoother to move smoothly to specified position
-            log.info(f"Moving to target position with smoother...")
-            
             # Update smoother target
             self._smoother.update_target(joint_commands, immediate=False)
             
             # Create temporary control loop to actually move the robot
             if mode is None:
                 raise ValueError("Mode must be specified when using smoother for move_to_start")
-            log.info(f"Move to start mode: {mode}, command: {joint_commands}")
+            log.info(f"Move to start mode: {mode}, command: {joint_commands} with smoother")
             self.set_joint_commands(joint_commands, mode, execute_hardware=self._enable_hardware)
-            time.sleep(2.0)
+            time.sleep(1.5)
             
         else:
             # joint_commands is None: use robot's default move_to_start (immediate reset)
@@ -536,9 +544,8 @@ class RobotFactory:
                 self._simulation.move_to_start(None)
             if self._use_hardware:
                 self._robot.move_to_start()
-            
             # Resume smoother and sync to current position
-            time.sleep(0.1)
+            time.sleep(0.002)
             self.resume_smoother()
     
     def pause_smoother(self) -> None:

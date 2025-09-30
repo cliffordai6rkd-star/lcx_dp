@@ -13,6 +13,7 @@ class FrankaHand(ToolBase):
         self._grasp_speed = config["grasp_speed"]
         self._epsilon_inner = config.get("epsilon_inner", 0.02)
         self._epsilon_outer = config.get("epsilon_outer", 0.06)
+        self._start_update_thread = config.get("start_update_thread", False)
         super().__init__(config)
         self._state._tool_type = self._tool_type
         self._state._position = 0.08
@@ -101,7 +102,7 @@ class FrankaHand(ToolBase):
         
         command = np.clip(command, 0 ,1)
         target = self._max_width * command
-        log.info(f'🔧 FrankaHand: command={command:.3f}, target_width={target:.4f}m, max_width={self._max_width:.4f}m')
+        log.debug(f'🔧 FrankaHand: command={command:.3f}, target_width={target:.4f}m, max_width={self._max_width:.4f}m')
         def grasp_task():
             self._gripper_idle = False
             
@@ -112,14 +113,14 @@ class FrankaHand(ToolBase):
             self._lock.release()
             
             if np.isclose(target, self._max_width):
-                log.info(f'🔓 Executing gripper.move to OPEN: width={self._max_width:.4f}m')
+                log.debug(f'🔓 Executing gripper.move to OPEN: width={self._max_width:.4f}m')
                 self._gripper.move(self._max_width, self._grasp_speed)
             else:
                 if self._control_mode == ToolControlMode.INCREMENTAL:
-                    log.info(f'📍 Executing gripper.move (INCREMENTAL): target={target:.4f}m')
+                    log.debug(f'📍 Executing gripper.move (INCREMENTAL): target={target:.4f}m')
                     self._gripper.move(target, self._grasp_speed)
                 else:
-                    log.info(f'✊ Executing gripper.grasp: target={target:.4f}m, force={self._grasp_force}N')
+                    log.debug(f'✊ Executing gripper.grasp: target={target:.4f}m, force={self._grasp_force}N')
                     self._gripper.grasp(target, self._grasp_speed, self._grasp_force,
                                         self._epsilon_inner, self._epsilon_outer)
             # self._gripper.move(target, self._grasp_speed)
@@ -207,14 +208,22 @@ if __name__ == '__main__':
     fr3 = Fr3Arm(fr3_cfg)
     fr3._fr3_robot.teaching_mode(True)
     
-    while True:
-        input_data = input('Please enter c for close, o to open: ')
-        if input_data == 'c':
-            fr3_hand.close()
-        elif input_data == 'o':
-            # fr3_hand.set_hardware_command(1.0)
-            fr3_hand.set_tool_command(1.0)
-        gripper_state = fr3_hand.get_tool_state()
-        print(f'gri: {gripper_state._position}, is grasped: {gripper_state._is_grasped}')
-        time.sleep(0.01)
+    total_used_time = 0
+    num_test = 1000
+    for i in range(num_test):
+        # input_data = input('Please enter c for close, o to open: ')
+        # if input_data == 'c':
+        #     fr3_hand.close()
+        # elif input_data == 'o':
+        #     # fr3_hand.set_hardware_command(1.0)
+        #     fr3_hand.set_tool_command(1.0)
+        # gripper_state = fr3_hand.get_tool_state()
+        # print(f'gri: {gripper_state._position}, is grasped: {gripper_state._is_grasped}')
+        # time.sleep(0.01)
+        start = time.perf_counter()
+        fr3_hand._gripper.read_once()
+        used_time = time.perf_counter() - start
+        total_used_time += used_time
+        print(f'read time: {used_time}')
+    print(f'avg time: {total_used_time / num_test}')
     

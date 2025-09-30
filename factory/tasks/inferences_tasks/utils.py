@@ -131,7 +131,8 @@ class AnimationPlotter:
         figsize: tuple[int, int] = (10, 6),
         cols: int = 3,
         is_debug = False,
-        update_frequency = 100
+        update_frequency = 300,  # Higher frequency for more responsive plotting
+        enable_display = True  # Allow disabling display for performance
     ) -> None:
         """Initialize multi-canvas animation plotter.
         
@@ -162,22 +163,46 @@ class AnimationPlotter:
         self._plot_queue: queue.Queue = queue.Queue(maxsize=100)
         
         # Data storage with fixed-size buffers
-        self.joint_data: dict[int, collections.deque] = {}
-        self.action_data: dict[int, collections.deque] = {}
+        self.joint_data: dict[str, collections.deque] = {}
+        self.action_data: dict[str, collections.deque] = {}
         self.timestamps: collections.deque = collections.deque(maxlen=max_points)
         
         for i in range(self.signal_count):
             self.joint_data[joint_state_names[i]] = collections.deque(maxlen=max_points)
             self.action_data[action_names[i]] = collections.deque(maxlen=max_points)
         
-        # Matplotlib objects
+        # Matplotlib objects - lazy initialization
         self.fig = None
         self.axes = None
         self.joint_lines = None
         self.action_lines = None
+        self._animation_ready = False
+        self._enable_display = enable_display
         
         log.info(f"AnimationPlotter initialized with {self.signal_count} signals, "
                 f"max_points={max_points}, layout={self.rows}x{cols}")
+    
+    def _lazy_init_plots(self) -> None:
+        """Initialize plots only when first data arrives."""
+        if not self._enable_display:
+            # Skip actual plot initialization if display is disabled
+            self._animation_ready = True
+            log.info("Animation system running in no-display mode")
+            return
+            
+        try:
+            self._init_plots()
+            plt.ion()
+            if self.fig:
+                self.fig.show()
+            self._animation_ready = True
+            log.info("Animation plots lazy-initialized with display")
+        except Exception as e:
+            log.error(f"Lazy initialization failed: {e}")
+            # Fall back to no-display mode
+            self._enable_display = False
+            self._animation_ready = True
+            log.warning("Falling back to no-display mode")
     
     def _setup_matplotlib_backend(self) -> bool:
         """Simplified backend setup."""
@@ -268,11 +293,17 @@ class AnimationPlotter:
             actions: Model output action data, length must match signal_names
         """
         # Convert to numpy arrays for consistent handling
+        if self.is_debug:
+            log.info(f"joint_states: {joint_states}, actions: {actions}")
+        
         if not isinstance(joint_states, np.ndarray):
             joint_states = np.array(joint_states)
         if not isinstance(actions, np.ndarray):
             actions = np.array(actions)
-            
+        
+        assert len(joint_states) == self.signal_count, f"joint states expected {self.signal_count}, but get {len(joint_states)}"
+        assert len(actions) == self.signal_count, f"actions expected {self.signal_count}, but get {len(actions)}"
+        
         self._queue_plot_update(joint_states, actions)
     
     def _queue_plot_update(self, joint_states: np.ndarray, actions: np.ndarray) -> None:
@@ -305,10 +336,17 @@ class AnimationPlotter:
             log.warning(f"Failed to queue plot data: {e}")
     
     def _process_plot_queue(self) -> None:
-        """Simplified queue processing (main thread only)."""
-        if not self._active or self.fig is None:
+        """Simplified queue processing with lazy initialization."""
+        if not self._active:
             return
             
+        # Lazy initialization on first queue processing
+        if not self._animation_ready and not self._plot_queue.empty():
+            self._lazy_init_plots()
+            
+        if self.fig is None:
+            return
+        
         # Process all available queue items
         updates = 0
         while not self._plot_queue.empty():
@@ -317,7 +355,12 @@ class AnimationPlotter:
             updates += 1
         
         if updates > 0:
+            if self.is_debug:
+                log.info(f"📊 Processing {updates} updates")
             self._update_plots_directly()
+        else:
+            if self.is_debug:
+                log.info(f"📊 No updates to process")
     
     def _update_data_buffers(self, plot_data: dict) -> None:
         """Update internal data buffers with queued data.
@@ -331,6 +374,9 @@ class AnimationPlotter:
         # Dimension validation
         if len(joint_states) != self.signal_count or len(actions) != self.signal_count:
             log.warning(f"Data dimension mismatch: joints={len(joint_states)}, actions={len(actions)}, expected={self.signal_count}")
+            log.warning(f"Joint states: {joint_states}")
+            log.warning(f"Actions: {actions}")
+            log.warning(f"Signal names: {self.joint_state_names}")
             return
             
         with self._lock:
@@ -357,11 +403,15 @@ class AnimationPlotter:
                          f" actions={[f'{float(actions[j]):.3f}' for j in range(min(2, len(actions)))]}")
     
     def _update_plots_directly(self) -> None:
-        """Update matplotlib plots directly (main thread only)."""
+        """Update matplotlib plots directly (main thread only) with data length validation."""
         with self._lock:
             # Check if we have data to plot
             if len(self.timestamps) == 0:
+                log.warn(f"🔴 No timestamp data to plot")
                 return
+            
+            if self.is_debug:
+                log.info(f"🔵 Updating plots: timestamps={len(self.timestamps)}, signal_count={self.signal_count}, joint_lines={len(self.joint_lines) if self.joint_lines else 0}")
             
             # Get current data
             x_data = list(self.timestamps)
@@ -373,15 +423,51 @@ class AnimationPlotter:
                 if (i >= len(self.joint_lines) or 
                     len(self.joint_data[joint_key]) <= 0 or 
                     len(self.action_data[action_key]) <= 0):
-                    log.warn(f"Skipping update for subplot {i} due to insufficient data or missing lines")
+                    log.warn(f"⚠️ Skipping subplot {i}: joint_lines_len={len(self.joint_lines)}, joint_data_len={len(self.joint_data[joint_key])}, action_data_len={len(self.action_data[action_key])}")
                     continue
+                
+                if self.is_debug:
+                    log.info(f"✅ Updating subplot {i}: joint_data={len(self.joint_data[joint_key])}, action_data={len(self.action_data[action_key])}")
                     
                 # Get y data for this signal
                 joint_y = list(self.joint_data[joint_key])
                 action_y = list(self.action_data[action_key])
-                # Update line data in main thread
-                self.joint_lines[i].set_data(x_data, joint_y)
-                self.action_lines[i].set_data(x_data, action_y)
+                
+                # Data length validation to prevent numpy broadcast errors
+                x_len = len(x_data)
+                joint_len = len(joint_y)
+                action_len = len(action_y)
+                
+                # Ensure all data arrays have matching length
+                if x_len != joint_len or x_len != action_len:
+                    log.warning(f"📏 Data length mismatch for signal {i}: x={x_len}, joint={joint_len}, action={action_len}")
+                    # Use minimum length to avoid broadcast errors
+                    min_len = min(x_len, joint_len, action_len)
+                    if min_len <= 0:
+                        log.warning(f"📏 Skipping signal {i} due to zero-length data")
+                        continue
+                    x_data_safe = x_data[:min_len]
+                    joint_y_safe = joint_y[:min_len]
+                    action_y_safe = action_y[:min_len]
+                    log.info(f"📏 Truncated data to length {min_len} for signal {i}")
+                else:
+                    x_data_safe = x_data
+                    joint_y_safe = joint_y
+                    action_y_safe = action_y
+                
+                try:
+                    # Update line data with thread-safe approach
+                    self.joint_lines[i].set_data(x_data_safe, joint_y_safe)
+                    self.action_lines[i].set_data(x_data_safe, action_y_safe)
+                except (RuntimeError, ValueError) as e:
+                    if "main thread" in str(e):
+                        # Skip this update if not in main thread - will retry next cycle
+                        if self.is_debug:
+                            log.debug(f"⏭️ Skipping signal {i} update (threading issue)")
+                        continue
+                    else:
+                        log.error(f"❌ Failed to set data for signal {i}: {e}")
+                        continue
                 
                 # Update axis limits for visibility
                 if x_data:
@@ -399,40 +485,34 @@ class AnimationPlotter:
                         else:
                             self.axes[i].set_ylim(y_min - 1, y_min + 1)
             
-            # Redraw in main thread
-            self.fig.canvas.draw_idle()
+            # Non-blocking redraw with controlled event processing
+            try:
+                # Use draw_idle() for non-blocking updates - queues drawing for next event loop
+                self.fig.canvas.draw_idle()
+                # Minimal event processing to ensure plots are displayed
+                self._trigger_plot_update()
+            except (RuntimeError, ValueError) as e:
+                if "main thread" in str(e):
+                    if self.is_debug:
+                        log.debug(f"⏭️ Skipping plot draw (threading issue)")
+                else:
+                    log.warning(f"🎨 Plot drawing failed: {e}")
+                
+    def _trigger_plot_update(self) -> None:
+        """Trigger minimal matplotlib event processing for plot updates."""
+        if self.fig and plt.get_fignums():
+            # Minimal pause to ensure GUI updates - much faster than plt.pause()
             self.fig.canvas.flush_events()
                     
     def start_animation(self) -> None:
-        """Start simplified real-time plotting display."""
+        """Start lazy-initialized plotting system."""
         if self._active:
             log.warning("Animation already running")
             return
         
-        try:
-            # Initialize plots
-            self._init_plots()
-            
-            # Start interactive mode
-            plt.ion()
-            plt.show(block=False)
-            
-            # Try to bring window to front
-            try:
-                self.fig.canvas.manager.window.raise_()
-                self.fig.canvas.manager.window.wm_attributes('-topmost', 1)
-                self.fig.canvas.manager.window.wm_attributes('-topmost', 0)
-            except (AttributeError, RuntimeError):
-                log.info("Window focus adjustment not supported on this system")
-            
-            # Initial draw
-            self.fig.canvas.draw()
-            plt.pause(0.01)
-            
-            log.info("Animation started with queue-based updates")
-        except Exception as e:
-            log.error(f"Failed to start animation: {e}")
-            self._animation_running = False
+        # Don't initialize plots immediately - do it lazily when first data arrives
+        self._animation_ready = False
+        log.info("Animation system ready for lazy initialization")
     
     def start_main_thread_updater(self) -> None:
         """Start the main thread plot updater timer.
@@ -442,7 +522,8 @@ class AnimationPlotter:
         Raises:
             RuntimeError: If not called from main thread
         """
-        assert threading.current_thread() == threading.main_thread(), "Must be called from main thread"
+        import threading as thread_module
+        assert thread_module.current_thread() == thread_module.main_thread(), "Must be called from main thread"
         
         if self._active:
             log.warning("Updater already running")
@@ -452,14 +533,26 @@ class AnimationPlotter:
         
         def _timer_callback():
             if self._active:
+                if self.is_debug:
+                    log.info(f"⏰ Timer callback triggered")
                 self._process_plot_queue()
+            else:
+                if self.is_debug:
+                    log.warn(f"⏰ Timer callback but not active")
         
-        if self._has_gui and self.fig is not None:
-            # Use matplotlib timer
-            self._update_timer = self.fig.canvas.new_timer(interval=1000/self._update_frequency)
-            self._update_timer.add_callback(_timer_callback)
-            self._update_timer.start()
-        log.info("Main thread plot updater started")
+        # Always use threading timer for reliability
+        import threading as thread_module
+        def fallback_timer():
+            while self._active:
+                start = time.perf_counter()
+                _timer_callback()
+                time.sleep(1.0/self._update_frequency)
+                used = time.perf_counter() - start
+                if self.is_debug:
+                    log.info(f'fall back timer thread time used {used * 1000}ms for one loop')
+        timer_thread = thread_module.Thread(target=fallback_timer, daemon=True)
+        timer_thread.start()
+        log.info(f"🟡 Threading timer started: frequency={self._update_frequency}Hz")
     
     def stop_animation(self) -> None:
         """Stop animation and cleanup."""
@@ -497,6 +590,23 @@ class AnimationPlotter:
                 break
                 
         log.info("Animation data and queue cleared")
+    
+    def force_plot_update(self) -> None:
+        """Force immediate plot update - lightweight version for PI0."""
+        try:
+            if self.fig and hasattr(self.fig, 'canvas'):
+                # Process any queued data immediately
+                self._process_plot_queue()
+                # Minimal matplotlib event processing without full pause
+                self.fig.canvas.flush_events()
+        except Exception as e:
+            if self.is_debug:
+                log.warning(f"Force plot update failed: {e}")
+                
+    def trigger_plot_refresh(self) -> None:
+        """Non-blocking plot refresh - just signals the backend thread."""
+        # Simply mark that a refresh is needed - actual work done by background timer
+        pass  # The background timer thread handles all plot updates
     
     def save_data(self, filepath: str) -> None:
         """Save current trajectory data to JSON file.
@@ -571,8 +681,9 @@ if __name__ == "__main__":
                 )
                 
                 # Keep matplotlib event loop active and simulate real-time data
-                import matplotlib.pyplot as plt
-                plt.pause(0.05)  # 100ms delay + matplotlib event processing
+                # import matplotlib.pyplot as plt
+                # plt.pause(0.05)  # 100ms delay + matplotlib event processing
+                time.sleep(0.05)
                 t += 0.05
                 
                 if step % 50 == 0:

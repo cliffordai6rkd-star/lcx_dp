@@ -17,6 +17,18 @@ class DiffusionPolicyLoader(DataLoaderBase):
         action_type = Action_Type_Mapping_Dict[action_type]
         json_file_name = config.get(f'json_file_name', "data.json")
         super().__init__(config, task_dir, json_file_name, action_type)
+        
+        self._task_list = config.get('task_list', None)
+        if self._task_list is None:
+            self._task_list = [task_dir]
+        else:
+            for i, task_name in enumerate(self._task_list):
+                self._task_list[i] = os.path.join(self._task_dir, task_name)
+        for task_dir in self._task_list:
+            if not os.path.exists(task_dir):
+                raise ValueError(f'Could not find {task_dir}')
+        log.info(f'task list: {self._task_list}')
+        
         self._orientation_representation = 'euler'
         self._output_path_dir = config.get('output_path', './data')
         self._file_name = config.get('data_name', 'dataset')
@@ -36,15 +48,15 @@ class DiffusionPolicyLoader(DataLoaderBase):
             appended_data = np.array(value)[None]
             zarr_data[key] = np.vstack((zarr_data[key], appended_data))
     
-    def create_zarr_dataset(self, episode_dir):
+    def create_zarr_dataset(self, task_dir, episode_dir):
         n_episodes = self._replay_buffer.n_episodes
         curr_episode_id = n_episodes
 
         # episode data appending
         skip_num_step = int(30 / self._load_fps)
-        episode_data, _ = self.load_episode(self._task_dir, episode_dir, skip_num_step)
+        episode_data, _ = self.load_episode(task_dir, episode_dir, skip_num_step)
         if episode_data is None:
-            log.warn(f'{self._task_dir}/{episode_dir} has problem during loading the episode data')
+            log.warn(f'{task_dir}/{episode_dir} has problem during loading the episode data')
             return
         
         zarr_episode_data = {}
@@ -61,9 +73,8 @@ class DiffusionPolicyLoader(DataLoaderBase):
             tools = step_data.get("tools", {}); actions = step_data.get("actions", {})
             obs_state = np.array([]); zarr_actions = np.array([]); zarr_stages = np.array([])
             for id, (key, value) in enumerate(joint_states.items()):
-                # @TODO: ee_state has pose attribute
                 robot_state = np.array(value["position"])
-                if self._contain_ee_obs: robot_state = np.hstack((ee_states[key], robot_state))
+                if self._contain_ee_obs: robot_state = np.hstack((ee_states[key]["pose"], robot_state))
                 obs_state = np.hstack((obs_state, robot_state, tools[key]["position"],))
                 zarr_actions = np.hstack((zarr_actions, actions[key]))
                 zarr_stages = np.hstack((zarr_stages, [1]))
@@ -77,10 +88,12 @@ class DiffusionPolicyLoader(DataLoaderBase):
         log.debug(f'episode_data: {zarr_episode_data}')
     
     def convert_dataset(self):
-        episode_dirs = os.listdir(self._task_dir)
-        for episode_dir in tqdm(episode_dirs, desc="processing episodes ", unit="episodes"):
-            self.create_zarr_dataset(episode_dir)
-        log.info(f'created all episodes in {self._task_dir}')
+        for task_dir in tqdm(self._task_list, desc="processing tasks", unit="tasks"):
+            episode_dirs = os.listdir(task_dir)
+            for episode_dir in tqdm(episode_dirs, desc="processing episodes ", unit="episodes"):
+                self.create_zarr_dataset(task_dir, episode_dir)
+            log.info(f'Finished processing the {task_dir}')
+        log.info(f'created all episodes in {self._task_list}')
             
 if __name__ == "__main__":
     import yaml

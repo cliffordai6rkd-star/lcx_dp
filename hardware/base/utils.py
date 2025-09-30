@@ -48,6 +48,7 @@ class ToolControlMode(Enum):
     BINARY = "binary"
     INCREMENTAL = "incremental"
     HAND = "hand"
+    HAND_RETARGET = "retarget"
 
 class ToolState:
     _position: np.float32 = 0.0
@@ -312,14 +313,19 @@ def transform_pose(pose1, pose2, posi_translation=True):
     return T_ac
 
 def pose_diff(pose1, pose2):
+    """
+        @ brief: compute the difference between two poses (pose1 - pose2)
+    """
     assert pose1.shape == (7,), f"pose1 must be 7D array, got shape {pose1.shape}"
     assert pose2.shape == (7,), f"pose2 must be 7D array, got shape {pose2.shape}"
     
     res = np.zeros(7)
-    res[:3] = pose1[:3] - pose2[:3]
+    posi_diff = pose1[:3] - pose2[:3]
     rot1 = R.from_quat(pose1[3:])
     rot2 = R.from_quat(pose2[3:])
-    rot = rot2.inv() * rot1
+    rot2_trans = rot2.inv()
+    rot = rot2_trans * rot1
+    res[:3] = rot2_trans.apply(posi_diff)
     res[3:] = rot.as_quat()
     return res
 

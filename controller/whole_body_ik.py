@@ -69,7 +69,7 @@ class WholeBodyIk(ControllerBase):
             q_target = self.opti.value(self.var_q)
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
-            return True, q_target, ["position"] * len(self.tracking_frames)
+            return True, q_target, "position"
         except Exception as e:
             print(f"ERROR in convergence{e}")
             return False, None, "position"
@@ -175,11 +175,17 @@ class WholeBodyIk(ControllerBase):
         opts = {
             'ipopt':{
                 'print_level':0,
-                'max_iter':50, # 50
-                'tol':1e-3
+                'max_iter':100, # 增加最大迭代次数
+                'tol':1e-8,     # 更严格的收敛条件
+                # 以下参数可以删除
+                'acceptable_tol':1e-6, # 可接受的容差
+                'mu_strategy':'adaptive', # 自适应障碍参数
+                'hessian_approximation':'limited-memory', # 使用L-BFGS近似
+                'linear_solver':'mumps', # 更稳定的线性求解器
+                'nlp_scaling_method':'gradient-based' # 基于梯度的缩放
             },
             'print_time':self.show_debug,# print or not
-            'calc_lam_p':False 
+            'calc_lam_p':False
             # https://github.com/casadi/casadi/wiki/FAQ:-Why-am-I-getting-%22NaN-detected%22in-my-optimization%3F
         }
         self.opti.solver("ipopt", opts)

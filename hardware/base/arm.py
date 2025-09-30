@@ -27,6 +27,9 @@ class ArmBase(abc.ABC, metaclass=abc.ABCMeta):
         self._is_initialized = self.initialize()
     
     def print_state(self):
+        if not self._is_initialized:
+            log.warn(f'Unitree g1 is still not initialized for printing joint state')
+        
         print(f"Arm joint states[positions, velocity, torques]: "
               f"{self._joint_states._positions}, {self._joint_states._velocities}, {self._joint_states._torques}")
         # print(f'Arm TCP pose: {self._tcp_pose}')
@@ -52,9 +55,8 @@ class ArmBase(abc.ABC, metaclass=abc.ABCMeta):
 
     def get_joint_states(self)-> RobotJointState: 
         if self._is_initialized:
-            self._lock.acquire()
-            joint_state = copy.deepcopy(self._joint_states)
-            self._lock.release()
+            with self._lock:
+                joint_state = copy.deepcopy(self._joint_states)
             # @TODO: hack
             # joint_state._accelerations = np.zeros(len(joint_state._accelerations))
             return joint_state

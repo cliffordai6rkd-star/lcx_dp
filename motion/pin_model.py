@@ -72,6 +72,7 @@ class RobotModel(ModelBase):
                 raise ValueError(f"The pin model could not find frame {frame_name}")
             else:
                 frame_id = self.model.getFrameId(frame_name)
+                print(f'get frame id: {frame_id} for {frame_name}')
                 self.frames_name2id[frame_name] = frame_id
                 if frame_name == self.base_link:
                     self.base_id = frame_id
@@ -88,8 +89,8 @@ class RobotModel(ModelBase):
                                                         self.frames_name2id[lock_info["end"]])
                 jointsToLockIDs = np.hstack((jointsToLockIDs, joint_ids)).astype(np.int32)
             jointsToLockIDs = jointsToLockIDs.tolist()
-        # geom_models = [visual_model, collision_model]
-        self.model = pin.buildReducedModel(self.model, jointsToLockIDs, neutral_q)
+            # geom_models = [visual_model, collision_model]
+            self.model = pin.buildReducedModel(self.model, jointsToLockIDs, neutral_q)
         self.data = self.model.createData()
         self.nq = self.model.nq
         self.nv = self.model.nv

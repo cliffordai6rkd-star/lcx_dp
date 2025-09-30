@@ -12,8 +12,8 @@ meta_quest3:
   output_left: true
   output_right: true
   init_pose:
-    initial_pose_left: [0.0, 0.0, -0.9, 0.7071, 0, 0.7071, 0]
-    initial_pose_right: [0.0, -0.0, -0.9, 0.7071, 0, 0.7071, 0]
+    initial_pose_left: [0.0, 0.0, -0.9, 1, 0, 0, 0]
+    initial_pose_right: [0.0, -0.0, -0.9, 1, 0, 0, 0]
 
   tool_mode:
     left: "incremental"

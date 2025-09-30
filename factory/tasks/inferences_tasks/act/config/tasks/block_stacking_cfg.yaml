@@ -1,7 +1,6 @@
 # 叠方块任务特定配置
 task_type: "block_stacking"
-max_step_nums: 550
-gripper_lock_duration: 5.0  # 叠方块任务标准夹爪锁定时间
+max_step_nums: 100
 
 # 叠方块任务的checkpoint路径模式
 checkpoint_patterns:

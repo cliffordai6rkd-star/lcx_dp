@@ -1,0 +1,8 @@
+dex3_hand:
+  network_interface: "enp4s0"
+  hand_prefix: "right"
+
+  control_mode: "retarget"
+  hand_model: !include motion/config/robot_model_cfg_right_dex3.yaml
+  controller: !include controller/config/whole_body_ik_right_dex3.yaml
+  

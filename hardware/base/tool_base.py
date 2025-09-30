@@ -6,6 +6,8 @@ import threading
 import time
 from typing import Union, Dict, List
 from hardware.base.utils import ToolState, ToolControlMode, ToolType
+from motion.pin_model import RobotModel
+from controller.whole_body_ik import WholeBodyIk
 
 class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -26,6 +28,13 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             self._current_position_scaled = config.get("initial_position", 1.0)  # Default fully open position
             self._step_size = config.get("step_size", 0.02)  # Maximum position change per step
             self._last_move_time = 0.0
+            
+        # retarget control config
+        if self._control_mode == ToolControlMode.HAND_RETARGET:
+            self._model = RobotModel(config=config["hand_model"])
+            self._wbik = WholeBodyIk(config=config["controller"]["whole_body_ik"],
+                                     robot_model=self._model)
+            
         self._is_initialized = False
         self._is_initialized = self.initialize()
         
@@ -80,6 +89,8 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
         
         if self._state._tool_type != ToolType.GRIPPER and self._state._tool_type != ToolType.SUCTION:
             # @TODO: handle other tools
+            if self._control_mode == ToolControlMode.HAND_RETARGET:
+                target = self._wbik.compute_controller(target)
             return self.set_hardware_command(target)
         else:
             target = np.clip(target, 0, 1)
@@ -95,7 +106,6 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             else:
                 raise ValueError(f"Unsupported control mode: {self._control_mode}")
             return success
-        
     
     @abc.abstractmethod
     def stop_tool(self):
