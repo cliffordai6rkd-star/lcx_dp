@@ -1,0 +1,29 @@
+duo_tool:
+  left:
+    type: "pika_gripper"
+    pika_gripper:
+    # 串口设备路径
+    serial_port: "/dev/ttyUSB80"
+    
+    # 状态更新频率 (Hz)
+    update_frequency: 150.0  # 状态读取频率，建议100Hz
+    
+    temp_threshold: 60
+    current_threshold: 200
+
+    control_mode: "incremental"
+    step_size: 0.2
+      
+  right:
+    type: "pika_gripper"
+    # 串口设备路径
+    serial_port: "/dev/ttyUSB81"
+    
+    # 状态更新频率 (Hz)
+    update_frequency: 150.0  # 状态读取频率，建议100Hz
+    
+    temp_threshold: 60
+    current_threshold: 200
+
+    control_mode: "incremental"
+    step_size: 0.2

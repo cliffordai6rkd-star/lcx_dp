@@ -1,13 +1,16 @@
 pika_tracker:
   serial_ports: 
-    left: "/dev/ttyUSB0"
+    left: "/dev/ttyUSB71"
     right: null
   target_device: 
-    # LHR-0DFD738C
-    left: "LHR-5EC33B35" 
+    left: "LHR-0DFD738C" 
     right: null
   output_left: true
   output_right: false
   init_pose:
-    initial_pose_left: [0, 0, 0, 0, 0, 0, 1]
-    initial_pose_right: [0, 0, 0, 0, 0, 0, 1]
+    initial_pose_left: [0, 0, 0, 1, 0, 0, 0]
+    initial_pose_right: [0, 0, 0, 1, 0, 0, 0]
+  rotation_enabled:
+    # rpy
+    left: [false, false, true]
+    right: null

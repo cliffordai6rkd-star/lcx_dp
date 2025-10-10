@@ -2,6 +2,7 @@ from hardware.base.arm import ArmBase
 from hardware.base.tool_base import ToolBase
 from hardware.base.utils import ToolType
 from hardware.base.camera import CameraBase
+from hardware.base.ft import FTBase
 from simulation.base.sim_base import SimBase
 from hardware.fr3.fr3_arm import Fr3Arm
 from hardware.duo_arm import DuoArm
@@ -136,29 +137,37 @@ class RobotFactory:
                     self._tool = self._gripper_classes[self._gripper_type](self._config["gripper_config"][self._gripper_type])
             
             # sensors
+            possible_sensor_name_mapping = {
+                'cameras': 'camera',
+                'ft_sensors': 'FT_sensor',
+                # 'tactile': 'tactile',
+            }
+            sensor_class_mapping = {
+                'cameras': self._camera_classes,
+                'ft_sensors': self._ft_classes,
+                # 'tactile': self._tactile_classes
+            }
             if self._sensor_dicts is not None:
-                if 'cameras' in self._sensor_dicts:
-                    # cameras
-                    cameras_info = self._sensor_dicts["cameras"]
-                    log.info(f"{cameras_info}")
-                    cameras_objects = []
-                    num_camera = 0
-                    for cam_info in cameras_info:
-                        if not object_class_check(self._camera_classes, cam_info['type']):
-                            log.error(f"ValueError")
-                            raise ValueError
-                        cam_type = cam_info['type']
-                        log.info(f"{cam_type}")
-                        log.info(f" : {cam_info['cfg'][cam_type]}")
-                        log.info(f" : {self._camera_classes[cam_type]}")
-                        cam = self._camera_classes[cam_type](cam_info['cfg'][cam_type])
+                for sensor_type in possible_sensor_name_mapping.keys():
+                    if sensor_type in self._sensor_dicts:
+                        sensors_info = self._sensor_dicts[sensor_type]
+                        log.info(f"{possible_sensor_name_mapping[sensor_type]}: {sensors_info}")
+                        sensors_objects = []
+                        num_sesnor = 0
+                        for sensor_info in sensors_info:
+                            if not object_class_check(sensor_class_mapping[sensor_type], sensor_info['type']):
+                                log.error(f"ValueError")
+                                raise ValueError
+                            cur_sensor_type = sensor_info['type']
+                            sensor_obj = sensor_class_mapping[sensor_type][cur_sensor_type](sensor_info['cfg'][cur_sensor_type])
+                            sensors_objects.append({'name': sensor_info['name'], 'object': sensor_obj})
+                            log.info(f"Add one hw {possible_sensor_name_mapping[sensor_type]} {sensor_info['name']}")
+                            log.info(f"cur {possible_sensor_name_mapping[sensor_type]}: {sensor_info['cfg'][cur_sensor_type]}")
+                            num_sesnor += 1
+                        if num_sesnor:
+                            self._sensors[possible_sensor_name_mapping[sensor_type]] = sensors_objects  
+                            log.info(f'successfully created all {possible_sensor_name_mapping[sensor_type]}')
 
-                        cameras_objects.append({'name': cam_info['name'], 'object': cam})
-                        log.info(f"Add one hw camera {cam_info['name']}")
-                        num_camera += 1
-                    if num_camera:
-                        self._sensors['camera'] = cameras_objects  
-                        
                 # tactile sensors
                 if 'tactile' in self._sensor_dicts:
                     tactile_info = self._sensor_dicts["tactile"]
@@ -184,8 +193,6 @@ class RobotFactory:
                     if num_tactile:
                         self._sensors['tactile'] = tactile_objects
                 
-                # @TODO: FT
-            
         if self._use_simulation:
             if not object_class_check(self._simulation_classes, self._simulation_type):
                 raise ValueError
@@ -494,11 +501,20 @@ class RobotFactory:
         
     def get_cameras_infos(self):
         cameras_data = None
+        
+        # Try to get simulation camera data first
         if self._use_simulation:
             cameras_data = self._simulation.get_all_camera_images()
-        if'camera' in self._sensors and self._use_hardware:
+            if cameras_data is not None and len(cameras_data) > 0:
+                log.debug(f"Got {len(cameras_data)} simulation camera images")
+            else:
+                log.warning("No simulation camera images available")
+        
+        # Get hardware camera data if available and hardware is enabled
+        if 'camera' in self._sensors and self._use_hardware:
             hw_camera_data = []
             cameras = self._sensors['camera']
+            log.info(f"Processing {len(cameras)} hardware cameras")
             for cam in cameras:
                 camera_name = cam['name']
                 camera_object:CameraBase = cam['object']
@@ -513,9 +529,25 @@ class RobotFactory:
                 if not img['imu'] is None:
                     hw_camera_data.append({'name': camera_name+'_imu', 'resolution': resolution,
                                         'imu': img['imu'],'time_stamp': img["time_stamp"]})
+            
+            # If we have hardware camera data, use it (hardware takes precedence)
             if len(hw_camera_data):
+                log.info(f"Using {len(hw_camera_data)} hardware camera data items")
                 cameras_data = hw_camera_data
+            
         return cameras_data
+    
+    def get_ft_data(self):
+        ft_data = None
+        if self._use_hardware and 'FT_sensor' in self._sensors:
+            ft_sensors = self._sensors['FT_sensor']
+            ft_data = []
+            for ft_sensor in ft_sensors:
+                ft_name = ft_sensor["name"]; ft_obj: FTBase = ft_sensor["object"]
+                cur_ft_data, cur_time_stamp = ft_obj.get_ft_data()
+                ft_data.append({'name': ft_name, 
+                    'data': cur_ft_data.tolist(), 'time_stamp': cur_time_stamp})
+        return ft_data
     
     def get_tactile_data(self):
         """Get tactile sensor data from all tactile sensors"""

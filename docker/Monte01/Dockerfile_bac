@@ -88,6 +88,9 @@ RUN usermod -aG sudo teleophost && echo "teleophost ALL=(ALL) NOPASSWD:ALL" >> /
 USER teleophost
 RUN pip3 install transforms3d numpy pyyaml opencv-python transformations vuer==0.0.32rc7
 
+RUN pip3 install -U -f https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-22.04 wxPython
+RUN pip3 install pynput
+
     #  \
     # && rm -rf /var/lib/apt/lists/*
 ########################################### 以上构建出ghcr.io/bigjohnn/quest3-monte03-teleop:v1########################################################

@@ -84,7 +84,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             ValueError: Invalid control target format
         """
         if not self._tool_idle: 
-            log.warn("Tool is currently working on other command, please wait for some time to set new command") 
+            log.debug("Tool is currently working on other command, please wait for some time to set new command") 
             return False
         
         if self._state._tool_type != ToolType.GRIPPER and self._state._tool_type != ToolType.SUCTION:

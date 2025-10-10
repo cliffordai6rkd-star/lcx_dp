@@ -47,6 +47,35 @@ Info: Global solve with 2 scenes for 1 with error of 497.065942/453.1467622320 (
 
 一定要注意需要有两个 Preamble found才证明你两个基站配置完成， 如果失败请运行`rm ~/.config/libsurvive/config.json`, 然后在==运行第三步==
 
+## 设备USB 端口绑定
+1. 在'/etc/udev/rules.d'创建两个文件， 运行以下指令
+```bash
+    cd /etc/udev/rules.d
+    sudo touch pika_serial.rules
+    sudo chmod a+x pika_serial.rules
+    sudo touch pika_fisheye.rules    
+    sudo chmod a+x pika_fisheye.rules
+```
+2. 编写`pika_serial.rules`的规则内容(使用vim或者gedit)， 内容为下， 请注意： 根据以下方法来更改每个设备KERNELS里的内容： 首先插拔指定设备的USB口并使用`ls /dev | grep USB`确认当前设备的USB号， 然后使用以下指令 `udevadm info -a -n /dev/ttyUSB<你查到的USB号> | grep 'KERNELS=='`然后把输出的第一行KERNELS的号在文件中即进行更改
+```bash
+    ## pika grippers
+    ACTION=="add", KERNELS=="1-4.3.1.4:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="ttyUSB80"
+    ACTION=="add", KERNELS=="1-3.1.4:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="ttyUSB81"
+
+    ## pika senses
+    ACTION=="add", KERNELS=="1-7.4.4:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="ttyUSB70"
+    ACTION=="add", KERNELS=="1-7.3.4:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="ttyUSB71"
+```
+3. 编写`pika_fisheye.rules`的规则内容，内容如下。
+```bash
+ACTION=="add", KERNEL=="video[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60]*", KERNELS=="1-7.1:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="video80"
+ACTION=="add", KERNEL=="video[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60]*", KERNELS=="1-7.1:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="video81"
+
+# pika sense, 查看相机ideo编号可以使用pika_sdk/tools下的check_multiple_device的脚本
+ACTION=="add", KERNEL=="video[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60]*", KERNELS=="1-7.1:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="video70"
+ACTION=="add", KERNEL=="video[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60]*", KERNELS=="1-7.1:1.0", SUBSYSTEMS=="usb", MODE:="0666", SYMLINK+="video71"
+
+```
 
 
 

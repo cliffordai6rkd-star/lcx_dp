@@ -1,11 +1,11 @@
 # usage platform
-motion_config: !include factory/components/motion_configs/fr3_with_pika_ati_ik.yaml
+motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
 target_site_name: ["target_site"]
 tcp_visualization_site: ["TCP_site"]
 
-teleop_interface: "space_mouse"
-interface_config: !include teleop/space_mouse/single_space_mouse_cfg.yaml
-inteface_output_mode: "relative"
+teleop_interface: "pika_tracker"
+interface_config: !include teleop/pika_tracker/config/left_tracker_fr3_cfg.yaml
+inteface_output_mode: "absolute_delta"
 
 # teleoperation used parameter
 # if you are using mujoco simulation target instead of teleoperation device,

@@ -39,7 +39,9 @@ class MujocoSim(SimBase):
         self._sensor_dict = config.get('sensor_dict', None)
         self._cam_infos = []
         self._cam_render: dict[str, mujoco.Renderer] = {}
-        self._render_lock = threading.Lock()
+        self._step_lock = threading.Lock()      # Protects physics simulation (mj_step)
+        self._render_lock = threading.Lock()    # Protects render data copy and camera access
+        self._render_data = None                # Render-dedicated data copy for thread safety
         self._extra_render = config["extra_render"]
         self.use_custom_key_frame = config.get("use_custom_key_frame", False)
         
@@ -79,9 +81,20 @@ class MujocoSim(SimBase):
             while viewer.is_running() and self._theread_running:
                 step_start = time.time()
 
-                # Step 1: Physics step with render_lock (avoid concurrent camera access to _data)
-                with self._render_lock:
+                # Step 1: Physics step (protected by step_lock)
+                with self._step_lock:
                     mujoco.mj_step(self._model, self._data)
+
+                # Step 2: Copy data for rendering (protected by render_lock)
+                with self._render_lock:
+                    # Copy essential MjData fields for rendering
+                    self._render_data.time = self._data.time
+                    self._render_data.qpos[:] = self._data.qpos
+                    self._render_data.qvel[:] = self._data.qvel
+                    self._render_data.ctrl[:] = self._data.ctrl
+                    # Forward kinematics to update visual state
+                    mujoco.mj_forward(self._model, self._render_data)
+
                     if self._extra_render:
                         self.render(viewer)
 
@@ -212,7 +225,12 @@ class MujocoSim(SimBase):
                 actuator_id = self._model.actuator(actuator_name).id
                 if actuator_id < 0:
                     raise ValueError(f"Actuator '{actuator_name}' not found in the Mujoco model.")
-                self._data.ctrl[actuator_id] = target
+                
+                if "pika_gripper_actuator" == actuator_name:
+                    self._data.ctrl[actuator_id] = -0.11 + 0.11 * target
+                else:
+                    self._data.ctrl[actuator_id] = target
+
         return True
         
     def close(self):
@@ -290,7 +308,7 @@ class MujocoSim(SimBase):
         for cam_info in self._cam_infos:
             if camera_name == cam_info['name']:
                 with self._render_lock:
-                    self._cam_render[camera_name].update_scene(self._data, camera=cam_info['id'])
+                    self._cam_render[camera_name].update_scene(self._render_data, camera=cam_info['id'])
                     img = self._cam_render[camera_name].render()
                 return img[:,:,::-1]
         raise ValueError(f'Could not extract image for {camera_name}')
@@ -303,7 +321,7 @@ class MujocoSim(SimBase):
         with self._render_lock:
             for cam_info in self._cam_infos:
                 name = cam_info['name']
-                self._cam_render[name].update_scene(self._data, camera=cam_info['id'])
+                self._cam_render[name].update_scene(self._render_data, camera=cam_info['id'])
                 img = self._cam_render[name].render()[:,:,::-1]
                 time_stamp = time.perf_counter()
                 collected_img.append({'name': name+'_color', 'img': img,
@@ -318,27 +336,43 @@ class MujocoSim(SimBase):
         
     def parse_config(self) -> bool:
         """parse config to get the Mujoco model and data."""
-        # @TODO: Require modification to achieve dynamic loading 
+        # @TODO: Require modification to achieve dynamic loading
         model_path = self.parse_relative_path(self._config['base_xml_file'])
         log.info(f'model path: {model_path}')
         self._model = mujoco.MjModel.from_xml_path(model_path)
         self._data = mujoco.MjData(self._model)
+
+        # Create render data copy for thread-safe camera access
+        self._render_data = mujoco.MjData(self._model)
+        log.info("Created render data copy for thread-safe camera access")
         
-        # set init actuator position
-        if self.use_custom_key_frame:
-            robot_xml_path = self.parse_relative_path(self._config['robot_xml'])
-            self._init_pose = self.extract_custom_params(robot_xml_path, 'init_pos')
-            log.info(f'init pose: {self._init_pose}')
-            arm_posi = self._init_pose[:len(self._joint_names)]
-            # self.set_joint_command(["position"]*len(arm_posi), arm_posi)
-            self.set_joint_position(arm_posi)
-            if self._tool_infos:
-                self._init_tool_action = {}; start = len(self._joint_names)
-                for key, tool_actuators in self._tool_actuator_names.items():
-                    self._init_tool_action[key] = np.array(self._init_pose[start:start+len(tool_actuators)])
-                    start += len(tool_actuators)
-                log.info(f'init tool action: {self._init_tool_action}')
-                self.set_tool_command(self._init_tool_action)
+        # Check if keyframe exists
+        if self._model.nkey > 0:
+            # Use keyframe initialization (more elegant)
+            keyframe_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_KEY, 'home')
+            if keyframe_id >= 0:
+                log.info(f'Using keyframe "home" for initialization')
+                # Reset to keyframe state
+                mujoco.mj_resetDataKeyframe(self._model, self._data, keyframe_id)
+                log.info(f'Initialized robot to keyframe pose: {self._data.qpos[:len(self._joint_names)]}')
+                
+                # Extract tool actions from keyframe ctrl values (for unified gripper control)
+                if self._tool_infos:
+                    self._init_tool_action = {}
+                    # For gripper, use ctrl values instead of qpos since gripper joints are linked
+                    for key, tool_actuators in self._tool_actuator_names.items():
+                        if self._tool_type[key] == ToolType.GRIPPER:
+                            # For gripper, get the control value from keyframe ctrl
+                            gripper_actuator_id = self._model.actuator(tool_actuators[0]).id
+                            self._init_tool_action[key] = np.array([self._data.ctrl[gripper_actuator_id]])
+                            log.info(f'init gripper action from keyframe ctrl: {self._init_tool_action[key]}')
+                        else:
+                            # For other tools, use qpos as before
+                            start = len(self._joint_names)
+                            self._init_tool_action[key] = np.array(self._data.qpos[start:start+len(tool_actuators)])
+                            start += len(tool_actuators)
+                    log.info(f'init tool action from keyframe: {self._init_tool_action}')
+                    self.set_tool_command(self._init_tool_action)
         
         # model creation based on mujoco env config
         # env_cfg = self._config["env_config"]
@@ -465,8 +499,16 @@ class MujocoSim(SimBase):
         
     def move_to_start(self, joint_commands=None):
         if joint_commands is None:
-            commands = self._init_pose[:len(self._joint_names)]
-        else: commands = joint_commands
+            # Try to use keyframe first, then fallback to init_pose
+            if self._model.nkey > 0:
+                keyframe_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_KEY, 'home')
+                if keyframe_id >= 0:
+                    log.info('Resetting robot to keyframe "home" position')
+                    mujoco.mj_resetDataKeyframe(self._model, self._data, keyframe_id)
+                    return
+        else:
+            commands = joint_commands
+        
         # self.set_joint_command(["position"] * len(self._actuator_mode), commands)
         self.set_joint_position(commands)
         

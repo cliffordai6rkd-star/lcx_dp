@@ -8,5 +8,10 @@ pika_tracker:
   output_left: true
   output_right: true
   init_pose:
-    initial_pose_left: [0, 0, 0, 0, 0, 0, 1]
-    initial_pose_right: [0, 0, 0, 0, 0, 0, 1]
+    initial_pose_left: [0, 0, 0, 1, 0, 0, 0]
+    initial_pose_right: [0, 0, 0, 1, 0, 0, 0]
+  rotation_enabled:
+    # rpy
+    left: [false, false, true]
+    right: [false, false, true]
+

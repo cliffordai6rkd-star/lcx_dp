@@ -19,5 +19,5 @@ mujoco:
   max_traj_len: 80
   use_custom_key_frame: true
   sensor_dict:
-    ee_cam: 
-     resolution: [480, 640]
+    # ee_cam: 
+    #  resolution: [480, 640]

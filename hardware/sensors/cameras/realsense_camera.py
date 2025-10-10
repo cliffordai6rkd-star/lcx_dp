@@ -64,8 +64,13 @@ class RealsenseCamera(CameraBase):
         last_read_time = time.time()
         while self._thread_running:
             # frame reading
+            # start = time.perf_counter()
             frames = self._pipeline.wait_for_frames() # blocking
+            # frame_time = time.perf_counter()
+            # log.info(f'get frame used time: {frame_time - start}s')
             aligned_frames = self._align.process(frames)
+            # log.info(f'align frame used time: {time.perf_counter() - frame_time}s')
+            # log.info(f'get frame total time: {time.perf_counter() - start}s')
             
             color_frame = aligned_frames.get_color_frame()
             if self._contain_depth:
@@ -81,6 +86,7 @@ class RealsenseCamera(CameraBase):
 
             if not color_frame:
                 time.sleep(0.01)
+                log.warn(f"Realsense camera {'serial number'} did not get the frame")
                 continue
 
             self._lock.acquire()
