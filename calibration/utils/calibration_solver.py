@@ -92,8 +92,7 @@ def solve_eye_in_hand(
     T_cam2gripper[:3, :3] = R_cam2gripper
     T_cam2gripper[:3, 3] = t_cam2gripper.flatten()
 
-    # Invert to get T_ee_camera (T_gripper2cam)
-    T_ee_camera = np.linalg.inv(T_cam2gripper)
+    T_ee_camera = T_cam2gripper
 
     # Compute diagnostics
     diagnostics = compute_diagnostics(
