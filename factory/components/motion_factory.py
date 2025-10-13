@@ -396,8 +396,10 @@ class MotionFactory:
                 self.enable_high_level_update = True
             else:
                 self.move_to_start_blocking()
+                self._high_level_command = None
         else:
             self.move_to_start_blocking(arm_command, mode)
+            self._high_level_command = None
         
         # Reset controller
         robot_state = self._robot_system.get_joint_states()
