@@ -423,12 +423,11 @@ if __name__ == "__main__":
 
 
     # # TEST DATA OF data_dir
-    # /home/yuxuan/Code/hirol/teleoperated_trajectory/block_stacking
-    # /home/yuxuan/Code/hirol/teleoperated_trajectory/pick_N_place
-    # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/pick_N_place"
-    data_dir = "/home/hanyu/code/HIROLRobotPlatform/dataset/data/robot_motion_test"
-    episode_data_number = 11
-    fps = 30
+    # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
+    # /workspace/dataset/data/peg_in_hole
+    data_dir = "/workspace/dataset/data/block_stacking"
+    episode_data_number = 2
+    fps = 40
     skip_step_nums = 1
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     if os.path.exists(os.path.join(data_dir, episode_dir)):

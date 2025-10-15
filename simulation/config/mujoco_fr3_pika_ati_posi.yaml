@@ -21,3 +21,7 @@ mujoco:
   sensor_dict:
     ee_cam: 
      resolution: [480, 640]
+    side_cam: 
+     resolution: [480, 640]
+    third_person_cam:
+     resolution: [480, 640]

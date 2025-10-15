@@ -5,6 +5,7 @@ from motion.model_base import ModelBase
 import numpy as np
 import pinocchio as pin
 import copy
+import glog as log
 
 class DuoRobotModel(ModelBase):
     _models: dict[str, RobotModel]
@@ -16,7 +17,7 @@ class DuoRobotModel(ModelBase):
         self._models["left"] = RobotModel(left_cfg)
         right_cfg = config["right"]
         self._models["right"] = RobotModel(right_cfg)
-        self.ee_link = [self._models['left'].ee_link, self._models['right'].ee_link]
+        self.ee_link = [self._models['left'].ee_link[0], self._models['right'].ee_link[0]]
 
     def get_pin_model_N_data(self):
         pin_model = {}

@@ -98,9 +98,8 @@ def create_image_grid(images_dict: dict[str, np.ndarray],
 
     return grid_image
 
-
 def display_images(images_dict: dict[str, np.ndarray],
-                   display_window_name: str) -> np.ndarray | None:
+                   display_window_name: str, target_size = (240, 320)) -> np.ndarray | None:
     """Display images in a unified OpenCV window.
 
     Args:
@@ -111,7 +110,7 @@ def display_images(images_dict: dict[str, np.ndarray],
         Combined grid image if successful, None if failed
     """
     try:
-        grid_image = create_image_grid(images_dict)
+        grid_image = create_image_grid(images_dict, target_size)
         cv2.imshow(display_window_name, grid_image)
         cv2.waitKey(1)  # Non-blocking update
         return grid_image

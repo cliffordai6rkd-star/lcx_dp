@@ -25,6 +25,13 @@
     <light pos="0 0 1.5" dir="0 0 -1" directional="true" />
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" />
 
+    <!-- Fixed cameras in world coordinate system -->
+    <!-- Side camera on the left side of the robot base, looking towards the robot -->
+    <camera name="side_cam" pos="0 0.8 0.4" euler="1.57 3.14 0" fovy="60"/>
+    
+    <!-- Third person camera in front of the robot base, looking at the workspace -->
+    <camera name="third_person_cam" pos="1.5 0.0 0.8" euler="0.785 1.57 0.785" fovy="60"/>
+    <!-- <camera name="third_person_cam" pos="0.8 0.0 0.8" euler="-0.785 0 3.14" fovy="60"/> -->
 
     <!-- Mocap object as target -->
     <body name="target" pos="0.3 0 0.45" quat="0 1 0 0" mocap="true">
@@ -32,7 +39,7 @@
       <site type="sphere" name="target_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>
 
-     <body name="TCP" pos="0.365 0 0.4" quat="0 1 0 0" mocap="true">
+    <body name="TCP" pos="0.365 0 0.4" quat="0 1 0 0" mocap="true">
       <geom type="sphere" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
       <site type="sphere" name="TCP_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>

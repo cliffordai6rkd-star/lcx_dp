@@ -42,6 +42,7 @@ class RobotModel(ModelBase):
         self.frames_name2id = dict()
         self.base_link = config["base_link"]
         self.ee_link = config["ee_link"]
+        if not isinstance(self.ee_link, list): self.ee_link = [self.ee_link]
         self.lock_joint_info = config.get("lock_joints", None)
         self.fixed_base = config["fixed_base"]
         self.tracking_frames = config.get("tracking_frames", None)
@@ -68,6 +69,7 @@ class RobotModel(ModelBase):
                                                 # package_dirs=mesh_dir)
         log.info(f'full model, nq:{self.model.nq}, nv: {self.model.nv}')
         # update frames info:
+        self.ee_id = dict()
         for frame_name in self.frame_names:
             if not self.model.existFrame(frame_name):
                 raise ValueError(f"The pin model could not find frame {frame_name}")
@@ -77,8 +79,8 @@ class RobotModel(ModelBase):
                 self.frames_name2id[frame_name] = frame_id
                 if frame_name == self.base_link:
                     self.base_id = frame_id
-                if frame_name == self.ee_link:
-                    self.ee_id = frame_id
+                if frame_name in self.ee_link:
+                    self.ee_id[frame_name] = frame_id
         neutral_q = pin.neutral(self.model)
             
         # reduced model

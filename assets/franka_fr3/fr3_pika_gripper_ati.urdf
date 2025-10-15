@@ -501,7 +501,7 @@
   </link>
 
   <joint name="ati_pika_joint" type="fixed">
-    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0" />
+    <origin xyz="0.0 0.0 0.0" rpy="-0.739815 0.0 0.0 " />
     <parent link="ati_pika_link" />
     <child link="gripper_base_link" />
     <axis xyz="0.0 0.0 0.0" />
@@ -667,7 +667,7 @@
 
   <link name="pika_gripper_ee" />
   <joint name="fr3_hand_tcp_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0.185 0 0" />
+    <origin rpy="3.1415926 -1.5707963 0" xyz="0.185 0 0" />
     <parent link="gripper_base_link" />
     <child link="pika_gripper_ee" />
   </joint>

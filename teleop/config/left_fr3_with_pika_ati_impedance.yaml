@@ -1,10 +1,11 @@
 # usage platform
-motion_config: !include factory/components/motion_configs/fr3_with_pika_ati_ik.yaml
+motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_impedance.yaml
+
 target_site_name: ["target_site"]
 tcp_visualization_site: ["TCP_site"]
 
 teleop_interface: "pika_tracker"
-interface_config: !include teleop/pika_tracker/config/right_tracker_fr3_cfg.yaml
+interface_config: !include teleop/pika_tracker/config/left_tracker_fr3_cfg.yaml
 inteface_output_mode: "absolute_delta"
 
 # teleoperation used parameter
@@ -22,18 +23,18 @@ teleoperation_loop_time: 0.005
 # reset_space: "joint"   
 # pose , [3.09019823e-01,  1.99873044e-04,  4.84437265e-01,  9.99989858e-01,
 #                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
-# reset_arm_command: [3.69019823e-01,  1.99873044e-04,  3.64437265e-01,  9.99989858e-01,
-#                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
-# reset_space: "cartesian"
+reset_arm_command: [3.69019823e-01,  1.99873044e-04,  3.64437265e-01,  9.99989858e-01,
+                    -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
+reset_space: "cartesian"
 
 # data collection related
-# save_path_prefix: "peg_in_hole"
-# task_description: "pick up the peg on the table and put it in the hole"
-# task_description_goal: "pick up the peg on the table and place it in the correct hole"
-# task_description_step:
-#   "step1: find the peg on the table. step2: go to the location of the peg
-#   step3: pick up the only peg on the table. step4: find the only hole in the peg station. step5:
-#   go to the top of the hole. step6: place the peg into the hole"
+save_path_prefix: "test"
+task_description: "pick up the peg on the table and put it in the hole"
+task_description_goal: "pick up the peg on the table and place it in the correct hole"
+task_description_step:
+  "step1: find the peg on the table. step2: go to the location of the peg
+  step3: pick up the only peg on the table. step4: find the only hole in the peg station. step5:
+  go to the top of the hole. step6: place the peg into the hole"
 # save_path_prefix: "block_stacking"
 # task_description: "stack colored blocks in the order: red -> green -> blue -> yellow"
 # task_description_goal: "build a tower by stacking blocks in the correct color sequence"
@@ -45,17 +46,17 @@ teleoperation_loop_time: 0.005
 #   step8: pick up the yellow block and place it on top of the blue block.
 #   step9: verify the tower is stable with the order: red -> blue -> yellow."
 
-save_path_prefix: "solid_transfer"
-task_description: "transfer rice from the box into the bowl"
-task_description_goal: "move all rice grains from the source box to the target bowl without spilling"
-task_description_step: |
-  step1: locate the box containing rice on the table.
-  step2: position the tool (e.g., scoop or gripper) above the rice pile.
-  step3: collect a portion of rice from the box.
-  step4: lift the tool while ensuring no rice falls.
-  step5: locate the target bowl on the table.
-  step6: move the tool to a position above the bowl's center.
-  step7: pour/deposit the rice into the bowl.
+# save_path_prefix: "solid_transfer"
+# task_description: "transfer rice from the box into the bowl"
+# task_description_goal: "move all rice grains from the source box to the target bowl without spilling"
+# task_description_step: |
+#   step1: locate the box containing rice on the table.
+#   step2: position the tool (e.g., scoop or gripper) above the rice pile.
+#   step3: collect a portion of rice from the box.
+#   step4: lift the tool while ensuring no rice falls.
+#   step5: locate the target bowl on the table.
+#   step6: move the tool to a position above the bowl's center.
+#   step7: pour/deposit the rice into the bowl.
 
 # save_path_prefix: "liquid_transfer"
 # task_description: "pour water from the left cup to the right cup"

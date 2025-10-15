@@ -21,7 +21,7 @@ def get_sim_base_world_transform(sim):
     return world2base_pose, base2world_pose
 
 def main():
-    tracker_cfg = "teleop/pika_tracker/config/left_tracker_fr3_cfg.yaml"
+    tracker_cfg = "teleop/pika_tracker/config/right_tracker_fr3_cfg.yaml"
     tracker_cfg = get_cfg(tracker_cfg)["pika_tracker"]
     tracker = PikaTracker(tracker_cfg)
     

@@ -8,6 +8,7 @@ from teleop.pika_tracker.pika_tracker import PikaTracker
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from simulation.mujoco.mujoco_sim import MujocoSim
+from hardware.base.utils import transform_pose
 
 import time, cv2
 import numpy as np
@@ -69,7 +70,7 @@ def test_pika_gripper_apis():
     gripper.disconnect()
 
 def test_pika_class_apis():
-    gripper_cfg = "hardware/tools/grippers/config/left_pika_gripper_cfg.yaml"
+    gripper_cfg = "hardware/tools/grippers/config/right_pika_gripper_cfg.yaml"
     gripper_cfg = get_cfg(gripper_cfg)["pika_gripper"]
     gripper = PikaGripper(gripper_cfg)
     
@@ -111,37 +112,64 @@ def test_pika_class_apis():
             posi -= 0.05 
             gripper.set_tool_command(posi)
             time.sleep(0.2)
-        # print(f'{gripper_state._time_stamp} gripper state, posi: {gripper_state._position}, is grasped: {gripper_state._is_grasped} diff: {gripper_state._position - np.clip(posi, 0, 1)*90 }  command: {posi*90}mm')
+        print(f'{gripper_state._time_stamp} gripper state, posi: {gripper_state._position}, is grasped: {gripper_state._is_grasped} diff: {gripper_state._position - np.clip(posi, 0, 1)*90 }  command: {posi*90}mm')
             
         counter += 1
         time.sleep(0.004)
+        
+def test_pika_gripper_time():
+    gripper_cfg = "hardware/tools/grippers/config/right_pika_gripper_cfg.yaml"
+    gripper_cfg = get_cfg(gripper_cfg)["pika_gripper"]
+    gripper = PikaGripper(gripper_cfg)
+    
+ 
+    
+    counter = 0
+    toatl_time = 0
+    test_times = 100
+    for i in range(test_times):
+        start_time = time.time()
+        gripper_state = gripper.get_tool_state()
+        end_time = time.time()
+        duration = end_time - start_time
+        toatl_time += duration
+        print(f'{i}/{test_times} {gripper_state._time_stamp} gripper state, posi: {gripper_state._position}, is grasped: {gripper_state._is_grasped}, time duration: {duration*1000} ms')
+        time.sleep(0.1)
+    print(f'total time: {toatl_time}, avg time: {toatl_time/test_times}')
 
 def test_pika_tracker():
     tracker_cfg = "teleop/pika_tracker/config/left_tracker_fr3_cfg.yaml"
     tracker_cfg = get_cfg(tracker_cfg)["pika_tracker"]
     tracker = PikaTracker(tracker_cfg)
     
-    sim_cfg = "simulation/config/mujoco_duo_fr3.yaml"
+    sim_cfg = "simulation/config/mujoco_fr3_pika_ati_posi.yaml"
     mujoco_cfg = get_cfg(sim_cfg)["mujoco"]
     sim = MujocoSim(mujoco_cfg)
     # world2base, base2world = get_sim_base_world_transform(mujoco)
-    target_site = ["targetL", "targetR"]
-    tcp_mocaps = ["TCPL", "TCPR"]
+    target_site = ["target"]
+    tcp_mocaps = ["TCP"]
     
+    # "absolute_delta", "absolute"
+    interface_mode = "absolute_delta"
     while True:
-        print(f'before read')
-        succ, pose, tool = tracker.parse_data_2_robot_target("absolute_delta")
+        succ, pose, tool = tracker.parse_data_2_robot_target(interface_mode)
         
+        print(f'succ:{succ}')
         if succ:
             right_pose = pose["single"]
             print(f'succ: {succ}, pose: {pose}, tool: {tool}')
-            cur_target_mocap = target_site[1]
+            cur_target_mocap = target_site[0]
+            if interface_mode == "absolute_delta":
+                init_pose = sim.get_body_pose(tcp_mocaps[0])
+                right_pose = transform_pose(init_pose, right_pose)
             sim.set_target_mocap_pose(cur_target_mocap, right_pose)
         time.sleep(0.001)
 
 if __name__ == "__main__":
+    print(f"{'==1'*20}test pika gripper apis {'==2'*20}")
     # test_pika_gripper_apis()
     # test_pika_class_apis()
-    # test_pika_tracker()
-    pikasense2gripper()
+    test_pika_tracker()
+    # pikasense2gripper()
+    # test_pika_gripper_time()
     

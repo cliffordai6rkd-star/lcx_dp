@@ -1,0 +1,25 @@
+pika_config: !include 
+pika_mode: "absolute"
+use_fisheye: true
+cameras:
+  - name: "left_hand"
+    type: "realsense_camera"
+    config: !include 
+  - name: "right_hand"
+    type: "realsense_camera"
+    config: !include 
+  - name: "head"
+    type: "realsense_camera"
+    config: !include 
+  - name: "left_hand_fisheye"
+    type: "opencv_camera"
+    config: !include 
+  - name: "right_han_fisheyed"
+    type: "opencv_camera"
+    config: !include 
+  - name: "head_fisheye"
+    type: "opencv_camera"
+    config: !include 
+
+collection_frequency: 30
+task_name: "duo_fr3_"

@@ -78,14 +78,13 @@ class PikaGripper(ToolBase):
     
     def _get_motor_status(self):
         if not self._is_initialized:
-            return None
+            return None, None
         
         temp = self._pika_gripper.get_motor_temp()
         current = self._pika_gripper.get_motor_current()
         return (temp, current)
     
-    def check_is_over_current_and_temp(self):
-        temp, current = self._get_motor_status()
+    def check_is_over_current_and_temp(self, temp, current):
         if temp > self._temp_threshold or current > self._current_threshold:
             return True, temp, current
         else: return False, None, None
@@ -131,11 +130,12 @@ class PikaGripper(ToolBase):
         
         last_read_time = time.time()
         dt_target = 1.0 / self._update_frequency
-        
+        # max_time = 0
         while self._thread_running:
             try:
                 # Read current gripper state
                 current_distance = self._pika_gripper.get_gripper_distance()
+                motor_temp, motor_current = self._get_motor_status()
                 # log.info(f'cur dist: {current_distance}')
                 self._gripper_state_updated = True
                 
@@ -144,7 +144,7 @@ class PikaGripper(ToolBase):
                     self._state._position = current_distance
                     self._state._time_stamp = time.perf_counter()
                     # Determine grasp state based on current (high current = grasping)
-                    over_temp, temp, current = self.check_is_over_current_and_temp()
+                    over_temp, temp, current = self.check_is_over_current_and_temp(motor_temp, motor_current)
                     if over_temp:
                         log.warn(f'Pika gripper {self._serial_port} is over temp, temp: {temp}, current: {current}')
                         self._state._is_grasped = True
@@ -156,6 +156,8 @@ class PikaGripper(ToolBase):
             # Timing control
             dt = time.time() - last_read_time
             last_read_time = time.time()
+            # if dt > max_time: max_time = dt
+            # log.info(f'pika gripper read state dt: {1.0 / dt} Hz, max freq: {1.0/max_time} hz')
             if dt < dt_target:
                 sleep_time = dt_target - dt
                 time.sleep(sleep_time)
