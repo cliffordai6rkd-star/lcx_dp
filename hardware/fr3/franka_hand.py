@@ -1,5 +1,14 @@
 from hardware.base.tool_base import ToolBase
-from panda_py.libfranka import Gripper
+
+# Try to import panda_py, fall back to mock if not available
+try:
+    from panda_py.libfranka import Gripper
+except (ImportError, FileNotFoundError):
+    import glog as log
+    log.warning("panda_py.libfranka not available, using mock implementation")
+    from hardware.mocks.mock_panda_py import libfranka
+    Gripper = libfranka.Gripper
+
 from hardware.base.utils import ToolState, ToolType, ToolControlMode
 import os, yaml, time, threading
 import numpy as np

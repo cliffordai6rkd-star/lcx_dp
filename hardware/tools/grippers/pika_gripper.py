@@ -1,6 +1,14 @@
 from hardware.base.tool_base import ToolBase
 from hardware.base.utils import ToolState, ToolType
-from pika.gripper import Gripper
+
+# Try to import pika gripper, fall back to mock if not available
+try:
+    from pika.gripper import Gripper
+except (ImportError, ModuleNotFoundError):
+    import glog as log
+    log.warning("pika.gripper not available, using mock implementation")
+    from hardware.mocks.mock_pika import Gripper
+
 import threading
 import time
 import copy
@@ -50,6 +58,9 @@ class PikaGripper(ToolBase):
             
             # Move to open position (safe initialization)
             time.sleep(0.2)  # Wait for connection to stabilize
+
+            success = self._pika_gripper.set_gripper_distance(self._max_distance)
+            self._state._position = self._max_distance
             
             # Start state update thread
             self._thread_running = True
@@ -59,7 +70,6 @@ class PikaGripper(ToolBase):
             
             while not self._gripper_state_updated:
                 time.sleep(0.001)
-            success = self._pika_gripper.set_gripper_distance(self._max_distance)
             
             if success:
                 log.info(f"Pika Gripper initialized successfully on {self._serial_port}")
@@ -111,7 +121,7 @@ class PikaGripper(ToolBase):
             time.sleep(0.12)
             current_position = self._pika_gripper.get_gripper_distance()
             is_grasped = current_position > target_distance + 2
-            log.info(f'check : {is_grasped}, current: {current_position}, target: {target_distance} diff: {current_position - target_distance}')
+            # log.info(f'check : {is_grasped}, current: {current_position}, target: {target_distance} diff: {current_position - target_distance}')
             with self._lock:
                 self._state._is_grasped = is_grasped
                 # self._state._position = target_distance
@@ -134,8 +144,19 @@ class PikaGripper(ToolBase):
         while self._thread_running:
             try:
                 # Read current gripper state
+                start = time.perf_counter()
                 current_distance = self._pika_gripper.get_gripper_distance()
+                distance_reading_time = time.perf_counter() - start
+                # avoid position sudden change
+                with self._lock: 
+                    last_position = self._state._position
+                
+                if abs(current_distance - last_position) > 0.5 * (self._max_distance - self._min_distance):
+                    # log.warn(f'Detected sudden change of gripper position: {last_position}, {current_distance}')
+                    continue
+                start = time.perf_counter()
                 motor_temp, motor_current = self._get_motor_status()
+                distance_reading_time += time.perf_counter() - start
                 # log.info(f'cur dist: {current_distance}')
                 self._gripper_state_updated = True
                 
@@ -144,11 +165,10 @@ class PikaGripper(ToolBase):
                     self._state._position = current_distance
                     self._state._time_stamp = time.perf_counter()
                     # Determine grasp state based on current (high current = grasping)
-                    over_temp, temp, current = self.check_is_over_current_and_temp(motor_temp, motor_current)
-                    if over_temp:
-                        log.warn(f'Pika gripper {self._serial_port} is over temp, temp: {temp}, current: {current}')
-                        self._state._is_grasped = True
-                    # else: self._state._is_grasped = False
+                over_temp, temp, current = self.check_is_over_current_and_temp(motor_temp, motor_current)
+                if over_temp:
+                    # log.warn(f'Pika gripper {self._serial_port} is over temp, temp: {temp}, current: {current}')
+                    self._state._is_grasped = True
                 
             except Exception as e:
                 log.warn(f"Error reading Pika Gripper state: {e}")
@@ -158,11 +178,13 @@ class PikaGripper(ToolBase):
             last_read_time = time.time()
             # if dt > max_time: max_time = dt
             # log.info(f'pika gripper read state dt: {1.0 / dt} Hz, max freq: {1.0/max_time} hz')
+            # log.info(f'pika gripper read state dt: {1.0 / dt} Hz')
             if dt < dt_target:
                 sleep_time = dt_target - dt
                 time.sleep(sleep_time)
-            elif dt > 1.3 * dt_target:
-                log.warn(f"Pika Gripper {self._serial_port} update thread running slow: {1.0 / dt}hz, expected: {self._update_frequency}hz")
+            # elif dt > 1.2 * dt_target:
+            #     log.warn(f"Pika Gripper {self._serial_port} update thread running slow: {1.0 / dt}hz, \
+            #         expected: {self._update_frequency}hz, reading time: {1.0/distance_reading_time}hz")
             
         log.info(f"Pika Gripper {self._serial_port} state update thread stopped")
     

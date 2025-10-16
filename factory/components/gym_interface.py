@@ -1,10 +1,10 @@
 from factory.components.robot_factory import RobotFactory
 from factory.components.motion_factory import MotionFactory
-from hardware.base.utils import transform_pose
+from hardware.base.utils import transform_pose, pose_diff
 import glog as log
 import abc, time
 import gymnasium as gym
-from dataset.utils import ActionType, dict_str2action_type
+from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import numpy as np
 from factory.components.motion_factory import Robot_Space
 from scipy.spatial.transform import Rotation as R
@@ -16,16 +16,20 @@ class GymApi(gym.Env):
         self._max_step_nums = config["max_step_nums"]
         
         self._action_type = config.get("action_type", "joint_position")
-        self._action_type = dict_str2action_type[self._action_type]
+        self._action_type = Action_Type_Mapping_Dict[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
+        self._obs_type = config.get("observation_type", ObservationType.JOINT_POSITION_ONLY)
+        self._use_relative_pose = config.get("use_relative_pose", False)
+        self._init_pose = {}
         robot_motion_cfg = config["motion_config"]
         self._tool_position_dof = config.get("tool_position_dof", 1)
         
         self._reset_space = config.get("reset_space", "joint")
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
         self._reset_arm_command = config.get("reset_arm_command", None)
-        self._is_debug = config.get("is_debug", True)
-        self._use_hardware = config.get("use_hardware", True)
+        self._reset_tool_command = config.get("reset_tool_command", [[1]])
+        self._is_debug = config.get("is_debug", False)
+        self._use_hardware = config.get("enable_hardware", True)
         log.info(f'execute hardware: {self._use_hardware}')
         
         self._robot_system = RobotFactory(robot_motion_cfg)
@@ -33,12 +37,20 @@ class GymApi(gym.Env):
         self._robot_motion.create_motion_components()
         if self._use_hardware:
             self._robot_motion.update_execute_hardware(True)
+            self._robot_system._use_hardware = True
         log.info("The robot motion component is successfully created in gym api!")
         
         # variable used for gym api
         self._step_counter = 0
         self.reset()
         
+    def set_init_pose(self):
+        time.sleep(1.0)
+        if self._use_relative_pose:
+            ee_states = self.get_ee_state()
+            for key, cur_ee_state in ee_states.items():
+                self._init_pose[key] = cur_ee_state["pose"]
+    
     def set_action_type(self, action_type: ActionType):
         self._action_type = action_type
         
@@ -78,9 +90,12 @@ class GymApi(gym.Env):
                 cur_arm_action = arm_action[index_l:index_r]
                 if self._action_ori_type == "euler":
                     cur_arm_action = np.hstack((cur_arm_action, [0]))
-                    cur_arm_action[3:] = R.from_euler(cur_arm_action[3:6]).as_quat()
+                    cur_arm_action[3:] = R.from_euler("xyz", cur_arm_action[3:6]).as_quat()
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
-                   cur_arm_action = transform_pose(pose, cur_arm_action, False)
+                   cur_arm_action = transform_pose(pose, cur_arm_action, True)
+                elif self._use_relative_pose:
+                    # for relative pose action representation
+                    cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
         else:
@@ -102,17 +117,22 @@ class GymApi(gym.Env):
             self._robot_motion.set_tool_command(np.array(tool_action))
         
         # obs
+        start = time.perf_counter()
         observation = self.get_observation()
+        # observation = {}
+        obs_time = time.perf_counter() - start
         reward, done = self.compute_rewards()
         done = done or (self._step_counter >= self._max_step_nums)
         info = self.get_info()
+        info['obs_time'] = obs_time
         
         return observation, reward, done, False, info
         
     def reset(self, *, seed = None, options = None):
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
-                                              tool_command=dict(single=np.array([1])))
+                                              tool_command=self._reset_tool_command)
+        self.set_init_pose()
     
     def get_joint_state(self):
         current_joint_state = self._robot_system.get_joint_states()
@@ -148,11 +168,19 @@ class GymApi(gym.Env):
         for i, ee_name in enumerate(end_effector_names):
             cur_model_type = model_types[i] if len(model_types) > 1 else model_types[0]
             frame_pose = self._robot_motion.get_frame_pose(ee_name, 
-                                                           cur_model_type)
+                                        cur_model_type, need_vel=True)
             key = ee_index[i]
-            poses[key] = dict(pose=frame_pose)
+            poses[key] = dict(pose=frame_pose[:7], twist=frame_pose[7:13])
         return poses
     
+    def get_relative_ee_pose(self):
+        ee_states = self.get_ee_state()
+        relative_pose = {}
+        for key, cur_ee_state in ee_states.items():
+            pose = cur_ee_state["pose"]
+            relative_pose[key] = pose_diff(pose, self._init_pose[key])
+        return relative_pose
+
     def get_camera_infos(self):
         cameras_data = self._robot_system.get_cameras_infos()
         if cameras_data is None: return None
@@ -173,15 +201,32 @@ class GymApi(gym.Env):
     
     @abc.abstractmethod
     def get_observation(self):
+        obs_state = {}
         joint_states = self.get_joint_state()
+        if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            if len(joint_states) == 0:
+                raise ValueError(f'Cur {self._obs_type} do not get joint states!!!')
         ee_states = self.get_ee_state()
-        camera_data = self.get_camera_infos()
+        if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            if len(ee_states) == 0:
+                raise ValueError(f'Cur {self._obs_type} do not get ee states!!!')
+        visual_ee_poses = {}
+        for key, pose in ee_states.items():
+            visual_ee_poses[key] = pose["pose"]
+        self._robot_motion.sim_visualize_tcp(visual_ee_poses)
         tools_dict = self.get_tool_state()
+        for key, joint_state in joint_states.items():
+            obs_state[key] = np.array([])
+            if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+                obs_state[key] = np.hstack((obs_state[key], joint_state["position"]))
+            if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+                obs_state[key] = np.hstack((obs_state[key], ee_states[key]["pose"]))
+            obs_state[key] = np.hstack((obs_state[key], tools_dict[key]["position"]))
         
         # other sensors: @TODO: zyx
         
-        obs_dict = {'joint_states': joint_states, 'ee_states': ee_states, 
-                    'tools': tools_dict, 'colors': camera_data["color"], 
+        camera_data = self.get_camera_infos()
+        obs_dict = {'state': obs_state, 'colors': camera_data["color"], 
                     'depths': camera_data["depth"]}
         return obs_dict
     
@@ -222,6 +267,12 @@ class GymApi(gym.Env):
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
         self._robot_motion.update_high_level_command(poses)
+        # visual for targets
+        visual_targets = {}
+        key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}
+        for cur_key, indecies in key.items():
+            visual_targets[cur_key] = poses[indecies[0]:indecies[1]]
+        self._robot_motion.sim_visualize_targets(visual_targets)
         if self._is_debug:
             self._wait_key('c', 'please press c to proceed next command!!!!')
     

@@ -15,7 +15,7 @@ class MujocoEnvCreator:
     Uses template-based configuration system for all settings.
     """
     
-    def __init__(self, config_path: str = "simulation/scene_config/example.yaml", 
+    def __init__(self, config_path: str = "simulation/scene_config/example.yaml",
                  template_path: str = "assets/scene_templates/scene_template.xml"):
         """Initialize the MuJoCo environment creator."""
         self.config_path = config_path
@@ -26,6 +26,10 @@ class MujocoEnvCreator:
         self.template_config = self._load_template_config()
         self.mj_model = None
         self.mj_data = None
+        self.scene_object_assets = []  # Store assets from scene objects to be merged later
+        self.scene_object_extensions = []  # Store extensions from scene objects to be merged later
+        self.scene_object_defaults = []  # Store defaults from scene objects to be merged later
+        self.scene_object_options = {}  # Store options from scene objects to be merged later
         
     def _load_config(self) -> Dict:
         """Load configuration from YAML file."""
@@ -318,6 +322,12 @@ class MujocoEnvCreator:
         full_path = self._get_full_path(model_path)
         if os.path.exists(full_path):
             if full_path.endswith('.xml'):
+                # First, extract and merge extensions, defaults, options and assets from the XML file
+                self._merge_extensions_from_xml(full_path, obj_name, preserve_names=is_mocap)
+                self._merge_defaults_from_xml(full_path, obj_name, preserve_names=is_mocap)
+                self._merge_options_from_xml(full_path)
+                self._merge_assets_from_xml(full_path, obj_name, preserve_names=is_mocap)
+                # Then inline the body content
                 self._inline_xml_content(body, full_path, obj_name, preserve_names=is_mocap)
             else:
                 # For non-XML files, create an include with a prefixed doclass
@@ -353,6 +363,9 @@ class MujocoEnvCreator:
                             for attr_name, attr_value in element.attrib.items():
                                 if attr_name == "name" and not preserve_names:
                                     new_element.set(attr_name, f"{obj_name}_{attr_value}")
+                                elif attr_name == "mesh" and not preserve_names:
+                                    # Also prefix mesh references to match the prefixed asset name
+                                    new_element.set(attr_name, f"{obj_name}_{attr_value}")
                                 else:
                                     new_element.set(attr_name, attr_value)
                             if element.text and element.text.strip():
@@ -377,6 +390,9 @@ class MujocoEnvCreator:
                                         if attr_name == "name":
                                             # Don't override the parent body name
                                             pass
+                                        elif attr_name == "childclass" and not preserve_names:
+                                            # Prefix childclass to match the prefixed default class
+                                            parent_body.set(attr_name, f"{obj_name}_{attr_value}")
                                         else:
                                             # Copy mocap and other attributes
                                             parent_body.set(attr_name, attr_value)
@@ -387,10 +403,50 @@ class MujocoEnvCreator:
                                         for attr_name, attr_value in sub_element.attrib.items():
                                             if attr_name == "name" and not preserve_names:
                                                 new_element.set(attr_name, f"{obj_name}_{attr_value}")
+                                            elif attr_name == "mesh" and not preserve_names:
+                                                # Also prefix mesh references to match the prefixed asset name
+                                                new_element.set(attr_name, f"{obj_name}_{attr_value}")
+                                            elif attr_name == "class" and not preserve_names:
+                                                # Prefix class references to match the prefixed default class
+                                                new_element.set(attr_name, f"{obj_name}_{attr_value}")
                                             else:
                                                 new_element.set(attr_name, attr_value)
                                         if sub_element.text and sub_element.text.strip():
                                             new_element.text = sub_element.text
+
+                                        # Copy child elements (e.g., <plugin> inside <geom>)
+                                        for child_elem in sub_element:
+                                            child_copy = ET.SubElement(new_element, child_elem.tag)
+                                            for child_attr_name, child_attr_value in child_elem.attrib.items():
+                                                # Prefix instance attribute if not preserving names
+                                                if child_attr_name == "instance" and not preserve_names:
+                                                    child_copy.set(child_attr_name, f"{obj_name}_{child_attr_value}")
+                                                else:
+                                                    child_copy.set(child_attr_name, child_attr_value)
+                                            if child_elem.text and child_elem.text.strip():
+                                                child_copy.text = child_elem.text
+
+                                            # Copy grandchild elements (e.g., <config> inside <plugin>)
+                                            for grandchild_elem in child_elem:
+                                                grandchild_copy = ET.SubElement(child_copy, grandchild_elem.tag)
+                                                grandchild_copy.attrib.update(grandchild_elem.attrib)
+                                                if grandchild_elem.text and grandchild_elem.text.strip():
+                                                    grandchild_copy.text = grandchild_elem.text
+                                else:
+                                    # Handle elements directly under worldbody (not in a body tag)
+                                    # These should be added directly to parent_body
+                                    if body_element.tag in ["geom", "site", "joint", "inertial"]:
+                                        new_element = ET.SubElement(parent_body, body_element.tag)
+                                        for attr_name, attr_value in body_element.attrib.items():
+                                            if attr_name == "name" and not preserve_names:
+                                                new_element.set(attr_name, f"{obj_name}_{attr_value}")
+                                            elif attr_name == "mesh" and not preserve_names:
+                                                # Also prefix mesh references to match the prefixed asset name
+                                                new_element.set(attr_name, f"{obj_name}_{attr_value}")
+                                            else:
+                                                new_element.set(attr_name, attr_value)
+                                        if body_element.text and body_element.text.strip():
+                                            new_element.text = body_element.text
                     break
 
         except Exception as e:
@@ -424,18 +480,24 @@ class MujocoEnvCreator:
     
     def generate_xml(self) -> str:
         """Generate the complete XML string for the MuJoCo scene."""
+        # Reset scene object collections for fresh generation
+        self.scene_object_assets = []
+        self.scene_object_extensions = []
+        self.scene_object_defaults = []
+        self.scene_object_options = {}
+
         root = ET.Element("mujoco")
         root.set("model", "generated_scene")
-        
+
         # Add all sections from template
         for section in ["compiler", "statistic", "visual", "default", "option", "asset", "worldbody"]:
             self._add_template_section(root, section)
-        
+
         # Get worldbody for robot and objects
         worldbody = root.find("worldbody")
         if worldbody is None:
             worldbody = ET.SubElement(root, "worldbody")
-        
+
         # Add robot and scene objects using include mechanism
         # Support both single robot and multiple robots configuration
         robot_config = self.config.get("robot", None)
@@ -447,7 +509,14 @@ class MujocoEnvCreator:
         for robot in self.config.get("robots", []):
             self._add_robot_assets_and_worldbody(robot, root, worldbody)
 
+        # Add scene objects to worldbody (this will collect assets)
         self._add_scene_objects_to_worldbody(worldbody)
+
+        # Now merge collected scene object elements into the main sections
+        self._merge_collected_scene_extensions(root)
+        self._merge_collected_scene_defaults(root)
+        self._merge_collected_scene_options(root)
+        self._merge_collected_scene_assets(root)
 
         # Add cameras to worldbody
         self._add_cameras_to_worldbody(worldbody)
@@ -456,6 +525,154 @@ class MujocoEnvCreator:
 
         return ET.tostring(root, encoding='unicode')
     
+    def _merge_collected_scene_assets(self, root: ET.Element) -> None:
+        """Merge collected scene object assets into the main asset section."""
+        if not self.scene_object_assets:
+            return
+
+        main_asset = root.find("asset")
+        if main_asset is None:
+            main_asset = ET.SubElement(root, "asset")
+
+        for asset_data in self.scene_object_assets:
+            # Check if this asset already exists (by name)
+            asset_name = asset_data['attrib'].get('name', '')
+            exists = False
+            if asset_name:
+                for existing in main_asset:
+                    if existing.tag == asset_data['tag'] and existing.get('name') == asset_name:
+                        exists = True
+                        break
+
+            if not exists:
+                new_asset = ET.SubElement(main_asset, asset_data['tag'])
+                new_asset.attrib.update(asset_data['attrib'])
+                if asset_data['text']:
+                    new_asset.text = asset_data['text']
+
+                # Add child elements (e.g., <plugin> inside <mesh>)
+                for child_data in asset_data.get('children', []):
+                    child_element = ET.SubElement(new_asset, child_data['tag'])
+                    child_element.attrib.update(child_data['attrib'])
+                    if child_data['text']:
+                        child_element.text = child_data['text']
+
+                log.info(f"Merged scene object asset: {asset_data['tag']} name={asset_name}")
+
+    def _merge_collected_scene_extensions(self, root: ET.Element) -> None:
+        """Merge collected scene object extensions into the main extension section."""
+        if not self.scene_object_extensions:
+            return
+
+        main_extension = root.find("extension")
+        if main_extension is None:
+            # Insert extension before asset (MuJoCo requires extension to come before asset)
+            main_asset = root.find("asset")
+            if main_asset is not None:
+                asset_index = list(root).index(main_asset)
+                main_extension = ET.Element("extension")
+                root.insert(asset_index, main_extension)
+            else:
+                main_extension = ET.SubElement(root, "extension")
+
+        # Group extensions by plugin type
+        plugins_dict = {}
+        for ext_data in self.scene_object_extensions:
+            plugin_name = ext_data['plugin']
+            if plugin_name not in plugins_dict:
+                plugins_dict[plugin_name] = []
+            plugins_dict[plugin_name].append(ext_data)
+
+        # Create or update plugin elements
+        for plugin_name, instances in plugins_dict.items():
+            # Find or create plugin element
+            plugin_elem = None
+            for existing_plugin in main_extension.findall("plugin"):
+                if existing_plugin.get("plugin") == plugin_name:
+                    plugin_elem = existing_plugin
+                    break
+
+            if plugin_elem is None:
+                plugin_elem = ET.SubElement(main_extension, "plugin")
+                plugin_elem.set("plugin", plugin_name)
+
+            # Add instances
+            for ext_data in instances:
+                instance_name = ext_data['instance_name']
+
+                # Check if instance already exists
+                instance_exists = False
+                for existing_instance in plugin_elem.findall("instance"):
+                    if existing_instance.get("name") == instance_name:
+                        instance_exists = True
+                        break
+
+                if not instance_exists:
+                    instance_elem = ET.SubElement(plugin_elem, "instance")
+                    instance_elem.set("name", instance_name)
+
+                    # Add config entries
+                    for config_data in ext_data['configs']:
+                        config_elem = ET.SubElement(instance_elem, "config")
+                        config_elem.set("key", config_data['key'])
+                        config_elem.set("value", config_data['value'])
+
+                    log.info(f"Merged scene object extension: {plugin_name} instance={instance_name}")
+
+    def _merge_collected_scene_defaults(self, root: ET.Element) -> None:
+        """Merge collected scene object defaults into the main default section."""
+        if not self.scene_object_defaults:
+            return
+
+        main_default = root.find("default")
+        if main_default is None:
+            main_default = ET.SubElement(root, "default")
+
+        for default_data in self.scene_object_defaults:
+            class_name = default_data['prefixed_class']
+
+            # Check if this class already exists
+            class_exists = False
+            for existing in main_default.findall("default"):
+                if existing.get("class") == class_name:
+                    class_exists = True
+                    break
+
+            if not class_exists:
+                # Reconstruct the element from serialized data
+                default_elem = self._deserialize_element(default_data)
+                main_default.append(default_elem)
+                log.info(f"Merged scene object default class: {class_name}")
+
+    def _deserialize_element(self, elem_data: Dict) -> ET.Element:
+        """Deserialize a dictionary structure back into an XML element."""
+        element = ET.Element(elem_data['tag'])
+        element.attrib.update(elem_data['attrib'])
+        if elem_data['text']:
+            element.text = elem_data['text']
+
+        # Recursively deserialize children
+        for child_data in elem_data.get('children', []):
+            child_elem = self._deserialize_element(child_data)
+            element.append(child_elem)
+
+        return element
+
+    def _merge_collected_scene_options(self, root: ET.Element) -> None:
+        """Merge collected scene object options into the main option section."""
+        if not self.scene_object_options:
+            return
+
+        main_option = root.find("option")
+        if main_option is None:
+            main_option = ET.SubElement(root, "option")
+
+        for attr_name, attr_value in self.scene_object_options.items():
+            # Only set if not already defined in main option
+            if attr_name not in main_option.attrib:
+                main_option.set(attr_name, attr_value)
+                log.info(f"Merged scene object option: {attr_name}={attr_value}")
+
     def _merge_compiler_settings(self, root: ET.Element, source_xml: ET.Element, robot_path: str) -> None:
         """Merge compiler settings from robot XML, adjusting meshdir to be relative to robot model."""
         robot_compiler = source_xml.find("compiler")
@@ -476,12 +693,174 @@ class MujocoEnvCreator:
                 main_compiler.set("meshdir", full_meshdir)
                 log.debug(f"Set meshdir to: {full_meshdir}")
 
+    def _merge_assets_from_xml(self, xml_path: str, obj_name: str, preserve_names: bool = False) -> None:
+        """Extract and merge assets from an XML file into the scene's asset collection.
+
+        Args:
+            xml_path: Path to the XML file containing assets
+            obj_name: Name of the object (used for prefixing asset names)
+            preserve_names: If True, preserve original asset names
+        """
+        try:
+            # Parse the object XML file
+            obj_xml = ET.parse(xml_path).getroot()
+            obj_asset = obj_xml.find("asset")
+
+            if obj_asset is not None:
+                # Get the directory containing the object XML for relative mesh paths
+                obj_dir = os.path.dirname(xml_path)
+
+                for child in obj_asset:
+                    # Create a copy of the asset element
+                    asset_data = {
+                        'tag': child.tag,
+                        'attrib': dict(child.attrib),
+                        'text': child.text,
+                        'children': []  # Store child elements like <plugin>
+                    }
+
+                    # Prefix the asset name if not preserving names
+                    if 'name' in asset_data['attrib'] and not preserve_names:
+                        asset_data['attrib']['name'] = f"{obj_name}_{asset_data['attrib']['name']}"
+
+                    # Handle mesh file paths - use absolute paths to avoid meshdir conflicts
+                    if child.tag == 'mesh' and 'file' in asset_data['attrib']:
+                        mesh_file = asset_data['attrib']['file']
+                        # If it's a relative path, resolve it relative to the object XML directory
+                        if not os.path.isabs(mesh_file):
+                            full_mesh_path = os.path.join(obj_dir, mesh_file)
+                            # Use absolute path to avoid conflicts with compiler meshdir
+                            asset_data['attrib']['file'] = full_mesh_path
+
+                    # Handle child elements (e.g., <plugin> inside <mesh>)
+                    for sub_child in child:
+                        child_data = {
+                            'tag': sub_child.tag,
+                            'attrib': dict(sub_child.attrib),
+                            'text': sub_child.text
+                        }
+
+                        # Prefix instance attribute in plugin if not preserving names
+                        if sub_child.tag == 'plugin' and 'instance' in child_data['attrib'] and not preserve_names:
+                            child_data['attrib']['instance'] = f"{obj_name}_{child_data['attrib']['instance']}"
+
+                        asset_data['children'].append(child_data)
+
+                    self.scene_object_assets.append(asset_data)
+                    log.info(f"Collected asset from {obj_name}: {child.tag} name={asset_data['attrib'].get('name', 'N/A')}")
+
+        except Exception as e:
+            log.error(f"Error merging assets from XML {xml_path}: {e}")
+
+    def _merge_extensions_from_xml(self, xml_path: str, obj_name: str, preserve_names: bool = False) -> None:
+        """Extract and merge extensions from an XML file into the scene's extension collection.
+
+        Args:
+            xml_path: Path to the XML file containing extensions
+            obj_name: Name of the object (used for prefixing instance names)
+            preserve_names: If True, preserve original instance names
+        """
+        try:
+            # Parse the object XML file
+            obj_xml = ET.parse(xml_path).getroot()
+            obj_extension = obj_xml.find("extension")
+
+            if obj_extension is not None:
+                for plugin in obj_extension.findall("plugin"):
+                    plugin_name = plugin.get("plugin", "")
+
+                    for instance in plugin.findall("instance"):
+                        # Create a copy of the plugin instance
+                        extension_data = {
+                            'plugin': plugin_name,
+                            'instance_name': instance.get("name", ""),
+                            'configs': []
+                        }
+
+                        # Prefix the instance name if not preserving names
+                        if not preserve_names:
+                            extension_data['instance_name'] = f"{obj_name}_{extension_data['instance_name']}"
+
+                        # Collect all config entries
+                        for config in instance.findall("config"):
+                            config_data = {
+                                'key': config.get("key", ""),
+                                'value': config.get("value", "")
+                            }
+                            extension_data['configs'].append(config_data)
+
+                        self.scene_object_extensions.append(extension_data)
+                        log.info(f"Collected extension from {obj_name}: {plugin_name} instance={extension_data['instance_name']}")
+
+        except Exception as e:
+            log.error(f"Error merging extensions from XML {xml_path}: {e}")
+
+    def _merge_defaults_from_xml(self, xml_path: str, obj_name: str, preserve_names: bool = False) -> None:
+        """Extract and merge defaults from an XML file into the scene's default collection."""
+        try:
+            obj_xml = ET.parse(xml_path).getroot()
+            obj_default = obj_xml.find("default")
+
+            if obj_default is not None:
+                for child in obj_default:
+                    if child.tag == "default" and child.get("class"):
+                        class_name = child.get("class")
+                        # Prefix class name if not preserving names
+                        prefixed_class_name = f"{obj_name}_{class_name}" if not preserve_names else class_name
+
+                        # Deep copy the entire default class element tree
+                        default_data = self._serialize_element(child, obj_name, preserve_names)
+                        default_data['original_class'] = class_name
+                        default_data['prefixed_class'] = prefixed_class_name
+
+                        self.scene_object_defaults.append(default_data)
+                        log.info(f"Collected default class from {obj_name}: {class_name} -> {prefixed_class_name}")
+
+        except Exception as e:
+            log.error(f"Error merging defaults from XML {xml_path}: {e}")
+
+    def _serialize_element(self, element: ET.Element, obj_name: str, preserve_names: bool) -> Dict:
+        """Serialize an XML element and its children into a dictionary structure."""
+        elem_data = {
+            'tag': element.tag,
+            'attrib': dict(element.attrib),
+            'text': element.text,
+            'children': []
+        }
+
+        # Prefix class attribute if needed
+        if 'class' in elem_data['attrib'] and not preserve_names:
+            elem_data['attrib']['class'] = f"{obj_name}_{elem_data['attrib']['class']}"
+
+        # Recursively serialize children
+        for child in element:
+            child_data = self._serialize_element(child, obj_name, preserve_names)
+            elem_data['children'].append(child_data)
+
+        return elem_data
+
+    def _merge_options_from_xml(self, xml_path: str) -> None:
+        """Extract and merge options from an XML file."""
+        try:
+            obj_xml = ET.parse(xml_path).getroot()
+            obj_option = obj_xml.find("option")
+
+            if obj_option is not None:
+                # Merge option attributes (keep the most specific value)
+                for attr_name, attr_value in obj_option.attrib.items():
+                    if attr_name not in self.scene_object_options:
+                        self.scene_object_options[attr_name] = attr_value
+                        log.info(f"Collected option: {attr_name}={attr_value}")
+
+        except Exception as e:
+            log.error(f"Error merging options from XML {xml_path}: {e}")
+
     def _merge_assets(self, root: ET.Element, source_xml: ET.Element) -> None:
         """Merge asset definitions from source XML into root."""
         main_asset = root.find("asset")
         if main_asset is None:
             main_asset = ET.SubElement(root, "asset")
-        
+
         source_asset = source_xml.find("asset")
         if source_asset is not None:
             for child in source_asset:

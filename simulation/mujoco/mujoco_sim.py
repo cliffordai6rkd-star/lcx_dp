@@ -51,7 +51,6 @@ class MujocoSim(SimBase):
         
         # parse model
         self.parse_config()
-        # self.viewer = None
         
         # start mujoco thread
         self._theread_running = True
@@ -65,15 +64,11 @@ class MujocoSim(SimBase):
             raise RuntimeError("Mujoco model and data are not initialized.")
         
         # main simulation loop
-        print("Starting Mujoco simulation main loop...")
+        log.info("Starting Mujoco simulation main loop...")
         self._model.opt.timestep = self._dt
         with mujoco.viewer.launch_passive(self._model, self._data, show_right_ui=True) as viewer:
             # Enable site frame visualization.
             viewer.opt.frame = mujoco.mjtFrame.mjFRAME_SITE
-            # viewer.user_scn.ngeom = 0
-            # viewer.sync()
-            # if self.viewer is None:
-            #     self.viewer = viewer
             for i in range(self._traj_max_len):
                 self._add_geometry(viewer, [0,0,0], i)
             viewer.user_scn.ngeom = self._traj_max_len

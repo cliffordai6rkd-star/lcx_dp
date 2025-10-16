@@ -1,4 +1,11 @@
-from NetFT import Sensor as ATI
+# Try to import NetFT, fall back to mock if not available
+try:
+    from NetFT import Sensor as ATI
+except (ImportError, ModuleNotFoundError):
+    import glog as log
+    log.warning("NetFT not available, using mock implementation")
+    from hardware.mocks.mock_netft import Sensor as ATI
+
 from hardware.base.ft import FTBase
 import glog as log
 import time, copy

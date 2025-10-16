@@ -96,6 +96,7 @@ class SpaceMouse(TeleoperationDeviceBase):
             
             self.target_updated = True
             dt = time.time() - start_time
+            start_time = time.time()
             # cur_freq = (1.0/dt)
             # if cur_freq < min_freq:
             #     min_freq = cur_freq
@@ -103,12 +104,10 @@ class SpaceMouse(TeleoperationDeviceBase):
             if  dt < (1.0 / self._frequency):
                 sleep_time = (1.0 / self._frequency) - dt 
                 time.sleep(sleep_time)
-            elif dt > 1.3 / self._frequency:
-                log.warn("The frequency for reading the space mouse data is slower than the" 
-                              f"use specified frequency, expected: {self._frequency}, actual: {1.0 /dt}!")
-            
-            start_time = time.time()
-                
+            # elif dt > 1.3 / self._frequency:
+            #     log.warn("The frequency for reading the space mouse data is slower than the" 
+            #                   f"use specified frequency, expected: {self._frequency}, actual: {1.0 /dt}!")
+                            
         log.info(f'Space mouse with id {self._device_id} closes the data update thread!!!!')
 
     def parse_data_2_robot_target(self, mode: str) -> np.ndarray:
@@ -129,7 +128,7 @@ class SpaceMouse(TeleoperationDeviceBase):
         buttons = np.array([self._data.buttons[0], self._data.buttons[1]])
         self.lock.release()
         
-        if mode == 'absolute':
+        if 'absolute' in mode:
             raise ValueError("Unsupport mode for the absolute pose from 3d space mouse!")
         elif mode == 'relative':
             low_thresh_flag = np.all(np.array(np.abs(data)) < np.array(self._lower_threshold))

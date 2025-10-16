@@ -1,15 +1,18 @@
 import abc, os
 import enum
-from dataset.lerobot.reader import RerunEpisodeReader, ActionType
+from dataset.lerobot.reader import RerunEpisodeReader, ActionType, ObservationType
 import glog as log
 
 class DataLoaderBase(abc.ABC, metaclass=abc.ABCMeta):
-    def __init__(self, config, task_dir:str, json_file_name:str = "data.json", action_type:ActionType = ActionType.JOINT_POSITION):
+    def __init__(self, config, task_dir:str, json_file_name:str = "data.json", action_type:ActionType = ActionType.JOINT_POSITION,
+                 observation_type = ObservationType.JOINT_POSITION_ONLY):
         self._config = config
         self._action_prediction_step = config.get("action_prediction_step", 2)
         self._action_type = action_type
+        self._obs_type = observation_type
         self._action_ori_type = config.get("action_ori_type", "euler")
-        self._contain_ee_obs = config.get("contain_ee_obs", False)
+        self._rotation_transform = config.get("rotation_transform", None)
+        self._contain_ft = config.get(f'contain_ft', False)
         self._task_dir = task_dir
         self._json_file = json_file_name
         self._lack_data_json_list = []
@@ -22,7 +25,9 @@ class DataLoaderBase(abc.ABC, metaclass=abc.ABCMeta):
                                                   json_file=self._json_file,
                                                   action_type=self._action_type,
                                                   action_prediction_step=self._action_prediction_step,
-                                                  action_ori_type=self._action_ori_type)
+                                                  action_ori_type=self._action_ori_type,
+                                                  observation_type=self._obs_type,
+                                                  rotation_transform=self._rotation_transform)
         if 'episode' in episode_dir:
             episode_number = int(episode_dir.lstrip("episode_"))
             episode_id = episode_number

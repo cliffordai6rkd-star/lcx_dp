@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from hardware.base.arm import ArmBase
 import numpy as np
-from panda_py import controllers 
-# import panda_py.constants
-from panda_py import Panda
+
+# Try to import panda_py, fall back to mock if not available
+try:
+    from panda_py import controllers
+    # import panda_py.constants
+    from panda_py import Panda
+except (ImportError, FileNotFoundError):
+    import glog as log
+    log.warning("panda_py not available, using mock implementation")
+    from hardware.mocks.mock_panda_py import controllers, Panda
+
 import threading
 import time
 from scipy.spatial.transform import Rotation as R
@@ -21,6 +29,7 @@ class Fr3Arm(ArmBase):
         self._collision_behaviour = config.get("collision_behaviour", None)
         self._control_mode = None
         self._need_recover = False
+        self._controller_lock = threading.Lock()
         self._thread = threading.Thread(target=self.update_robot_state_thread)
         self._last_velocities = np.zeros(7)
         self._fr3_state = None
@@ -32,7 +41,8 @@ class Fr3Arm(ArmBase):
         super().__init__(config)
     
     def update_robot_state_thread(self):
-        read_frequency = 800
+        read_frequency = 500
+        read_dt = 1.0 / read_frequency 
         
         last_read_time = time.perf_counter()
         while self._thread_running:
@@ -41,6 +51,7 @@ class Fr3Arm(ArmBase):
             
             # diff acceleration
             self._fr3_state = self._fr3_robot.get_state()
+            state_reading_time = time.perf_counter() - last_read_time
             self._fr3_state_update_flag = True
             self._joint_states._accelerations = (np.array(self._fr3_state.dq) - self._last_velocities) / dt
             self._last_velocities = np.array(self._fr3_state.dq)
@@ -50,12 +61,11 @@ class Fr3Arm(ArmBase):
                 self.update_arm_states()
             
             # @TODO: check why the reading thread is slow
-            read_dt = 1.0 / read_frequency 
             if dt < read_dt:
                 time.sleep(read_dt - dt)
             # elif dt > 2.0 / read_frequency:
-            #     log.warn(f"Reading fr3 robot state is slower than the read frequency "
-            #                   f"{read_frequency}Hz, actual: {1.0 / dt}Hz")
+            #     log.warn(f"Reading fr3 robot {self._ip} state is slower than the read frequency "
+            #         f"{read_frequency}Hz, actual: {1.0 / dt}Hz, reading freq: {1.0/state_reading_time}Hz")
         log.info(f'Fr3 with ip {self._ip} stopped its thread!!!')
             
     def initialize(self):
@@ -79,7 +89,7 @@ class Fr3Arm(ArmBase):
             not isinstance(self._panda_py_controller, controllers.PureTorque):
             self._panda_py_controller.set_filter(self._filter_coefficient)
         # controller start
-        with self._lock:
+        with self._controller_lock:
             self._fr3_robot.start_controller(self._panda_py_controller)    
 
         if not self._is_initialized:
@@ -159,7 +169,7 @@ class Fr3Arm(ArmBase):
             time.sleep(1.0)
             self._fr3_state_update_flag = False
             while not self._fr3_state_update_flag:
-                pass
+                time.sleep(0.001)
             log.info(f'Successfully finished the reset procedures!!!!')
             time.sleep(0.5)
             self._need_recover = False
@@ -220,11 +230,11 @@ class Fr3Arm(ArmBase):
             self.stop_controller()
             
             # Only acquire lock for the actual recover call
-            self._lock.acquire()
+            self._controller_lock.acquire()
             try:
                 self._fr3_robot.recover()
             finally:
-                self._lock.release()
+                self._controller_lock.release()
             
             self.initialize()
             self._recovery_occurred = True  # Mark that recovery happened
@@ -238,11 +248,11 @@ class Fr3Arm(ArmBase):
             self.stop_controller()
             
             # Only acquire lock for the actual move_to_start call
-            self._lock.acquire()
+            self._controller_lock.acquire()
             try:
                 self._fr3_robot.move_to_start()
             finally:
-                self._lock.release()
+                self._controller_lock.release()
         else:
             if joint_commands is not None:
                 if len(joint_commands) != 7:
@@ -291,7 +301,7 @@ class Fr3Arm(ArmBase):
             return False
         
         self._fr3_robot.get_robot().set_collision_behavior(torque_min, torque_max,
-                                                           force_min, force_max)
+            torque_min, torque_max, force_min, force_max, force_min, force_max)
         
 
 if __name__ == '__main__':
@@ -304,40 +314,51 @@ if __name__ == '__main__':
     with open(cfg_file, 'r') as stream:
         config = yaml.safe_load(stream)
     log.info(f'yaml data: {config}')
-    fr3 = Fr3Arm(config['fr3'])
+    # fr3 = Fr3Arm(config['fr3'])
     
-    test_mode = "position"
-    test_times = 10
-    counter = 0
-    joint_id = 6
-    test_value = 0.1
-    init_state = fr3.get_joint_states()
-    while counter <= test_times:
-        joint_state = fr3.get_joint_states()
-        # log.info(f'joint acc: {joint_state._accelerations}')
-        log.info(f'tor: {joint_state._torques}')
-        # fr3.log.info_state()
-        if test_mode == "position":
-            joint_command = init_state._positions
-            if counter % 2 == 0:
-                joint_command[joint_id] +=  test_value
-            else:
-                joint_command[joint_id] -= test_value
-            init_state._positions = joint_command
-        elif test_mode == "torque":
-            joint_command = init_state._torques
-            if counter % 2 == 0:
-                joint_command[joint_id] = test_value
-            else:
-                joint_command[joint_id] = -test_value
-        else:
-            raise ValueError(f"Not support for mode {test_mode}")
+    # test_mode = "position"
+    # test_times = 10
+    # counter = 0
+    # joint_id = 6
+    # test_value = 0.1
+    # init_state = fr3.get_joint_states()
+    # while counter <= test_times:
+    #     joint_state = fr3.get_joint_states()
+    #     # log.info(f'joint acc: {joint_state._accelerations}')
+    #     log.info(f'tor: {joint_state._torques}')
+    #     # fr3.log.info_state()
+    #     if test_mode == "position":
+    #         joint_command = init_state._positions
+    #         if counter % 2 == 0:
+    #             joint_command[joint_id] +=  test_value
+    #         else:
+    #             joint_command[joint_id] -= test_value
+    #         init_state._positions = joint_command
+    #     elif test_mode == "torque":
+    #         joint_command = init_state._torques
+    #         if counter % 2 == 0:
+    #             joint_command[joint_id] = test_value
+    #         else:
+    #             joint_command[joint_id] = -test_value
+    #     else:
+    #         raise ValueError(f"Not support for mode {test_mode}")
         
-        log.info(f'command: {joint_command}, mode: {test_mode}')
-        fr3.set_joint_command(test_mode, joint_command)
+    #     log.info(f'command: {joint_command}, mode: {test_mode}')
+    #     fr3.set_joint_command(test_mode, joint_command)
         
-        counter += 1     
-        time.sleep(0.1)
+    #     counter += 1     
+    #     time.sleep(0.1)
         
+    # read test
+    fr3 = Panda('192.168.1.206')
+    test_nums = 50000
+    total_time = 0.0
+    for i in range(test_nums):
+        start = time.perf_counter()
+        state = fr3.get_state()
+        used_time = time.perf_counter() - start
+        total_time += used_time
+        log.info(f'state read used time {used_time * 1000}ms, freq: {1.0 / used_time}')
+    log.info(f'avg freq: {test_nums / total_time}Hz')
     log.info('Exit the testing of fr3 arm!!!!')
     

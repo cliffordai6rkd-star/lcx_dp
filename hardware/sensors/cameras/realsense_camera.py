@@ -1,4 +1,11 @@
-import pyrealsense2 as rs
+# Try to import pyrealsense2, fall back to mock if not available
+try:
+    import pyrealsense2 as rs
+except (ImportError, ModuleNotFoundError):
+    import glog as log
+    log.warning("pyrealsense2 not available, using mock implementation")
+    from hardware.mocks import mock_pyrealsense2 as rs
+
 from hardware.base.camera import CameraBase
 import warnings, threading, time
 import numpy as np
@@ -55,21 +62,22 @@ class RealsenseCamera(CameraBase):
         while self._image_data is None:
             pass
         
-        print(f'The realsesne camera is successfully initialized!!!')
+        log.info(f'The realsesne camera {self._serial_number} is successfully initialized!!!')
         return True
         
     def update_camera_thread(self):
-        print(f'Realsense camera {self._serial_number} thread started!!!')
+        log.info(f'Realsense camera {self._serial_number} thread started!!!')
 
-        last_read_time = time.time()
+        last_read_time = time.perf_counter()
         while self._thread_running:
             # frame reading
-            # start = time.perf_counter()
+            start = time.perf_counter()
             frames = self._pipeline.wait_for_frames() # blocking
             # frame_time = time.perf_counter()
             # log.info(f'get frame used time: {frame_time - start}s')
             aligned_frames = self._align.process(frames)
             # log.info(f'align frame used time: {time.perf_counter() - frame_time}s')
+            reading_total = time.perf_counter() - start
             # log.info(f'get frame total time: {time.perf_counter() - start}s')
             
             color_frame = aligned_frames.get_color_frame()
@@ -99,21 +107,23 @@ class RealsenseCamera(CameraBase):
                                            gyro_data.x, gyro_data.y, gyro_data.z])
             self._lock.release()
             
-            dt = time.time() - last_read_time
+            dt = time.perf_counter() - last_read_time
+            last_read_time = time.perf_counter()
+            # log.info(f'real freq for realsense camera: {1.0/dt}Hz')
             if dt < (1.0 / self._fps):
                 sleep_time = (1.0 / self._fps) - dt
-                time.sleep(0.8 * sleep_time)
-            elif dt > 1.2 / self._fps:
-                warnings.warn(f'Camera could not reach the {self._fps}hz, '
-                              f'actual freq: {1.0 / dt}hz')
-            last_read_time = time.time()
-        print(f'Realsense {self._serial_number} thread is suceessfully stopped!!')
+                time.sleep(sleep_time)
+            # elif dt > 1.2 / self._fps:
+            #     log.warn(f'Camera could not reach the {self._fps}hz, '
+            #         f'actual freq: {1.0 / dt}hz, img reading freq: {1.0 / reading_total}hz')
+        
+        log.info(f'Realsense {self._serial_number} thread is suceessfully stopped!!')
     
     def close(self):
         self._thread_running = False
         self._thread_handler.join()
         self._pipeline.stop()
-        print(f'Realsense {self._serial_number} is successfully closed!!!')
+        log.info(f'Realsense {self._serial_number} is successfully closed!!!')
     
 if __name__ == "__main__":
     import os, yaml

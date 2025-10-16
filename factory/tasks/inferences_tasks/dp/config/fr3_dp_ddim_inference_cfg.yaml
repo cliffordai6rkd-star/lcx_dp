@@ -1,11 +1,28 @@
-# gym interface configuration
-max_step_nums: 150
-num_episodes: 10
+# gym
+# reset_arm_command: [3.69019823e-01,  1.99873044e-04,  3.64437265e-01,  9.99989858e-01,
+#                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
+# reset_space: "cartesian"
+# robot + motion factory
+motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
+max_step_nums: 150 # for gym steps
 action_type: "joint_position"
-reset_space: "joint"
-obs_contain_ee: false
+action_orientation_type: "euler"
 is_debug: false
+reset_space: "joint"
+# reset_arm_command: [-0.0016708960744338654, -0.7861180279768628, 
+#                       0.0011242960248884306, -2.3515749674770583, 
+#                       -0.0019059956649008665, 1.581831610375827, 
+#                       0.7904221443917989]
+reset_tool_command: [[1]]
+
+enable_display: true
 display_window_name: "dp ddim inference"
+enable_plotting: true
+
+num_episodes: 45
+max_timestamps: 1500
+action_weight_mode: "no"
+async_execution: false
 
 # diffusion policy model configuration
 # checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0917/pick_n_place_abs_jps/epoch=0250-train_loss=0.002411.ckpt"
@@ -21,9 +38,6 @@ checkpoint_path: "/home/yuxuan/Code/hirol/checkpoints/dp/fr3/0926/solid_transfer
 # DDIM inference parameters
 seed: 42
 device: "cuda"  # "cuda" or "cpu"
-enable_display: true     # show camera feeds
-frequency: 800.0          # Control frequency in Hz
-aync_execution: true
 
 # DDIM specific settings
 inference_scheduler_type: "ddim"  # "ddim" or "ddpm"
@@ -33,6 +47,3 @@ ddim_eta: 0.0                     # DDIM eta参数，0.0为确定性采样
 
 # logging configuration
 log_level: "info"  # "debug", "info", "warning", "error"
-
-# robot + motion factory
-motion_config: !include factory/components/motion_configs/fr3_with_franka_hand_ik.yaml

@@ -14,10 +14,14 @@ services:
       # 使用以下指令来排查： ls -la /tmp/.docker.xauth和xauth -f /tmp/.docker.xauth list
     volumes:
       - ../../:/workspace
-      - /tmp/.X11-unix:/tmp/.X11-unix
-      - $HOME/.Xauthority:/root/.Xauthority
+      # - $HOME/Code/hirol:/home/teleophost/zyx
+      # - $HOME/.ssh/id_rsa:/home/teleophost/.ssh/id_rsa
+      # - $HOME/.ssh/id_rsa.pub:/home/teleophost/.ssh/id_rsa.pub
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-$HOME/.Xauthority}:ro
+      # - $HOME/.Xauthority:/home/teleophost/.Xauthority
       # 针对ssh 到服务器使用docker的GUI映射支持  
-      - /tmp/.docker.xauth:/tmp/.docker.xauth:ro
+      # - /tmp/.docker.xauth:/tmp/.docker.xauth:ro
       - /sys/bus/usb:/sys/bus/usb:ro
       - /sys/class/input:/sys/class/input:ro
       # 绑定HTC TRACKER的config
@@ -29,7 +33,8 @@ services:
       - ROS_DOMAIN_ID=13
       - DISPLAY=${DISPLAY}
       # 针对ssh 到服务器使用docker的GUI映射支持
-      - XAUTHORITY=/tmp/.docker.xauth
+      # - XAUTHORITY=/tmp/.docker.xauth
+      - XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
       - http_proxy=
       - https_proxy=
       - no_proxy=
@@ -51,6 +56,7 @@ services:
     user: teleophost
     network_mode: host
     stdin_open: true
+    gpus: all
     group_add:
       - "plugdev"  # 添加用户组
       - "input"      # 添加input组，用于访问输入设备
@@ -59,9 +65,9 @@ services:
     command: ["tail", "-f", "/dev/null"]
     deploy:
       resources:
-        limits:
-          memory: 32G
-          cpus: '20.0'
+        # limits:
+        #   memory: 32G
+        #   cpus: '20.0'
         reservations:
           devices:
             - driver: nvidia

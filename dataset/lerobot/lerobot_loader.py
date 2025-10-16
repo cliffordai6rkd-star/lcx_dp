@@ -1,19 +1,23 @@
-from reader import ActionType, Action_Type_Mapping_Dict
+from reader import ActionType, Action_Type_Mapping_Dict, ObservationType
 from dataset.lerobot.data_loader_base import DataLoaderBase
 from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-import os, warnings
+import os
 import numpy as np
 from tqdm import tqdm
 import glog as log
 import cv2
 
 class LerobotLoader(DataLoaderBase):
-    def __init__(self, config, task_dir, json_file_name = "data.json", action_type = ActionType.JOINT_POSITION):
-        super().__init__(config, task_dir, json_file_name, action_type)
+    def __init__(self, config, task_dir, json_file_name = "data.json", action_type = ActionType.JOINT_POSITION,
+                 observation_type = ObservationType.JOINT_POSITION_ONLY):
+        super().__init__(config, task_dir, json_file_name, action_type, observation_type)
+        self._observation_type = observation_type
         self._push_to_repo = self._config.get("push_to_repo", False)
         self._robot_name = config.get("robot_name", "fr3")
         self._repo_name = config.get("repo_name", "peg_in_hole")
         self._task_list = config.get("task_list", None)
+        self._contain_depth = config.get(f'contain_depth', False)
+        self._custom_prompt = config.get("custom_prompt", None)
         self._output_root_path = config.get("root_path", "../assets/data")
         cur_path = os.path.dirname(os.path.abspath(__file__))
         self._output_root_path = os.path.join(cur_path, self._output_root_path)
@@ -29,6 +33,9 @@ class LerobotLoader(DataLoaderBase):
                 if not os.path.exists(cur_task_dir):
                     raise ValueError(f'{cur_task_dir} did not exist, please check the value of task dir and task list')
                 self._task_list[i] = cur_task_dir
+        if self._custom_prompt:
+            assert len(self._custom_prompt) == len(self._task_list), \
+            f'custom prompt dimension mismatch, prompt len: {len(self._custom_prompt)} task len: {len(self._task_list)}'
         
     def get_example_feature_dim(self, example_step):
         # try to confirm the images and state length,
@@ -38,31 +45,23 @@ class LerobotLoader(DataLoaderBase):
         for key, image in images.items():
             self._image_keys.append(key)
             self._image_resolutions.append(tuple(image.shape))
-        for key, image in depths.items():
-            self._image_keys.append(key)
-            self._image_resolutions.append(tuple(image.shape))
-        print(f'image keys: {self._image_keys}')
-        self._joint_states_dim = 0; self._action_dim = 0
+        if self._contain_depth:
+            for key, image in depths.items():
+                self._image_keys.append(key)
+                self._image_resolutions.append(tuple(image.shape))
+        log.info(f'image keys: {self._image_keys}')
+        self._obs_states_dim = 0; self._action_dim = 0
         self._ee_states_dim = 0
-        joint_states = example_step.get("joint_states", {})
+        obs_states = example_step.get("observations", {})
         actions = example_step.get("actions", {})
-        for key, state in joint_states.items():
-            self._joint_states_dim += len(state["position"])
-            if self._contain_ee_obs:
-                self._ee_states_dim += 7
+        for key, state in obs_states.items():
+            # log.info(f'state: {state}, len {len(state)} for {key}')
+            self._obs_states_dim += len(state)
         for key, action in actions.items():
             self._action_dim += len(action)
         
-        self._tool_state_dim = 0
-        tool_states = example_step.get("tools", {})
-        for key, tool_state in tool_states.items():
-            cur_tool_state_value = tool_state["position"]
-            if isinstance(cur_tool_state_value, list):
-                self._tool_state_dim += len(tool_state["position"])
-            else: self._tool_state_dim += 1 # for floating number case
-        self._total_obs_state_dim = self._joint_states_dim + self._tool_state_dim + self._ee_states_dim
-        print(f'total obs dim: {self._total_obs_state_dim}, joint: {self._joint_states_dim}, tool: {self._tool_state_dim}')
-        print(f'action dim: {self._action_dim}')
+        log.info(f'obs state: {self._obs_states_dim}')
+        log.info(f'action dim: {self._action_dim}')
     
     def convert_dataset(self):
         skip_nums_steps = int(30.0 / self._load_fps)
@@ -76,7 +75,7 @@ class LerobotLoader(DataLoaderBase):
                                 shape = self._image_resolutions[i],
                     names = ["height", "width", "channel"],)
         feature_dicts["state"] = {"dtype": "float64",
-                                  "shape": (self._total_obs_state_dim,),
+                                  "shape": (self._obs_states_dim,),
                                   "names": ["state"],}
         feature_dicts["actions"] = {"dtype": "float64",
                                     "shape": (self._action_dim,),
@@ -97,7 +96,7 @@ class LerobotLoader(DataLoaderBase):
         state_dismatch_list = []; action_dismatch_list = []
         state_step_list = []; action_step_list = []; 
         # 每一个task下的所有episodes
-        for i, task_dir in tqdm(enumerate(self._task_list), desc=f"processing tasks", unit="task"):
+        for task_id, task_dir in tqdm(enumerate(self._task_list), desc=f"processing tasks", unit="task"):
             # text_info = self._all_episode_text[i]
             dirs = os.listdir(task_dir)
             # 同一个task下的每一个episode
@@ -108,42 +107,37 @@ class LerobotLoader(DataLoaderBase):
                 state_wrong_nums = 0; action_wrong_nums = 0 
                 for num_step, step in tqdm(enumerate(episode_data), desc=f"processing steps", unit="step"):
                     frame_feature = {}
+                    # vision images
                     for image_key in self._image_keys:
                         step_key = "colors" if "color" in image_key else "depths"
-                        # print(f'step_key: {step_key}, image_key: {image_key} step: {step[step_key]}')
-                        # print(f'{i}th {step["idx"]}')
-                        # cv2.imshow(f'{step_key}_{image_key}', step[step_key][image_key])
-                        # cv2.waitKey(1)
                         frame_feature[image_key] = step[step_key][image_key]
+                    # obs states
                     frame_feature["state"] = np.array([])
-                    tool_states = step["tools"]
-                    ee_states = step["ee_states"]
-                    # state: [arm state, tool state, another_arm_state, another_tool_state]
-                    for key, value in step["joint_states"].items():
-                        robot_state = np.array(value["position"])
-                        if self._contain_ee_obs: robot_state = np.hstack((ee_states[key]["pose"], robot_state))
-                        cur_feature_state = np.hstack((robot_state, tool_states[key]["position"]))
-                        frame_feature["state"] = np.hstack((frame_feature["state"], cur_feature_state))
+                    obs_states = step["observations"]
+                    for key, obs_state in obs_states.items():
+                        frame_feature["state"] = np.hstack((frame_feature["state"], obs_state))
                     # print(f'state: {frame_feature["state"]}')  # 注释掉频繁的调试输出
-                    if len(frame_feature["state"]) != self._total_obs_state_dim:
-                        warnings.warn(f'{task_dir} {episode_dir} has wrong state dim: {len(frame_feature["state"])} in {num_step}th step')
+                    if len(frame_feature["state"]) != self._obs_states_dim:
+                        log.warn(f'{task_dir} {episode_dir} has wrong state dim: {len(frame_feature["state"])} in {num_step}th step')
                         state_wrong = f'{task_dir}_{cur_episode_dir}'
                         if not state_wrong in state_dismatch_list:
                             state_dismatch_list.append(state_wrong)
                         state_wrong_nums += 1
                         continue
+                    # actions
                     frame_feature["actions"] = np.array([])
                     for key, value in step["actions"].items():
                         frame_feature["actions"] = np.hstack((frame_feature["actions"], value))
                     # print(f'actions: {frame_feature["actions"]}')  # 注释掉频繁的调试输出
                     action_dim = len(frame_feature["actions"])
                     if action_dim != self._action_dim:
-                        warnings.warn(f'{task_dir} {episode_dir} has wrong action dim: {action_dim} in {num_step}th step')
+                        log.warn(f'{task_dir} {episode_dir} has wrong action dim: {action_dim} in {num_step}th step')
                         action_wrong = f'{task_dir}_{cur_episode_dir}'
                         if not action_wrong in state_dismatch_list:
                             action_dismatch_list.append(action_wrong)
                         action_wrong_nums += 1
                         continue
+                    text_info = self._custom_prompt[task_id] if self._custom_prompt else text_info
                     frame_feature["task"] = text_info
                     # print(f'frame_feature: {frame_feature}')
                     # raise ValueError
@@ -179,17 +173,46 @@ class LerobotLoader(DataLoaderBase):
     
 if __name__ == '__main__':
     import yaml
-    config_file = "config/lerobot_config.yaml"
+    task_list = [{'name': "insert_tube", 'task_dir': '/boot/common_data/2025/fr3/1013_inserttube_fr3_pika_50ep', 
+                  'cfg_file': 'config/lerobot_insert_tube_config.yaml'},
+                 {'name': "insert_tube_jps2pose_euler", 'task_dir': '/boot/common_data/2025/fr3/1013_inserttube_fr3_pika_50ep', 
+                  'cfg_file': 'config/lerobot_insert_tube_jps2pose_euler_config.yaml'},
+                 {'name': "insert_tube_jps2delPose_euler", 'task_dir': '/boot/common_data/2025/fr3/1013_inserttube_fr3_pika_50ep', 
+                  'cfg_file': 'config/lerobot_insert_tube_jps2delPose_euler_config.yaml'},
+                 {'name': "insert_tube_pose2delPose_euler", 'task_dir': '/boot/common_data/2025/fr3/1013_inserttube_fr3_pika_50ep', 
+                  'cfg_file': 'config/lerobot_insert_tube_pose2delPose_euler_config.yaml'},
+                 {'name': "pick_n_place", 'task_dir': '/boot/common_data/2025/fr3/zyx_pick_n_place_500eps', 
+                  'cfg_file': 'config/lerobot_pick_n_place_config.yaml'},
+                 {'name': "block_stacking", 'task_dir': '/boot/common_data/2025/fr3/1013_stack_blocks_fr3_pika_3dmouse_50ep', 
+                  'cfg_file': 'config/lerobot_block_stacking_config.yaml'},
+                ]
+    
+    num_task = len(task_list)
+    for i, task in enumerate(task_list):
+        print(f'{"=="*5} {i}th task name: {task["name"]}, task dir: {task["task_dir"]}, cfg: {task["cfg_file"]} {"=="*5}')
+    get_task = False
+    key = -1
+    while not get_task:
+        key = input(f'Please select the task from 0 - {num_task - 1}: ')
+        key = int(key)
+        if key >= 0 and key < num_task:
+            get_task = True
+    print(f'Selected {task_list[key]["name"]} to convert data!!!!')
+    
+    config_file = task_list[key]["cfg_file"]
     cur_path = os.path.dirname(os.path.abspath(__file__))
     cfg_file = os.path.join(cur_path, config_file)
     with open(cfg_file, 'r') as stream:
         config = yaml.safe_load(stream)
     print(f'config: {config}')
-    task_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/pick_N_place"
+    task_dir = task_list[key]["task_dir"]
     action_type = config["action_type"]
     action_type = Action_Type_Mapping_Dict[action_type]
+    obs_type = config["obs_type"]
+    obs_type = ObservationType(obs_type)
    
-    lerobot_dataset = LerobotLoader(config, task_dir, action_type=action_type)
+    lerobot_dataset = LerobotLoader(config, task_dir, action_type=action_type,
+                                    observation_type=obs_type)
     dataset = lerobot_dataset.convert_dataset()
     print(f'len dataset: {len(dataset)}')
     print(f'dataset: {dataset}')

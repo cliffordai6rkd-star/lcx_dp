@@ -1,5 +1,5 @@
 # usage platform
-use_hardware: false
+use_hardware: true
 use_simulation: true
 
 robot: "fr3"
@@ -32,7 +32,7 @@ sensor_dicts:
   #     type: "ati_ft"
   #     cfg: !include hardware/sensors/ft_sensor/config/left_ati_cfg.yaml
   
-control_frequency: 800
+control_frequency: 1000.0
 controller_type: "ik"
 controller_config: !include controller/config/ik_fr3_pika_ati_cfg.yaml
 
@@ -50,6 +50,7 @@ traj_frequency: 450
 
 simulation: "mujoco"
 # Use the new block stacking scene configuration
-simulation_config: !include simulation/config/mujoco_fr3_block_stacking.yaml
+# simulation_config: !include simulation/config/mujoco_fr3_block_stacking.yaml
+simulation_config: !include simulation/config/mujoco_fr3_insert_tube.yaml
 target_site_name: ["target_site"]
 tcp_visualization_site: ["TCP_site"]

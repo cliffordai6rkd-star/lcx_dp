@@ -9,27 +9,31 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import rerun as rr
 import rerun.blueprint as rrb
-from dataset.lerobot.reader import RerunEpisodeReader, ActionType
+from dataset.lerobot.reader import RerunEpisodeReader, ActionType, ObservationType
 from datetime import datetime
 import logging_mp
 os.environ["RUST_LOG"] = "error"
+
+# Initialize logger for the module
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 
 def transform_pose(pose1, pose2):
         pose = np.zeros(7)
-        
-        pose[:3] = pose1[:3] + pose2[:3]
+        t1 = pose1[:3]; t2 = pose2[:3]
+                
         rot1 = R.from_quat(pose1[3:])
         rot2 = R.from_quat(pose2[3:])
+        pose[:3] = t1 + rot1.apply(t2)
         pose[3:] = (rot1 * rot2).as_quat()
         return pose
     
 class RerunLogger:
     def __init__(self, task_dir, prefix = "", IdxRangeBoundary = 30, memory_limit = None, 
-                 example_item_data = None, action_type = ActionType.JOINT_POSITION):
+                 example_item_data = None, action_type = ActionType.JOINT_POSITION, action_ori_type="quaternion"):
         self._task_dir = task_dir
         self.prefix = prefix
         self._action_type = action_type
+        self._action_ori_type = action_ori_type
         self.IdxRangeBoundary = IdxRangeBoundary
         self.ee_trajectories = {}  # Store ee trajectories (positions) for each ee_key
         self.ee_orientations = {}  # Store ee orientations (quaternions) for each ee_key
@@ -42,31 +46,35 @@ class RerunLogger:
 
         # Set up blueprint for live visualization
         if self.IdxRangeBoundary and example_item_data:
+            logger_mp.info(f'Setting blue print!!!!!')
             self.setup_blueprint(example_item_data)
+        self.counter = 0
 
     def setup_blueprint(self, example_item_data):
-        joint_states_views = []
+        obs_states_views = []
         action_views = []
         action_pose_views = []
         ee_states_views = []
         image_views = []
 
-        # Dynamically create joint states views based on example data
-        joint_states = example_item_data.get('joint_states', {})
-        for joint_key in joint_states.keys():
-            joint_view = rrb.TimeSeriesView(
-                origin = f"{self.prefix}{joint_key}/joint_states",
-                plot_legend = rrb.PlotLegend(visible = True),
-            )
-            joint_states_views.append(joint_view)
-            logger_mp.info(f'Created joint states view for: {joint_key}')
+        # Dynamically create observation states views based on example data
+        obs_states = example_item_data.get('observations', {})
+        if obs_states is not None:
+            for obs_key in obs_states.keys():
+                logger_mp.info(f'obs state shape: {obs_states[obs_key].shape}')
+                obs_view = rrb.TimeSeriesView(
+                    origin = f"{self.prefix}{obs_key}/obs_states/state",
+                    plot_legend = rrb.PlotLegend(visible = True),
+                )
+                obs_states_views.append(obs_view)
+                logger_mp.info(f'Created joint states view for: {obs_key}')
 
         # Dynamically create action views based on example data
         actions = example_item_data.get('actions', {})
         for action_key in actions.keys():
             if actions[action_key] is not None:
                 action_view = rrb.TimeSeriesView(
-                    origin = f"{self.prefix}{action_key}/actions",
+                    origin = f"{self.prefix}{action_key}/actions/action",
                     plot_legend = rrb.PlotLegend(visible = True),
                 )
                 action_views.append(action_view)
@@ -101,14 +109,14 @@ class RerunLogger:
                 logger_mp.info(f'Created image view for: {color_key}')
 
         # Organize views: @TODO: Dynamic assignment
-        joint_states_column = rrb.Vertical(contents=joint_states_views)
         actions_column = rrb.Vertical(contents=action_views)
         ee_states_row = rrb.Horizontal(contents=ee_states_views)
         if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
             action_pose_row = rrb.Horizontal(contents=action_pose_views)
         images_column = rrb.Vertical(contents=image_views)
-        
-        first_row = rrb.Horizontal(contents=[joint_states_column, actions_column])
+
+        obs_states_column = rrb.Vertical(contents=obs_states_views)
+        first_row = rrb.Horizontal(contents=[obs_states_column, actions_column])
         if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
             first_col = rrb.Vertical(contents=[first_row, action_pose_row, ee_states_row])
         else:
@@ -177,34 +185,34 @@ class RerunLogger:
                rr.Points3D(positions=positions, colors=[100, 255, 100], radii=[0.003]))  # Light green points
 
     def log_item_data(self, item_data: dict):
-        rr.set_time_sequence("idx", sequence=item_data.get('idx', 0))
+        rr.set_time("idx", sequence=self.counter)
+        self.counter += 1
 
         # Log states
-        states = item_data.get('joint_states', {}) or {}
-        for key, joint_state in states.items():
-            positions = joint_state["position"]
-            # logger_mp.info(f'{key} joint_state: {positions}')
-            for idx, val in enumerate(positions):
-                rr.log(f"{self.prefix}{key}/joint_states/qpos/{idx}", rr.Scalars(val))
+        states = item_data.get('observations', {}) or {}
+        for key, obs_state in states.items():
+            logger_mp.info(f'{key} obs_state: {obs_state.shape}')
+            rr.log(f"{self.prefix}{key}/obs_states/state", rr.Scalars(obs_state))
 
         # Log actions
         actions = item_data.get('actions', {}) or {}
-        logger_mp.info(f'Actions data: {list(actions.values())}')
         for action_key, action_val in actions.items():
             if action_val is not None:
                 logger_mp.info(f'Logging action {action_key} with shape: {action_val.shape if hasattr(action_val, "shape") else type(action_val)}')
-                for idx, val in enumerate(action_val):
-                    rr.log(f"{self.prefix}{action_key}/actions/qpos/{idx}", rr.Scalars(val))
+                rr.log(f"{self.prefix}{action_key}/actions/action", rr.Scalars(action_val))
             else:
                 logger_mp.warning(f'Could not find {action_key} for action_key')
                 
         # log action pose
         ee_states = item_data.get('ee_states', {}) or {}
         if self._action_type == ActionType.END_EFFECTOR_POSE or self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
-            for i, (action_key, action_val) in enumerate(actions.items()):
+            for action_key, action_val in actions.items():
                 original_key = action_key
                 action_key = action_key + "_action_pose"
-                action_val = action_val[:-1]
+                pose_dim = 7 if self._action_ori_type == "quaternion" else 6
+                action_val = action_val[:pose_dim]
+                if self._action_ori_type == "euler":
+                    action_val = R.from_euler("xyz", action_val).as_quat()
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
                     action_val = transform_pose(ee_states[original_key]["pose"], action_val)
                 
@@ -271,15 +279,14 @@ class RerunLogger:
                 # Log trajectory with orientation visualization
                 if len(self.ee_trajectories[action_key]) >= 1:
                     self._log_trajectory_with_orientation(action_key, f'{action_key}/actions/pose')
-                    logger_mp.info(f'Logged {len(self.ee_trajectories[action_key])} trajectory points for {action_key}')
+                    logger_mp.info(f'Logged {len(self.ee_trajectories[action_key])} trajectory points for {action_key} {self._action_type}')
             
         # Log ee_states (end-effector states) - 7D array: position (3D) + quaternion (4D)
-        logger_mp.info(f'EE states data: {list(ee_states.keys())}')
         for ee_key, ee_state in ee_states.items():
             if ee_state is not None:
                 ee_state = ee_state["pose"]
                 logger_mp.info(f'Logging ee_state {ee_key} with shape: {ee_state.shape if hasattr(ee_state, "shape") else type(ee_state)}')
-                logger_mp.info(f'EE state values - Position: {ee_state[:3]}, Quaternion: {ee_state[3:7]}')
+                # logger_mp.info(f'EE state values - Position: {ee_state[:3]}, Quaternion: {ee_state[3:7]}')
                 # ee_state should be a 7D numpy array: [x, y, z, qx, qy, qz, qw]
                 if hasattr(ee_state, '__len__') and len(ee_state) >= 7:
                     position = np.array(ee_state[:3])  # First 3 elements: position
@@ -345,7 +352,7 @@ class RerunLogger:
                     # Log trajectory with orientation visualization
                     if len(self.ee_trajectories[ee_key]) >= 1:
                         self._log_trajectory_with_orientation(ee_key, f'{ee_key}/ee_states/pose')
-                        logger_mp.info(f'Logged {len(self.ee_trajectories[ee_key])} trajectory points for {ee_key}')
+                        logger_mp.info(f'Logged {len(self.ee_trajectories[ee_key])} trajectory points for {ee_key} in ee states')
                            
                 else:
                     logger_mp.warning(f'Invalid ee_state format for {ee_key}: expected 7D array, got {ee_state}')
@@ -390,17 +397,23 @@ if __name__ == "__main__":
     episode_data_number = 38
     fps = 40
     skip_step_nums = 1
+    action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
+    umi_rotation_transform = {"single": [0.7071068, 0, 0.7071068, 0]}
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
-        episode_reader2 = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
-                                             action_prediction_step=1, action_ori_type="quaternion")
-        episode_data = episode_reader2.return_episode_data(episode_data_number, skip_step_nums)
+        episode_reader = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
+                                             action_prediction_step=1, action_ori_type=action_ori_type,
+                                             observation_type=ObservationType.END_EFFECTOR_POSE,
+                                             rotation_transform=None)
+        episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
         logger_mp.info(f'Successfully load the episode data')
+        logger_mp.info(f'Episode data length: {len(episode_data) if episode_data else 0}')
         # Use first episode data as example for blueprint setup
         example_data = episode_data[0] if episode_data else None
-        online_logger = RerunLogger(task_dir=data_dir, prefix="offline/", IdxRangeBoundary = 60, memory_limit="20GB", 
+        online_logger = RerunLogger(task_dir=data_dir, prefix="offline/", IdxRangeBoundary = 60, memory_limit="20GB",
                 example_item_data=example_data, action_type=ActionType.END_EFFECTOR_POSE)
+        logger_mp.info(f'Starting to log {len(episode_data)} items...')
         for item_data in episode_data:
             # logger_mp.info(f'item data: {item_data}')
             online_logger.log_item_data(item_data)

@@ -1,7 +1,9 @@
 mujoco:
   # the file path should be related to the hirol platform folder
-  base_xml_file: "simulation/fr3_mujoco/peg-in-hole/scene/peg_in_hole.xml"
-  robot_xml: "simulation/fr3_mujoco/peg-in-hole/scene/fr3.xml"
+  # base_xml_file: "simulation/fr3_mujoco/peg-in-hole/scene/peg_in_hole.xml"
+  # robot_xml: "simulation/fr3_mujoco/peg-in-hole/scene/fr3.xml"
+  base_xml_file: "assets/franka_fr3/fr3_scene.xml"
+  robot_xml: "assets/franka_fr3/fr3.xml"
   quat_sequence: "xyzw"
   dt: 0.002
   dof: [7]
