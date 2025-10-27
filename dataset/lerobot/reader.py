@@ -87,11 +87,13 @@ class RerunEpisodeReader:
                 if joint_states is None or len(joint_states) == 0:
                     raise ValueError(f'Do not get the {i}th joint state from {self.task_dir} {episode_dir} for {self._obs_type}')
             ee_states = item_data.get('ee_states', {})
-            if self._rotation_transform and len(init_ee_poses) != len(ee_states):
+            if len(init_ee_poses) != len(ee_states):
                 for key, cur_ee_state in ee_states.items():
-                    pose = cur_ee_state["pose"]
-                    init_ee_poses[key] = self.apply_rotation_offset(pose, key)      
-                log.info(f'Successfully updated the init ee pose for relative pose calculation {list(init_ee_poses.keys())}')
+                    if self._rotation_transform:
+                        pose = cur_ee_state["pose"]
+                        init_ee_poses[key] = self.apply_rotation_offset(pose, key)      
+                        log.info(f'Successfully updated the init ee pose for relative pose calculation {list(init_ee_poses.keys())}')
+                    else: init_ee_poses[key] = None
             # @TODO: used for latter head tracker
             head_pose = ee_states.pop('head', None)
             if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR or self._obs_type == ObservationType.END_EFFECTOR_POSE:
@@ -245,7 +247,7 @@ class RerunEpisodeReader:
         rot2 = R.from_quat(pose2[3:])
         rot2_trans = rot2.inv()
         rot = rot2_trans * rot1
-        posi_diff = pose1[:3] - pose2[:3]
+        posi_diff = np.array(pose1[:3]) - np.array(pose2[:3])
         if posi_translation:
             pose_diff[:3] = rot2_trans.apply(posi_diff)
         else: pose_diff[:3] = posi_diff
