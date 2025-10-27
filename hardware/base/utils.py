@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Union, Optional, Tuple, List
 from scipy.spatial.transform import Rotation as R
+from scipy.linalg import sqrtm as scipy_sqrtm
 import yaml
 import warnings
 from collections import deque
@@ -163,7 +164,7 @@ def quaternion_error(q1, q2):
     quat1 = R.from_quat(q1)
     quat2 = R.from_quat(q2)
     conjugate_quat2 = quat2.inv()
-    quat_error = quat1 * conjugate_quat2
+    quat_error = conjugate_quat2 * quat1
     return np.array(quat_error.as_quat())
 
 def compute_pose_diff(pose1, pose2):
@@ -235,6 +236,13 @@ def matrix_sqrt(matrix: np.ndarray):
     eig_val, eig_vec = np.linalg.eig(matrix)
     sqrt_eigenvalue = np.sqrt(eig_val)
     sqrt_matrix = eig_vec @ sqrt_eigenvalue @ eig_vec.T
+    return sqrt_matrix
+
+def scipy_matrix_sqrt(matrix):
+    sqrt_matrix = scipy_sqrtm(matrix)
+    if np.iscomplexobj(sqrt_matrix):
+        if np.max(np.abs(sqrt_matrix.imag)) <= 1e-12 * max(1.0, np.linalg.norm(sqrt_matrix.real, ord='fro')):
+            sqrt_matrix = sqrt_matrix.real
     return sqrt_matrix
 
 def negate_transform(trans):

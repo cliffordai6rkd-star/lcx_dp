@@ -2,9 +2,28 @@ from hardware.base.tool_base import ToolBase, ToolControlMode, ToolType
 import glog as log
 import time, threading, copy
 import numpy as np
-from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher, ChannelFactoryInitialize
-from unitree_sdk2py.idl.default import unitree_hg_msg_dds__HandCmd_
-from unitree_sdk2py.idl.unitree_hg.msg.dds_ import HandCmd_, HandState_
+
+# Try to import unitree_sdk2py, fall back to mock if not available
+try:
+    from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher, ChannelFactoryInitialize
+    from unitree_sdk2py.idl.default import unitree_hg_msg_dds__HandCmd_
+    from unitree_sdk2py.idl.unitree_hg.msg.dds_ import HandCmd_, HandState_
+except (ImportError, ModuleNotFoundError):
+    log.warning("unitree_sdk2py not available in Dex3_Hand, using mock implementation")
+    from hardware.mocks.mock_unitree_sdk2py import core
+    ChannelSubscriber = core.channel.ChannelSubscriber
+    ChannelPublisher = core.channel.ChannelPublisher
+    ChannelFactoryInitialize = core.channel.ChannelFactoryInitialize
+    # Create mock classes
+    class MockHandCmd:
+        def __init__(self):
+            self.motor_cmd = [type('obj', (object,), {'mode': 0, 'tau': 0, 'q': 0, 'dq': 0, 'kp': 0, 'kd': 0})() for _ in range(7)]
+    class MockHandState:
+        def __init__(self):
+            self.motor_state = [type('obj', (object,), {'q': 0, 'tau_est': 0})() for _ in range(7)]
+    unitree_hg_msg_dds__HandCmd_ = MockHandCmd
+    HandCmd_ = MockHandCmd
+    HandState_ = MockHandState
 
 maxLimits_left =  [  1.05 ,  1.05  , 1.75 ,   0   ,  0    , 0     , 0   ]
 minLimits_left = [ -1.05 , -0.724 ,   0  , -1.57 , -1.75 , -1.57  ,-1.75]

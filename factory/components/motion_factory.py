@@ -54,6 +54,8 @@ class MotionFactory:
         self._high_level_updated = False
         self._control_frequency = config["control_frequency"]
         self._robot_system = robot
+        self._mocap_target_site = self._config.get('target_site_name', None)
+        self._TCP_site = self._config.get("tcp_visualization_site", None)
         self._execute_hardware = False
         self._blocking_motion = False
         self._latest_action = {}
@@ -145,6 +147,8 @@ class MotionFactory:
         slow_loop_count = 0
         while self._controller_thread_running:
             loop_start_time = time.perf_counter()
+            next_run_time = loop_start_time
+            
             iteration_count += 1
             
             with timer("controller_total", "motion_factory_"):
@@ -241,10 +245,7 @@ class MotionFactory:
                     actual_freq = 1.0 / actual_time
                     log.warning(f"Controller frequency slow: expected {expected_freq:.1f}Hz, "
                                 f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
-
-                # 重置时间基准
-                next_run_time = current_time
-
+                    
             # 性能统计（降低频率，减少日志量）
             if iteration_count % 5000 == 0:
                 log.info(f"=== Motion Factory Performance (iteration {iteration_count}) ===")
@@ -509,3 +510,28 @@ class MotionFactory:
                 world2base_pose.append(cur_world2base)
                 base2world_pose.append(negate_pose(cur_world2base))
         return world2base_pose, base2world_pose
+    
+    def sim_visualize_tcp(self, cur_tcp: dict[str, np.ndarray]):
+        if not self._robot_system._use_simulation or not self._TCP_site:
+            return 
+        
+        robot_index = self.get_model_types()
+        for i in range(len(cur_tcp)):
+            key = robot_index[i] if len(robot_index) > 1 else robot_index[0]
+            tcp = cur_tcp[key]
+            cur_world2base = self._sim_world2base[0] if len(self._sim_world2base) == 1 else self._sim_world2base[i]
+            tcp = transform_pose(cur_world2base, tcp)
+            cur_tcp_mocap = self._TCP_site[i]
+            tcp_mocap = cur_tcp_mocap.split('_')[0]
+            self._robot_system._simulation.set_target_mocap_pose(tcp_mocap, tcp)
+                
+    def sim_visualize_targets(self, targets: dict[str, np.ndarray]):
+        if not self._robot_system._use_simulation or not self._mocap_target_site:
+            return 
+        
+        for i, (key, cur_target) in enumerate(targets.items()):
+            cur_mocap_target_site = self._mocap_target_site[i]
+            mocap_name = cur_mocap_target_site.split('_')[0]
+            cur_world2base = self._sim_world2base[0] if len(self._sim_world2base) == 1 else self._sim_world2base[i]
+            target_tcp = transform_pose(cur_world2base, cur_target)
+            self._robot_system._simulation.set_target_mocap_pose(mocap_name, target_tcp)

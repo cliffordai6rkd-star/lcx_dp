@@ -9,6 +9,8 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /sys/bus/usb:/sys/bus/usb:ro
       - /sys/class/input:/sys/class/input:ro
+      # 绑定HTC TRACKER的config
+      - ${HOME}/.config/libsurvive/config.json:/home/teleophost/.config/libsurvive/config.json
       # 设备目录
       - /dev:/dev
       - /dev/bus/usb:/dev/bus/usb

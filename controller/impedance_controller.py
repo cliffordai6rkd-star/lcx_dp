@@ -5,7 +5,7 @@ from motion.pin_model import RobotModel
 import numpy as np
 from hardware.base.utils import RobotJointState, compute_pose_diff, convert_homo_2_7D_pose, convert_7D_2_homo
 import pinocchio as pin
-from hardware.base.utils import matrix_sqrt
+from hardware.base.utils import matrix_sqrt, scipy_matrix_sqrt
 
 def get_pose_error(pose1, pose2):
     """
@@ -29,7 +29,6 @@ class ImpedanceController(ControllerBase):
         self.saturation_values = config["saturation"]
         self.Kp_nullspace = np.array(config.get("kp_null", None)).astype(np.float64)
         self.q_des = config.get("q_des", None)
-        self.dq_damping = config.get("dq_damping", 1.2)
     
     def compute_controller(self, target: list[dict[str, np.ndarray]], 
                            robot_state: RobotJointState | None = None):
@@ -66,17 +65,21 @@ class ImpedanceController(ControllerBase):
 
         # compute the target end-effector wrench
         if self._damping is None:
-            kp_sqrt = np.sqrt(self._stiffness)
+            kp_sqrt = scipy_matrix_sqrt(self._stiffness)
             # @TODO: check why the close loop damped system is not stable
             # task_inertial_sqrt = matrix_sqrt(task_inertial)
-            # self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
-            self._damping = 2.0 * kp_sqrt
+            task_inertial_sqrt = scipy_matrix_sqrt(task_inertial)
+            self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
+            # self._damping = 2.0 * kp_sqrt
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
         # @TODO: check acceleration not stable
         des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
         # des_local_wrench = - des_local_wrench
         
-        tau = np.zeros(self._robot_model.nv)
+        C = self._robot_model.get_coriolis_matrix(robot_state._positions, robot_state._velocities,
+                                                  dims=self.arm_joint_idxes)
+        friction_terms = C @ robot_state._velocities
+        tau = friction_terms
         if self._gravity_compensation:
             tau = self._robot_model.id(robot_state._positions, 
                             robot_state._velocities, robot_state._accelerations)
@@ -87,9 +90,10 @@ class ImpedanceController(ControllerBase):
                 
         # nullspace 
         if self.Kp_nullspace is not None and self.q_des is not None:
+            dq_damping = 2 * np.sqrt(self.Kp_nullspace)
             # - np.diag(self.dq_damping * np.sqrt(self.Kp_nullspace)) @ robot_state._velocities
             null_err = np.diag(self.Kp_nullspace) @ (self.q_des - robot_state._positions) \
-                        - np.diag(self.dq_damping * np.ones((self._robot_model.nv, self._robot_model.nv))) @ robot_state._velocities
+                        - np.diag(dq_damping * np.ones((self._robot_model.nv, self._robot_model.nv))) @ robot_state._velocities
             J_bar = M_inv @ J.T @ task_inertial
             tau_nullsapce = (np.eye(self._robot_model.nv) - J.T @ J_bar.T) @ null_err
             # print(f'nullspace tau: {tau_nullsapce}')

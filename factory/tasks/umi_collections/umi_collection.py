@@ -2,6 +2,7 @@ from hardware.base.camera import CameraBase
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from hardware.base.utils import object_class_check
+from simulation.mujoco.mujoco_sim import MujocoSim
 from factory.tasks.inferences_tasks.utils.display import display_images
 from teleop.pika_tracker.pika_tracker import PikaTracker
 from sshkeyboard import listen_keyboard, stop_listening
@@ -9,6 +10,7 @@ import numpy as np
 from dataset.lerobot.data_process import EpisodeWriter
 import os, threading, time
 import glog as log
+import yaml, cv2, copy
 
 class UmiCollection:
     def __init__(self, config):
@@ -16,7 +18,8 @@ class UmiCollection:
             "realsense_camera": RealsenseCamera,
             "opencv_camera": OpencvCamera, 
         }
-
+        
+        self._use_mujoco = config.get(f'use_mujoco', False)
         self._pika_config = config["pika_config"]
         self._pika_mode = config["pika_mode"]
         self._camera_infos = config["cameras"]
@@ -55,16 +58,27 @@ class UmiCollection:
                 self.data_recorder.save_episode()
             stop_listening()
             self._pika.close()
-            for camera_name, camera in self._camera_dict:
+            for camera_name, camera in self._camera_dict.items():
                 cam_obj:CameraBase = camera["object"]
                 cam_obj.close()
+                cv2.destroyAllWindows()
                 log.info(f'Closed the camera {camera_name}')
+            if self._use_mujoco:
+                self._mujoco.close()
             self._collection_running = False
     
     def create_umi_system(self):
-        self._pika = PikaTracker(self._pika_config)
+        if self._use_mujoco:
+            mujoco_cfg = "simulation/config/mujoco_umi_cfg.yaml"
+            cur_path = os.path.dirname(os.path.abspath(__file__))
+            cfg_file = os.path.join(cur_path, "../../..", mujoco_cfg)
+            with open(cfg_file, 'r') as stream:
+                config = yaml.safe_load(stream)
+            self._mujoco = MujocoSim(config["mujoco"])
+        
+        self._pika = PikaTracker(self._pika_config["pika_tracker"])
         if not self._pika.initialize():
-            raise ValueError(f'Pika tracker with {self._pika_config} failed to initialize!!!')
+            raise ValueError(f'Pika tracker with {self._pika_config["pika_tracker"]} failed to initialize!!!')
         
         # cameras
         for camera_info in self._camera_infos:
@@ -77,9 +91,11 @@ class UmiCollection:
                 
             if not object_class_check(self._camera_classes, camera_type):
                 raise ValueError(f'camera type: {camera_type} is not supported!!!')
+            log.info(f'Initializing {camera_type} {camera_name} {camera_info}')
             camera_object:CameraBase = self._camera_classes[camera_type](camera_cfg)
             if not camera_object.initialize():
                 raise ValueError(f'Camera {camera_type} {camera_name} with cfg: {camera_cfg} failed to initialize')
+            log.info(f'Successful created {camera_type} {camera_name}')
             self._camera_dict[camera_name] = dict(object=camera_object)
     
         # keyboard
@@ -93,21 +109,27 @@ class UmiCollection:
         log.info(f'Umi collection data thread started!!!!')
         
         start_time = time.perf_counter()
-        target_pose_key = ["left", "right", "head"]
+        target_pose_key = {"single":"targetR", "left": "targetL", 
+                    "right": "targetR", "head": "targetH"}
         while self._collection_running:
             # images
-            cur_colors = {}
-            for cam_name, camera in self._camera_dict:
+            cur_colors = {}; display_image_dicts = {}
+            for cam_name, camera in self._camera_dict.items():
                 cam_obj:CameraBase = camera["object"]
                 cam_data = cam_obj.capture_all_data()
-                image = cam_data["image"]
-                cur_colors[cam_name] = image
+                if 'image' in cam_data:
+                    image = cam_data["image"]
+                    color_name = cam_name + '_color'
+                    cur_colors[color_name] = {"data": image, "time_stamp": cam_data['time_stamp']}
+                    display_image_dicts[color_name] = image
+                else:
+                    raise ValueError(f'{cam_name} do not get color image data')
                 
             # display
-            display_images(cur_colors, "UMI collection images")
+            display_images(display_image_dicts, "UMI collection images")
             
             # pika poses
-            success, poses, tools = self._pika.parse_data_2_robot_target()
+            success, poses, tools = self._pika.parse_data_2_robot_target(self._pika_mode)
             if success:
                 ee_states = {}
                 ee_tools = {}
@@ -115,23 +137,36 @@ class UmiCollection:
                 for pose_key, pose in poses.items():
                     if pose_key not in target_pose_key:
                         continue
-                    pose = np.zeros(6)
+                    if self._use_mujoco:
+                        mocap = target_pose_key[pose_key]
+                        visual_pose = copy.deepcopy(pose)
+                        if self._pika_mode == "absolute_delta":
+                            if 'left' in pose_key:
+                                visual_pose[1] += 0.3
+                            elif 'right' in pose_key:
+                                visual_pose[1] -= 0.3
+                            visual_pose[2] += 0.45
+                        self._mujoco.set_target_mocap_pose(mocap, visual_pose)
                     if not isinstance(pose, list):
-                        ee_states[pose_key] = pose.tolist()
+                        ee_states[pose_key] = dict(pose=pose.tolist(), time_stamp=time.perf_counter())
                     
                 for tool_key, tool in tools.items():
                     if tool_key not in ee_states:
                         raise ValueError(f'tool {tool_key} not in poses {list(ee_states.keys())}')
                     # give the gripper normalized value to the ee_tools
-                    ee_tools[pose_key] = [tool[0]]
-                
+                    ee_tools[pose_key] = dict(position=float(tool[0]), time_stamp=time.perf_counter())
+                    # log.info(f'tool posi: {tool[0]}')
+                    
                 # data write
-                self.data_recorder.add_item(colors=cur_colors, 
-                        ee_states=ee_states, tools=ee_tools)
+                if self._enable_recording:
+                    self.data_recorder.add_item(colors=cur_colors, 
+                            ee_states=ee_states, tools=ee_tools)
             
             used_time = time.perf_counter() - start_time
             if used_time < (1.0 / self._record_frequency):
-                time.sleep((1.0 / self._record_frequency) - used_time)
+                sleep_time = (1.0 / self._record_frequency) - used_time
+                time.sleep(sleep_time)
+                # log.info(f'used time: {used_time}, sleep_time: {sleep_time}')
             elif used_time > 1.3 / self._record_frequency:
                 log.warn(f'collect data is slow, actual: {1.0/used_time}Hz, expected: {self._record_frequency}Hz')
             start_time = time.perf_counter()
@@ -148,13 +183,6 @@ if __name__ == "__main__":
             "default": "teleop/config/franka_3d_mouse.yaml",
             "help": "Path to the config file"
         },
-        "task": {
-            "short_cut": "-t",
-            "symbol": "--task",
-            "type": int,
-            "default": -1,
-            "help": "Task ID to use (skip interactive selection)"
-        }
     }
     args = parse_args("umi data collection", arguments)
     

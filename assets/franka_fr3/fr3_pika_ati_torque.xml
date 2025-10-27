@@ -133,19 +133,19 @@
                         <geom pos="0.041 -0.04 0.1663" quat="-0.499602 0.500398 0.500398 -0.499602" type="mesh" mesh="FT_ATI_M8" class="collision"/>
                         <geom pos="-0.046 0.076 0.1865" quat="-0.5 0.5 -0.5 0.5" type="mesh" material="white" class="visual" mesh="ati_pika_new"/>
                         <geom pos="-0.046 0.076 0.1865" quat="-0.5 0.5 -0.5 0.5" type="mesh" mesh="ati_pika_new" class="collision"/>
-                        <geom pos="-0.001 -2.67949e-10 0.1765" quat="1.89469e-08 0.707107 -1.89469e-08 0.707107" type="mesh" material="black" class="visual" mesh="pika_gripper_base_link"/>
-                        <geom pos="-0.001 -2.67949e-10 0.1765" quat="1.89469e-08 0.707107 -1.89469e-08 0.707107" type="mesh" mesh="pika_gripper_base_link" class="collision"/>
+                        <geom pos="-0.001 -2.67949e-10 0.1765" quat="0.25564 0.659279 -0.25564 0.659279" type="mesh" material="black" class="visual" mesh="pika_gripper_base_link"/>
+                        <geom pos="-0.001 -2.67949e-10 0.1765" quat="0.25564 0.659279 -0.25564 0.659279" type="mesh" mesh="pika_gripper_base_link" class="collision"/>
                         <camera name="ee_cam" pos="0 0 0.255" euler="0 3.1415926 1.5708" fovy="120"/>
                       </body>
-                      <body name="gripper_left_link" pos="0.00541819 -0.08851 0.258" quat="1.89469e-08 0.707107 -1.89469e-08 0.707107">
+                      <body name="gripper_left_link" pos="-0.0559287 -0.0696997 0.258" quat="0.25564 0.659279 -0.25564 0.659279">
                         <inertial pos="0.033255 -0.014661 -0.0057614" quat="0.606445 0.607197 0.362695 0.363302" mass="0.033674" diaginertia="4.22483e-05 3.9744e-05 7.51567e-06"/>
-                        <joint name="gripper_left_joint" pos="0 0 0" axis="0 1 0" type="slide" range="-0.046 0" actuatorfrcrange="-100 100"/>
+                        <joint name="gripper_left_joint" pos="0 0 0" axis="0 1 0" type="slide" range="-0.05 0" actuatorfrcrange="-100 100"/>
                         <geom type="mesh" material="black" class="visual" mesh="pika_gripper_left_link"/>
                         <geom type="mesh" mesh="pika_gripper_left_link" class="collision"/>
                       </body>
-                      <body name="gripper_right_link" pos="0.0054182 0.088529 0.258" quat="1.89469e-08 0.707107 -1.89469e-08 0.707107">
+                      <body name="gripper_right_link" pos="0.0634224 0.0610601 0.258" quat="0.25564 0.659279 -0.25564 0.659279">
                         <inertial pos="0.033255 0.014661 -0.0058113" quat="0.362693 0.363304 0.606443 0.607199" mass="0.033674" diaginertia="4.22483e-05 3.9744e-05 7.51567e-06"/>
-                        <joint name="gripper_right_joint" pos="0 0 0" axis="0 1 0" type="slide" range="0 0.046" actuatorfrcrange="-100 100"/>
+                        <joint name="gripper_right_joint" pos="0 0 0" axis="0 1 0" type="slide" range="0 0.05" actuatorfrcrange="-100 100"/>
                         <geom type="mesh" material="black" class="visual" mesh="pika_gripper_right_link"/>
                         <geom type="mesh" mesh="pika_gripper_right_link" class="collision"/>
                       </body>
@@ -188,9 +188,9 @@
     <position name="pika_gripper_actuator" tendon="split" ctrlrange="0 1" kp="-3"/>
   </actuator>
 
-  <!-- <keyframe>
-    <key name="home" qpos="0 0 0 -1.57079 0 1.57079 -0.7853 0.04 0.04" ctrl="0 0 0 -1.57079 0 1.57079 -0.7853 1"/>
-  </keyframe> -->
+  <keyframe>
+    <key name="home" qpos="0 -0.785 0 -2.355 0 1.57079 0.785 -0.04 0.04"/>
+  </keyframe>
 
   <custom>
     <numeric name="init_pos" data="0 -1.3 0 -2.5 0 1.57079 -0.2353 1"/>

@@ -33,7 +33,8 @@
     <camera name="third_person_cam" pos="1.5 0.0 0.8" euler="0.785 1.57 0.785" fovy="60"/>
 
     <!-- Mocap object as target -->
-    <body name="target" pos="0.3 0 0.45" quat="0 1 0 0" mocap="true">
+    <!-- 0 1 0 0;  0 0.7071068 0 0.7071068-->
+    <body name="target" pos="0.3 0 0.45" quat="0 0.7071068 0 0.7071068" mocap="true">
       <geom type="box" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
       <site type="sphere" name="target_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>

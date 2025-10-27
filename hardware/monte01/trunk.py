@@ -1,13 +1,20 @@
 import importlib.util
 import os
 from .defs import ROBOTLIB_SO_PATH
-spec = importlib.util.spec_from_file_location(
-    "RobotLib", 
-    os.path.abspath(os.path.join(os.path.dirname(__file__), ROBOTLIB_SO_PATH))
-)
-RobotLib_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(RobotLib_module)
-RobotLib = RobotLib_module.Robot
+
+# Try to load RobotLib, use None if not available (simulation mode)
+try:
+    spec = importlib.util.spec_from_file_location(
+        "RobotLib",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), ROBOTLIB_SO_PATH))
+    )
+    RobotLib_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(RobotLib_module)
+    RobotLib = RobotLib_module.Robot
+except (FileNotFoundError, ImportError, OSError) as e:
+    import glog as log
+    log.warning(f"RobotLib not available, using mock implementation: {e}")
+    RobotLib = None
 
 from typing import Text, Mapping, Any, Optional
 import glog as log

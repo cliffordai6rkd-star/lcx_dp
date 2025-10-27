@@ -23,7 +23,7 @@ chex==0.1.89
 # cmeel-tinyxml2==10.0.0
 # cmeel-urdfdom==4.0.1
 # cmeel-zlib==1.3.1
-coal==3.0.1
+# coal==3.0.1
 colorama==0.4.6
 colorlog==6.9.0
 # contourpy==1.3.2
@@ -31,7 +31,7 @@ cycler==0.12.1
 decorator==5.2.1
 docstring_parser==0.16
 easyhid==0.0.10
-eigenpy==3.10.3
+# eigenpy==3.10.3
 embreex==2.17.7.post6
 # etils==1.12.2
 evdev==1.9.2
@@ -41,7 +41,7 @@ expandvars==1.1.1
 filelock==3.18.0
 fonttools==4.59.0
 frozenlist==1.7.0
-fsspec==2025.5.1
+# fsspec==2025.5.1
 gdown==5.2.0
 gitdb==4.0.12
 GitPython==3.1.44
@@ -149,7 +149,7 @@ traitlets==5.14.3
 # transformations==2.2.6
 trimesh==4.7.0
 typeguard==4.4.4
-typing_extensions==4.14.0
+# typing_extensions==4.14.0
 tyro==0.9.26
 u-msgpack-python==2.8.0
 urllib3==2.5.0

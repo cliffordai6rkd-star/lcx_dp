@@ -432,14 +432,16 @@ class RobotFactory:
         cur_tool_command = copy.deepcopy(tool_command)
         tool_type_dict = self.get_tool_type_dict()
         for key, tool_type in tool_type_dict.items():
+            if key not in tool_command:
+                raise ValueError(f'Set tool command expected key {key} but get: {list(tool_command.keys())}')
+            
             if tool_type == ToolType.GRIPPER or tool_type == ToolType.SUCTION:
                 cur_tool_command[key] = np.array(cur_tool_command[key])
                 if cur_tool_command[key].ndim == 0: 
                     cur_tool_command[key] = np.array([cur_tool_command[key]])
                 cur_tool_command[key] = cur_tool_command[key][0]
             else:
-                # @TODO: should not have this logic @zyx: need to fix
-                cur_tool_command[key] = np.array(cur_tool_command[key][::-1])
+                cur_tool_command[key] = np.array(cur_tool_command[key])
         
         # for simulation 
         sim_res = False
@@ -508,18 +510,18 @@ class RobotFactory:
             if cameras_data is not None and len(cameras_data) > 0:
                 log.debug(f"Got {len(cameras_data)} simulation camera images")
             else:
-                log.warning("No simulation camera images available")
+                log.debug("No simulation camera images available")
         
         # Get hardware camera data if available and hardware is enabled
         if 'camera' in self._sensors and self._use_hardware:
             hw_camera_data = []
             cameras = self._sensors['camera']
-            log.info(f"Processing {len(cameras)} hardware cameras")
             for cam in cameras:
                 camera_name = cam['name']
                 camera_object:CameraBase = cam['object']
                 img = camera_object.capture_all_data()
                 resolution = camera_object.get_resolution()
+                # @TODO: consider this problem!!!!
                 if not img['image'] is None:
                     hw_camera_data.append({'name': camera_name+'_color', 'resolution': resolution,
                                         'img': img['image'],'time_stamp': img["time_stamp"]})
@@ -532,7 +534,6 @@ class RobotFactory:
             
             # If we have hardware camera data, use it (hardware takes precedence)
             if len(hw_camera_data):
-                log.info(f"Using {len(hw_camera_data)} hardware camera data items")
                 cameras_data = hw_camera_data
             
         return cameras_data

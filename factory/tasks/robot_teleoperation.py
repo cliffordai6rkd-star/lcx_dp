@@ -1,6 +1,19 @@
 from teleop.base.teleoperation_base import TeleoperationDeviceBase
 from teleop.space_mouse.space_mouse import SpaceMouse, DuoSpaceMouse
-from teleop.XR.quest3.meta_quest3 import MetaQuest3, init_image_shared_mem
+
+# Try to import MetaQuest3, fall back to mock if not available
+try:
+    from teleop.XR.quest3.meta_quest3 import MetaQuest3, init_image_shared_mem
+except (ImportError, ModuleNotFoundError):
+    import glog as log
+    log.warning("teleop.XR.quest3.meta_quest3 not available, MetaQuest3 interface will not work")
+    # Create mock classes to allow import
+    class MetaQuest3(TeleoperationDeviceBase):
+        def __init__(self, config):
+            raise NotImplementedError("MetaQuest3 is not available. Install XR dependencies to use this interface.")
+    def init_image_shared_mem(config):
+        raise NotImplementedError("MetaQuest3 is not available. Install XR dependencies to use this interface.")
+    
 from teleop.pika_tracker.pika_tracker import PikaTracker
 from factory.components.motion_factory import MotionFactory, Robot_Space
 from factory.components.robot_factory import RobotFactory
@@ -76,24 +89,32 @@ class TeleoperationFactory:
         if not object_class_check(self._interface_classes, self._teleop_interface_type):
             raise ValueError(f'Teleoperation interface {self._teleop_interface_type} is not supported')
         teleoperation_cfg = self._config["interface_config"][self._teleop_interface_type]
-        if self._teleop_interface_type == 'meta_quest3':
-            self._img_shm = init_image_shared_mem(teleoperation_cfg)
-            self._xr_img_shape = teleoperation_cfg['image_shape']
-            self._image_array = np.ndarray(self._xr_img_shape, 
-                                           dtype=np.uint8, buffer=self._img_shm.buf)
-            self._reset_rising_edges = dict(reset_hardware=RisingEdgeDetector(), 
-                                            reset_record=RisingEdgeDetector(),
-                                            quit=RisingEdgeDetector())
-        self._interface = self._interface_classes[self._teleop_interface_type](teleoperation_cfg)
+        self._interface = None
+        if not self._use_simulation_target:
+            if self._teleop_interface_type == 'meta_quest3':
+                self._img_shm = init_image_shared_mem(teleoperation_cfg)
+                self._xr_img_shape = teleoperation_cfg['image_shape']
+                self._image_array = np.ndarray(self._xr_img_shape, 
+                                            dtype=np.uint8, buffer=self._img_shm.buf)
+                self._reset_rising_edges = dict(reset_hardware=RisingEdgeDetector(), 
+                                                reset_record=RisingEdgeDetector(),
+                                                quit=RisingEdgeDetector())
+            self._interface = self._interface_classes[self._teleop_interface_type](teleoperation_cfg)
+        else:
+            if not 'target_site_name' in self._config:
+                raise ValueError(f'Teleoperation with simulation target without defined target site!')
 
         # initialize all objects
         self._initialize()
         
     def _initialize(self) -> bool:
-        if not self._interface.initialize():
-            log.error(f"Teleoperation interface {self._teleop_interface_type} failed intialization")
+        if self._interface:
+            if not self._interface.initialize():
+                log.error(f"Teleoperation interface {self._teleop_interface_type} failed intialization")
         self._robot_motion_system.create_motion_components()
         self._robot_system = self._robot_motion_system._robot_system
+        if not self._interface and not self._robot_system._use_simulation:
+            raise ValueError(f'Teleoperation with simulation target but not enable simulation in config!!!')
         
         # base frames
         self.world2base_pose, self.base2world_pose = self._robot_motion_system.get_sim_base_world_transform()
@@ -116,7 +137,6 @@ class TeleoperationFactory:
         listen_keyboard_thread.start()
         
         mocap_target_site = self._config.get('target_site_name', None)
-        TCP_site = self._config.get("tcp_visualization_site", None)
         # @TODO: check how to integrate with hand
         self._init_pose = {}
         self._robot_index = self._robot_motion_system.get_model_types()
@@ -137,10 +157,12 @@ class TeleoperationFactory:
             # get interface target
             interface_output_mode = self._interface_output_mode
             with timer("get_interface_target", "robot_teleoperation_"):
-                success_get_target, ee_target, tool_target  = \
-                    self._interface.parse_data_2_robot_target(interface_output_mode)
-                # log.info(f'tool target: {tool_target}')
-                
+                if self._interface:
+                    success_get_target, ee_target, tool_target  = \
+                        self._interface.parse_data_2_robot_target(interface_output_mode)
+                    # log.info(f'tool target: {tool_target}')
+                else: success_get_target=False; ee_target=None; tool_target=None
+                            
             # only for mujoco 
             if self._use_simulation_target and not mocap_target_site is None and self._robot_system._use_simulation:
                 ee_target = {}
@@ -153,20 +175,13 @@ class TeleoperationFactory:
                     ee_target[key] = cur_sim_target
                 interface_output_mode = 'absolute'
             
-            # get tcp andvisualize the curr tcp
+            # get curr tcp
             cur_tcp_pose = {}
             for i, cur_ee_link in enumerate(self.ee_link):
                 key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
                 cur_tcp_pose[key] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
                 # log.info(f'tcp pose {cur_tcp_pose[key]} for {key}')
-                if not TCP_site is None and self._robot_system._use_simulation:
-                    cur_tcp = copy.deepcopy(cur_tcp_pose[key])
-                    cur_world2base = self.world2base_pose[0] if len(self.world2base_pose) == 1 else self.world2base_pose[i]
-                    tcp = transform_pose(cur_world2base, cur_tcp)
-                    
-                    cur_tcp_mocap = TCP_site[i]
-                    tcp_mocap = cur_tcp_mocap.split('_')[0]
-                    self._robot_system._simulation.set_target_mocap_pose(tcp_mocap, tcp)
+            self._robot_motion_system.sim_visualize_tcp(cur_tcp_pose)
             
             # parse the teleoperation target to robot
             if (success_get_target or (self._robot_system._use_simulation and self._use_simulation_target)) and self._update_high_level_state:
@@ -194,16 +209,6 @@ class TeleoperationFactory:
                         elif interface_output_mode != "absolute":
                             raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")
                         # @TODO: if mode is absolute your reset target will be same as before inside simulation
-                        
-                        # visualization of the target pose for ee 
-                        # (Not using simulation for target tracking)
-                        if not self._use_simulation_target and not mocap_target_site is None and hasattr(self._robot_system, '_simulation'):
-                            cur_mocap_target_site = mocap_target_site[i]
-                            mocap_name = cur_mocap_target_site.split('_')[0]
-                            target_tcp = ee_target[key]
-                            cur_world2base = self.world2base_pose[0] if len(self.world2base_pose) == 1 else self.world2base_pose[i]
-                            target_tcp = transform_pose(cur_world2base, target_tcp)
-                            self._robot_system._simulation.set_target_mocap_pose(mocap_name, target_tcp)
                     
                         high_level_command = np.hstack((high_level_command, ee_target[key]))
                     
@@ -214,6 +219,9 @@ class TeleoperationFactory:
                     else:
                         self._robot_motion_system.update_high_level_command(high_level_command)
                         self._teleop_target = high_level_command
+                        # visualize targets in sim (Not using simulation for target tracking)
+                        if not self._use_simulation_target:
+                            self._robot_motion_system.sim_visualize_targets(ee_target)
                 
                 if success_get_target:
                     # coupling with vr
@@ -230,21 +238,26 @@ class TeleoperationFactory:
                         if whether_to_quit:
                             self.close()
                     
-                    # log.info(f'tool target: {tool_target}')
-                    # tool_target = dict(single=np.array([0,0]))
-                    self._robot_motion_system.set_tool_command(tool_target)
+                    
                     tool_type_dict = self._robot_system.get_tool_type_dict()
                     if self._enable_recording and tool_type_dict is not None:
                         with self._tool_action_lock:
                             for key, tool_command in tool_target.items():
+                                tool_command = np.array(tool_command[:-1])
                                 if tool_type_dict[key] == ToolType.GRIPPER or \
                                    tool_type_dict[key] == ToolType.SUCTION:
                                     if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
                                         tool_command = tool_command[0].astype(np.float32)
+                                tool_target[key] = tool_command
+                                # make sure the action is list/float for writing json
                                 if not isinstance(tool_command, np.ndarray):
                                     tool_command = float(tool_command)
+                                else: tool_command = tool_command.tolist()
                                 self._tool_action[key] = dict(tool=dict(
                                     position=tool_command, time_stamp=time.perf_counter()))
+                    # log.info(f'tool target: {tool_target}')
+                    # tool_target = dict(single=np.array([0,0]))
+                    self._robot_motion_system.set_tool_command(tool_target)
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)

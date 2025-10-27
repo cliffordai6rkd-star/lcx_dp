@@ -1,0 +1,22 @@
+pika_tracker:
+  serial_ports: 
+    left: "/dev/ttyUSB71"
+    right: null
+  target_device: 
+    left: "LHR-0DFD738C"
+    right: null
+  # head device uid
+  # head:
+  #   device:
+  #   init_pose: [0, 0, 0, 0, 0, 0, 1]
+  output_left: true
+  output_right: false
+  init_pose:
+    # @TODO: 对齐初始化状态
+    initial_pose_left: [0, 0, 0, 0, 0, 0, 1]
+    initial_pose_right: [0, 0, 0, 0, 0, 0, 1]
+  rotation_enabled:
+    # rpy
+    left: [false, false, true]
+    right: [false, false, true]
+

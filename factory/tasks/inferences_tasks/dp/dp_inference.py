@@ -38,12 +38,6 @@ class DP_Inferencer(InferenceBase):
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__(config)
         
-        # DP-specific configurations
-        self._frequency = config.get("frequency", 800.0)
-        self._async_execution = config.get('aync_execution', False)
-        self._dt = 1.0 / self._frequency
-        self._last_gripper_open = True
-        
         seed = config["seed"]
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -56,17 +50,20 @@ class DP_Inferencer(InferenceBase):
         self._dp_policy = self._load_dp_model(config["checkpoint_path"], config)
         self._n_obs_steps = getattr(self._dp_policy, 'n_obs_steps', 2)
         self._n_action_steps = getattr(self._dp_policy, 'n_action_steps', 8)
+        self._execution_action_chunk_size = self._n_action_steps
         self._action_horizon = getattr(self._dp_policy, 'horizon', 16)
         log.info(f'To: {self._n_obs_steps}, Ta: {self._n_action_steps}, Tp: {self._action_horizon}')
         
+        img_w = config.get(f'image_width', 128)
+        img_h = config.get(f'image_height', 128)
+        self._image_size = config.get(f'image_size', (img_w, img_h))
         self._obs_queue = deque(maxlen=self._n_obs_steps)
-        self._action_interruption = False
-        self._execution_thread = None
         
         log.info(f"DP model loaded. obs_steps: {self._n_obs_steps}, action_horizon: {self._action_horizon}")
         
     def start_inference(self) -> None:
         """Main inference loop following PI0 pattern."""
+        execution_thread = None
         for episode_num in range(self._num_episodes):
             if self._quit:
                 break
@@ -75,7 +72,7 @@ class DP_Inferencer(InferenceBase):
             self._dp_policy.reset()
             self._obs_queue.clear()
             self._status_ok = True
-            self._last_gripper_open = True
+            self._last_gripper_open = [True, True]
             log.info(f'Starting episode {episode_num}')
             
             while self._status_ok:
@@ -86,24 +83,31 @@ class DP_Inferencer(InferenceBase):
                     with torch.no_grad():
                         start_time = time.perf_counter()
                         result = self._dp_policy.predict_action(dp_obs)
-                        log.info(f'infer used time: {time.perf_counter() - start_time}')
+                        log.info(f'infer used time: {time.perf_counter() - start_time}s')
                         log.info(f'dp result action: {result["action"].shape}')
                         action_np = result['action'][0][:self._n_action_steps].detach().cpu().numpy()
+                
+                if execution_thread and execution_thread.is_alive():
+                    self._execution_interruption = True
+                    execution_thread.join()
+                    self._execution_interruption = False
                     
-                with timer("gym_step", "dp_inferencer"):
-                    if self._execution_thread and self._execution_thread.is_alive() and self._async_execution:
-                        self._action_interruption = True
-                        self._execution_thread.join()
-                        self._action_interruption = False
-                    self.convert_to_gym_action(action_np)
+                def multi_step_tasks():
+                    with timer("gym_step", "pi0_inferencer"):
+                        self.convert_to_gym_action(action_np)
+                            
+                execution_thread = threading.Thread(target=multi_step_tasks)
+                execution_thread.start()
+                if not self._async_execution:
+                    execution_thread.join()
                     
-    def convert_from_gym_obs(self) -> Dict[str, torch.Tensor]:
+    def convert_from_gym_obs(self, gym_obs = None) -> Dict[str, torch.Tensor]:
         """Convert gym observations to DP format.
         
         Returns:
             Dict containing DP-formatted observations as tensors
         """
-        gym_obs = super().convert_from_gym_obs()
+        gym_obs = super().convert_from_gym_obs(gym_obs = None)
         self.image_display(gym_obs)
         
         # Convert to DP format
@@ -134,56 +138,51 @@ class DP_Inferencer(InferenceBase):
         # Convert to torch tensors and add batch dimension[1, T, C, H, W]
         obs_dict = dict_apply(obs_dict_np, 
             lambda x: torch.from_numpy(x).unsqueeze(0).to(self._device))
-        
-        # Resize tensors if needed
-        obs_dict = self._resize_observation_tensors(obs_dict)
-        
         return obs_dict
-    
-    def convert_to_gym_action(self, dp_action: np.ndarray) -> None:
-        """Convert DP action to gym format and execute.
+        
+    def _convert_gym_obs_to_dp_format(self, gym_obs: Dict[str, Any]) -> Dict[str, np.ndarray]:
+        """Convert gym observations to DP format.
         
         Args:
-            dp_action: Action array from DP model
+            gym_obs: Gym observation dictionary
+            
+        Returns:
+            DP-formatted observation dictionary
         """
-        gym_actions = self._convert_dp_action_to_gym_format(dp_action)
-        # log.info(f'gym action" {gym_actions}')
-        self._execute_action_sequence(gym_actions)
+        dp_obs = {}
         
-    def _execute_action_sequence(self, gym_actions: List[Dict]) -> None:
-        """Execute action sequence with timing control.
+        # Process robot state
+        state_components = np.array([])
+        temp_joint_posi = np.array([])
+        for key, cur_state in gym_obs.get('state', {}).items():
+            # Extract components
+            temp_joint_posi = np.hstack((temp_joint_posi, cur_state))
+            # Combine state components
+            state_components = np.hstack((state_components, cur_state))
+        self._lock.acquire()
+        self._joint_positions = temp_joint_posi
+        self._lock.release()
         
-        Args:
-            gym_actions: List of gym action dictionaries
-        """
-        def async_execute():
-            log.info(f'start to exeute action!!!!!')
-            for action in gym_actions:
-                log.info(f'async action: {action["tool"]}')
-                if self._action_interruption:
-                    log.info("Action execution interrupted")
-                    break
-                    
-                # Process gripper action, @TODO: 耦合状态 for fr3
-                if self._last_gripper_open:
-                    log.info(f'open action["tool"][0]')
-                    action["tool"][0] = 1.0 if action["tool"][0] > 0.076 else 0.0
-                else:
-                    log.info(f'close action["tool"][0]')
-                    action["tool"][0] = 1.0 if action["tool"][0] > 0.0785 else 0.0
-                self._last_gripper_open = True if action["tool"][0] > 0.01 else False
-                
-                start_time = time.perf_counter()
-                self._gym_robot.step(action)
-                log.info(f'step used time: {time.perf_counter() - start_time}')
-                if self._async_execution:
-                    time.sleep(self._dt)
-            log.info(f'execution action finished!!!!!1')
+        dp_obs["state"] = np.array(state_components, dtype=np.float32)
         
-        self._execution_thread = threading.Thread(target=async_execute)
-        self._execution_thread.start()
-        if not self._async_execution:
-            self._execution_thread.join()
+        # Process camera observations
+        for camera_name, img in gym_obs.get('colors', {}).items():
+            assert img is not None and len(img.shape) == 3, f"Invalid image for {camera_name}"
+            
+            #resize
+            img = cv2.resize(img, self._image_size) 
+            
+            # Normalize and format
+            if img.dtype == np.uint8:
+                processed_img = img.astype(np.float32) / 255.0
+            else:
+                processed_img = np.clip(img.astype(np.float32), 0.0, 1.0)
+            
+            # Convert to [1, C, H, W] format
+            processed_img = np.transpose(processed_img, (2, 0, 1))
+            dp_obs[camera_name] = processed_img
+        
+        return dp_obs
         
     def _load_dp_model(self, checkpoint_path: str, config: Dict[str, Any]) -> BaseImagePolicy:
         """Load DP model from checkpoint.
@@ -285,148 +284,6 @@ class DP_Inferencer(InferenceBase):
             # Fallback to original inference steps setting
             policy.num_inference_steps = min(70, getattr(policy, 'num_inference_steps', 16))
             log.warning("Falling back to original DDPM inference settings")
-
-    def _resize_observation_tensors(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """Resize observation tensors to match model expectations.
-        
-        Args:
-            obs_dict: Dictionary of observation tensors
-            
-        Returns:
-            Dictionary with resized tensors
-        """
-        for key, tensor in obs_dict.items():
-            if 'camera' in key and hasattr(self._dp_policy, 'obs_encoder'):
-                # Find expected shape from model
-                for net_key, net in self._dp_policy.obs_encoder.obs_nets.items():
-                    if net_key == key and hasattr(net, 'input_shape'):
-                        expected_shape = net.input_shape
-                        actual_shape = tensor.shape[3:]  # Remove batch and time, channel dims
-                        log.info(f'{key} expected shape: {expected_shape[-2:]}, actual: {actual_shape}')
-                        if actual_shape != expected_shape[-2:]:
-                            target_h, target_w = expected_shape[-2:]
-                            obs_dict[key] = self._resize_tensor(tensor, (target_h, target_w), key)
-        return obs_dict
-    
-    def _resize_tensor(self, tensor: torch.Tensor, target_size: tuple, key: str) -> torch.Tensor:
-        assert len(target_size) == 2, f"Target size must be (H, W), got {target_size}"
-        assert len(tensor.shape) >= 3, f"Tensor must have at least 3 dims, got {tensor.shape}"
-        
-        target_h, target_w = target_size
-        assert 0 < target_h <= 1024 and 0 < target_w <= 1024, f"Invalid size: {target_size}"
-        
-        original_shape = tensor.shape
-        
-        # Handle different tensor dimensions
-        if len(tensor.shape) == 4:  # [B, C, H, W]
-            resized = transforms.Resize(size=target_size)(tensor)
-        elif len(tensor.shape) == 5:  # [B, T, C, H, W]
-            batch_size, time_steps = tensor.shape[:2]
-            # Reshape to [B*T, C, H, W] for resize
-            reshaped = tensor.view(-1, *tensor.shape[2:])
-            resized_flat = transforms.Resize(size=target_size)(reshaped)
-            # Reshape back to [B, T, C, H_new, W_new]
-            resized = resized_flat.view(batch_size, time_steps, *resized_flat.shape[1:])
-        else:
-            raise ValueError(f"Unsupported tensor shape: {tensor.shape}")
-            
-        log.info(f"Resized {key}: {original_shape} -> {resized.shape}")
-        return resized
-
-    def _convert_gym_obs_to_dp_format(self, gym_obs: Dict[str, Any]) -> Dict[str, np.ndarray]:
-        """Convert gym observations to DP format.
-        
-        Args:
-            gym_obs: Gym observation dictionary
-            
-        Returns:
-            DP-formatted observation dictionary
-        """
-        dp_obs = {}
-        
-        # Process robot state
-        state_components = np.array([])
-        temp_joint_posi = np.array([])
-        for key, joint_state in gym_obs.get('joint_states', {}).items():
-            # Extract components
-            robot_state = np.array(joint_state["position"], dtype=np.float32)
-            ee_pose = gym_obs.get('ee_states', {})
-            if self._obs_contain_ee: robot_state = np.hstack((robot_state, ee_pose[key]["pose"]))
-            tools_data = gym_obs.get("tools", {})[key]["position"]
-            temp_joint_posi = np.hstack((temp_joint_posi, joint_state["position"], tools_data))
-            
-            # Combine state components
-            state_components = np.hstack((state_components, robot_state, tools_data))
-        self._lock.acquire()
-        self._joint_positions = temp_joint_posi
-        self._lock.release()
-        
-        dp_obs["state"] = np.array(state_components, dtype=np.float32)
-        
-        # Process camera observations
-        for camera_name, img in gym_obs.get('colors', {}).items():
-            assert img is not None and len(img.shape) == 3, f"Invalid image for {camera_name}"
-            
-            #resize
-            img = cv2.resize(img, (128, 128)) 
-            
-            # Normalize and format
-            if img.dtype == np.uint8:
-                processed_img = img.astype(np.float32) / 255.0
-            else:
-                processed_img = np.clip(img.astype(np.float32), 0.0, 1.0)
-            
-            # Convert to [1, C, H, W] format
-            processed_img = np.transpose(processed_img, (2, 0, 1))
-            dp_obs[camera_name] = processed_img
-        
-        return dp_obs
-    
-    def _convert_dp_action_to_gym_format(self, dp_action: np.ndarray) -> List[Dict[str, Any]]:
-        """Convert DP action to gym format.
-        
-        Args:
-            dp_action: DP action array
-            
-        Returns:
-            List of gym action dictionaries
-        """
-        log.info(f'dp action shape: {dp_action.shape}')
-        gym_actions = []
-        
-        # @TODO: hack, zyx
-        gripper_position_dof = self._tool_position_dof
-        dofs = self._gym_robot._robot_motion.get_model_dof_list()[1:]
-        for i in range(dp_action.shape[0]):
-            with self._lock:
-                joint_state = copy.deepcopy(self._joint_positions)
-            # self._plotter.update_signal(joint_state, dp_action[i])
-            
-            arm_action = np.array([]); gripper_action = np.array([])
-            action_index = 0
-            for j in range(len(dofs)):
-                if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
-                    index_l = gripper_position_dof*j + action_index
-                    index_r = gripper_position_dof*j + dofs[j] + action_index
-                    action_index = index_r+gripper_position_dof
-                    cur_arm_action = dp_action[i][index_l:index_r]
-                elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
-                    pose_dof = 6 if self._action_ori_type == "euler" else 7
-                    cur_arm_action = dp_action[i][action_index:action_index+pose_dof]
-                    index_r = action_index+pose_dof
-                    action_index = index_r+gripper_position_dof 
-                else:
-                    raise ValueError(f"Unsupported action type: {self._action_type}")
-                
-                arm_action = np.hstack((arm_action, cur_arm_action))
-                cur_tool_action = dp_action[i][index_r:index_r+gripper_position_dof]
-                gripper_action = np.hstack((gripper_action, cur_tool_action))
-
-            gym_actions.append({
-                'arm': arm_action.astype(np.float32),
-                'tool': gripper_action.astype(np.float32)
-            })
-        return gym_actions
     
     def close(self) -> None:
         """Clean up DP-specific resources."""

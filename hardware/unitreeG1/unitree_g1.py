@@ -6,14 +6,55 @@ from hardware.base.utils import Buffer
 from hardware.base.arm import ArmBase
 from hardware.unitreeG1.consts import G1_JOINTS_KP, G1_JOINTS_KD, Mode, G1JointIndex
 
-# unitree related sdk
-from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher, ChannelFactoryInitialize
-from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowState_, unitree_hg_msg_dds__LowCmd_
-from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_
-from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
-from unitree_sdk2py.utils.thread import RecurrentThread
-from unitree_sdk2py.utils.crc import CRC
-from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+# Try to import unitree_sdk2py, fall back to mock if not available
+try:
+    from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher, ChannelFactoryInitialize
+    from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowState_, unitree_hg_msg_dds__LowCmd_
+    from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_
+    from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
+    from unitree_sdk2py.utils.thread import RecurrentThread
+    from unitree_sdk2py.utils.crc import CRC
+    from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+except (ImportError, ModuleNotFoundError):
+    log.warning("unitree_sdk2py not available, using mock implementation")
+    from hardware.mocks.mock_unitree_sdk2py import core, rtc, idl, utils
+    ChannelSubscriber = core.channel.ChannelSubscriber
+    ChannelPublisher = core.channel.ChannelPublisher
+    ChannelFactoryInitialize = core.channel.ChannelFactoryInitialize
+    # Create mock classes for the other imports
+    class MockLowCmd:
+        def __init__(self):
+            self.motor_cmd = [type('obj', (object,), {'q': 0, 'dq': 0, 'tau': 0, 'kp': 0, 'kd': 0, 'mode': 0})() for _ in range(35)]
+            self.crc = 0
+    class MockLowState:
+        def __init__(self):
+            self.motor_state = [type('obj', (object,), {'q': 0, 'dq': 0, 'ddq': 0, 'tau_est': 0})() for _ in range(35)]
+            self.mode_machine = 0
+            self.imu_state = type('obj', (object,), {'rpy': [0, 0, 0]})()
+    unitree_hg_msg_dds__LowCmd_ = MockLowCmd
+    unitree_hg_msg_dds__LowState_ = MockLowState
+    LowCmd_ = MockLowCmd
+    LowState_ = MockLowState
+    class MockRecurrentThread:
+        def __init__(self, interval, target, name):
+            pass
+        def Start(self):
+            pass
+    RecurrentThread = MockRecurrentThread
+    class MockCRC:
+        def Crc(self, cmd):
+            return 0
+    CRC = MockCRC
+    class MockMotionSwitcherClient:
+        def SetTimeout(self, timeout):
+            pass
+        def Init(self):
+            pass
+        def CheckMode(self):
+            return True, {'name': ''}
+        def ReleaseMode(self):
+            pass
+    MotionSwitcherClient = MockMotionSwitcherClient
 
 class UnitreeG1(ArmBase):
     def __init__(self, config):

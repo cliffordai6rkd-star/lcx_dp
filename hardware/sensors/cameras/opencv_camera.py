@@ -24,13 +24,15 @@ class OpencvCamera(CameraBase):
         if self._contain_depth or self._contain_imu:
             raise ValueError("Opencv camera do not support imu and depth")
         
-        self._cap = cv2.VideoCapture(self._device_id, cv2.CAP_V4L2)
+        self._cap = cv2.VideoCapture(self._device_id)
         self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M', 'J', 'P', 'G'))
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._img_shape[0])
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._img_shape[1])
         self._cap.set(cv2.CAP_PROP_FPS, self._fps)
 
         # Test if the camera can read frames
+        opened = self._cap.isOpened()
+        log.info(f'opencv camera {self._device_id} opened or not {opened}')
         success, _ = self._cap.read()
         if not success:
             self.close()
@@ -62,7 +64,7 @@ class OpencvCamera(CameraBase):
             dt = time.time() - last_read_time
             if dt < (1.0 / self._fps):
                 sleep_time = (1.0 / self._fps) - dt
-                time.sleep(0.85 * sleep_time)
+                time.sleep(sleep_time)
             elif dt > 1.35 / self._fps:
                 warnings.warn(f'Camera could not reach the {self._fps}hz, '
                               f'actual freq: {1.0 / dt}hz')

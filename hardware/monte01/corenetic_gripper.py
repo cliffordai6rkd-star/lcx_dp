@@ -3,14 +3,19 @@ import os
 from .defs import ROBOTLIB_SO_PATH, COM_TYPE_LEFT, COM_TYPE_RIGHT,CORENETIC_GRIPPER_MAX_POSITION
 from .defs import GRIPPER_ENABLE, GRIPPER_MODE_POSITION_CTRL, GRIPPER_MODE_TORQUE_CTRL
 
-# Load RobotLib dynamically
-spec = importlib.util.spec_from_file_location(
-    "RobotLib", 
-    os.path.abspath(os.path.join(os.path.dirname(__file__), ROBOTLIB_SO_PATH))
-)
-RobotLib_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(RobotLib_module)
-RobotLib = RobotLib_module.Robot
+# Try to load RobotLib, use None if not available (simulation mode)
+try:
+    spec = importlib.util.spec_from_file_location(
+        "RobotLib",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), ROBOTLIB_SO_PATH))
+    )
+    RobotLib_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(RobotLib_module)
+    RobotLib = RobotLib_module.Robot
+except (FileNotFoundError, ImportError, OSError) as e:
+    import glog as log
+    log.warning(f"RobotLib not available in corenetic_gripper, using mock implementation: {e}")
+    RobotLib = None
 
 from hardware.base.tool_base import ToolBase
 from hardware.base.utils import ToolType

@@ -27,8 +27,8 @@ class AnimationPlotter:
         figsize: tuple[int, int] = (10, 6),
         cols: int = 3,
         is_debug = False,
-        update_frequency = 300,  # Higher frequency for more responsive plotting
-        enable_display = True  # Allow disabling display for performance
+        update_frequency = 300,  # Higher frequency for more responsive plotting,
+        enable_display = True
     ) -> None:
         """Initialize multi-canvas animation plotter.
         
@@ -39,6 +39,7 @@ class AnimationPlotter:
         """
         assert len(joint_state_names) == len(action_names), f"len of joint name{len(joint_state_names)} != len action name {len(action_names)}"
         
+        self._enable_display = enable_display
         self.joint_state_names = joint_state_names
         self.action_names = action_names
         self.signal_count = len(joint_state_names)
@@ -73,7 +74,6 @@ class AnimationPlotter:
         self.joint_lines = None
         self.action_lines = None
         self._animation_ready = False
-        self._enable_display = enable_display
         
         log.info(f"AnimationPlotter initialized with {self.signal_count} signals, "
                 f"max_points={max_points}, layout={self.rows}x{cols}")
@@ -106,25 +106,26 @@ class AnimationPlotter:
         
         # If not using Agg, assume it works
         if current_backend != 'Agg':
-            log.info(f"Using existing backend: {current_backend}")
+            log.info(f"{'=='}*15 Using existing backend: {current_backend} {'=='}*15")
             return True
             
         # Simple DISPLAY check
         if os.environ.get('DISPLAY'):
             # Try TkAgg first (most common)
             matplotlib.use('TkAgg')
-            log.info("Using GUI backend: TkAgg")
+            log.info("{'=='}*15 Using GUI backend: TkAgg {'=='}*15")
             return True
         
         # Headless mode
         matplotlib.use('Agg')
-        log.warning("Using headless mode (Agg backend)")
+        log.warning("{'=='}*15 Using headless mode (Agg backend) {'=='}*15")
         return False
 
     def _init_plots(self) -> None:
         """Initialize matplotlib subplots with simplified backend selection."""
         # Setup backend
         self._has_gui = self._setup_matplotlib_backend()
+        log.info(f'Current matplotlib backend has gui: {self._has_gui}')
         
         if self._has_gui:
             plt.ion()  # Enable interactive mode for GUI
@@ -486,23 +487,6 @@ class AnimationPlotter:
                 break
                 
         log.info("Animation data and queue cleared")
-    
-    def force_plot_update(self) -> None:
-        """Force immediate plot update - lightweight version for PI0."""
-        try:
-            if self.fig and hasattr(self.fig, 'canvas'):
-                # Process any queued data immediately
-                self._process_plot_queue()
-                # Minimal matplotlib event processing without full pause
-                self.fig.canvas.flush_events()
-        except Exception as e:
-            if self.is_debug:
-                log.warning(f"Force plot update failed: {e}")
-                
-    def trigger_plot_refresh(self) -> None:
-        """Non-blocking plot refresh - just signals the backend thread."""
-        # Simply mark that a refresh is needed - actual work done by background timer
-        pass  # The background timer thread handles all plot updates
     
     def save_data(self, filepath: str) -> None:
         """Save current trajectory data to JSON file.
