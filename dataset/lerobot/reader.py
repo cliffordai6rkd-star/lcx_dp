@@ -67,6 +67,7 @@ class RerunEpisodeReader:
             self._action_prediction_step = skip_steps_nums
         len_json_file = len(json_file['data'])
         json_data = json_file['data']
+        init_ee_poses = {}
         # @TODO: maybe pose-process for time synchronization
         for i, item_data in enumerate(json_file['data']):
             # Process images and other data
@@ -86,6 +87,11 @@ class RerunEpisodeReader:
                 if joint_states is None or len(joint_states) == 0:
                     raise ValueError(f'Do not get the {i}th joint state from {self.task_dir} {episode_dir} for {self._obs_type}')
             ee_states = item_data.get('ee_states', {})
+            if self._rotation_transform and len(init_ee_poses) != len(ee_states):
+                for key, cur_ee_state in ee_states.items():
+                    pose = cur_ee_state["pose"]
+                    init_ee_poses[key] = self.apply_rotation_offset(pose, key)      
+                log.info(f'Successfully updated the init ee pose for relative pose calculation {list(init_ee_poses.keys())}')
             # @TODO: used for latter head tracker
             head_pose = ee_states.pop('head', None)
             if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR or self._obs_type == ObservationType.END_EFFECTOR_POSE:
@@ -96,11 +102,13 @@ class RerunEpisodeReader:
                 for key in joint_states.keys():
                     cur_obs[key] = np.array(joint_states[key]["position"])
                     if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
-                        ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key)
+                        ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
+                                                            init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
             elif self._obs_type == ObservationType.END_EFFECTOR_POSE:
                 for key in ee_states.keys():
-                    ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key)
+                    ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
+                                                        init_data=init_ee_poses[key])
                     cur_obs[key] = np.array(ee_pose)
             elif self._obs_type == ObservationType.MASK:
                 for key in ee_states.keys():
@@ -114,12 +122,13 @@ class RerunEpisodeReader:
             if self.action_type == ActionType.JOINT_POSITION:
                 joint_states = item_data.get("joint_states", {})
                 cur_actions = self._get_absolute_action(joint_states, 
-                                            action_state=json_data[action_state_id]["joint_states"],
-                                            attribute_name="position")
+                        action_state=json_data[action_state_id]["joint_states"],
+                                                    attribute_name="position")
             elif self.action_type == ActionType.END_EFFECTOR_POSE:
+                init_data = None if len(init_ee_poses) == 0 else init_ee_poses
                 cur_actions = self._get_absolute_action(item_data.get("ee_states", {}),
-                                            action_state=json_data[action_state_id]["ee_states"],
-                                            attribute_name="pose")
+                                    action_state=json_data[action_state_id]["ee_states"],
+                                    attribute_name="pose", init_data=init_data)
                 if self._action_ori_type == 'euler':
                     modified_action = {}
                     for key, action in cur_actions.items():
@@ -203,12 +212,14 @@ class RerunEpisodeReader:
                 + 'steps: ' + steps + ' ' + 'goal: ' + text_info["goal"]        
         return text_info
     
-    def _get_absolute_action(self, states, action_state, attribute_name = None):
+    def _get_absolute_action(self, states, action_state, attribute_name = None, init_data = None):
         cur_action = {}
         for key, state in states.items():
             if attribute_name is not None:
                 if attribute_name == "pose":
-                    action_state[key][attribute_name] = self.apply_rotation_offset(action_state[key][attribute_name], key)
+                    cur_init_pose = init_data[key] if init_data else None
+                    action_state[key][attribute_name] = self.apply_rotation_offset(
+                                action_state[key][attribute_name], key, cur_init_pose)
                 cur_action[key] = action_state[key][attribute_name]
             else:
                 cur_action[key] = action_state[key]
@@ -256,12 +267,15 @@ class RerunEpisodeReader:
         rot_ac = rot_ab * rot_bc  # R_ac = R_ab * R_bc
         return rot_ac.as_quat()  # [qx, qy, qz, qw]
     
-    def apply_rotation_offset(self, pose, key):
+    def apply_rotation_offset(self, pose, key, init_data = None):
         new_pose = copy.deepcopy(pose)
         if self._rotation_transform is not None:
             if key not in self._rotation_transform:
                 raise ValueError(f'Got the rotation transform but {key} not found in {self._rotation_transform}')
             new_pose[3:] = self.transform_quat(pose[3:], self._rotation_transform[key])
+            if init_data:
+                # calculate relative term
+                new_pose = self.get_pose_diff(new_pose, init_data)
         return new_pose
         
     def _process_images(self, item_data, data_type, dir_path):
