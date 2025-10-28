@@ -332,13 +332,19 @@ class MujocoSim(SimBase):
     def parse_config(self) -> bool:
         """parse config to get the Mujoco model and data."""
         # Check if scene_config_file is provided for dynamic scene generation
-        scene_config_path = self.parse_relative_path(self._config['scene_config_file'])
-        log.info(f'Using dynamic scene generation from: {scene_config_path}')
+        if "scene_config_file" in self._config:
+            scene_config_path = self.parse_relative_path(self._config['scene_config_file'])
+            log.info(f'Using dynamic scene generation from: {scene_config_path}')
 
-        # Create MujocoEnvCreator with the scene config
-        env_creator = MujocoEnvCreator(config_path=scene_config_path)
-        self._model, self._data = env_creator.create_model()
-        log.info(f'Successfully created dynamic scene with {self._model.nq} DoFs')
+            # Create MujocoEnvCreator with the scene config
+            env_creator = MujocoEnvCreator(config_path=scene_config_path)
+            self._model, self._data = env_creator.create_model()
+            log.info(f'Successfully created dynamic scene with {self._model.nq} DoFs')
+        elif "base_xml_file" in self._config:
+            model_path = self.parse_relative_path(self._config['base_xml_file'])
+            log.info(f'Successfully cretaed model path fron scene xml file: {model_path}')
+            self._model = mujoco.MjModel.from_xml_path(model_path)
+            self._data = mujoco.MjData(self._model)
 
         # Create render data copy for thread-safe camera access
         self._render_data = mujoco.MjData(self._model)

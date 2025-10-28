@@ -10,6 +10,7 @@ import glog as log
 class ObservationType(enum.Enum):
     JOINT_POSITION_ONLY = "jonit_position"
     END_EFFECTOR_POSE = "ee_pose"
+    DELTA_END_EFFECTOR_POSE = "delta_ee_pose"
     JOINT_POSITION_END_EFFECTOR = "jonit_position_ee_pose"
     MASK = "mask"
 
@@ -107,11 +108,21 @@ class RerunEpisodeReader:
                         ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
-            elif self._obs_type == ObservationType.END_EFFECTOR_POSE:
+            elif self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.DELTA_END_EFFECTOR_POSE:
+                next_id = i + 1
+                if next_id >= len_json_file: continue
+                next_ee_states = json_data[next_id].get("ee_states", {})
                 for key in ee_states.keys():
                     ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                         init_data=init_ee_poses[key])
-                    cur_obs[key] = np.array(ee_pose)
+                    if self._obs_type == ObservationType.END_EFFECTOR_POSE:
+                        cur_obs[key] = np.array(ee_pose)
+                    else:
+                        next_pose = next_ee_states[key]["pose"]
+                        # @TODO: think about it
+                        next_pose = self.apply_rotation_offset(next_pose, key,
+                                                init_data=init_ee_poses[key])
+                        cur_obs[key] = self.get_pose_diff(next_pose, ee_pose)
             elif self._obs_type == ObservationType.MASK:
                 for key in ee_states.keys():
                     cur_obs[key] = np.zeros(7)
@@ -119,8 +130,7 @@ class RerunEpisodeReader:
             # Append the action data in the item_data list
             cur_actions = {}
             action_state_id = i+self._action_prediction_step
-            if action_state_id >= len_json_file:
-                continue
+            if action_state_id >= len_json_file: continue
             if self.action_type == ActionType.JOINT_POSITION:
                 joint_states = item_data.get("joint_states", {})
                 cur_actions = self._get_absolute_action(joint_states, 
@@ -151,7 +161,7 @@ class RerunEpisodeReader:
                     cur_actions[key] = np.zeros(7)
                     next_pose = np.array(next_state_data[key]["pose"])
                     next_pose = self.apply_rotation_offset(next_pose, key)
-                    cur_pose = self.apply_rotation_offset(np.array(pose["pose"]))
+                    cur_pose = self.apply_rotation_offset(np.array(pose["pose"]), key)
                     cur_actions[key] = self.get_pose_diff(next_pose, cur_pose)
                 if self._action_ori_type == "euler":
                     modified_action = {}
@@ -167,8 +177,11 @@ class RerunEpisodeReader:
             # tool state
             tool_states = item_data.get("tools", {})
             for key, tool_state in tool_states.items():
-                cur_obs[key] = np.hstack((cur_obs[key], tool_state["position"]))
                 cur_actions[key] = np.hstack((cur_actions[key], tool_state["position"]))
+                if self._obs_type == ObservationType.MASK:
+                    cur_obs[key] = np.hstack((cur_obs[key], [0]))
+                else:
+                    cur_obs[key] = np.hstack((cur_obs[key], tool_state["position"]))
             
             if counter % skip_steps_nums == 0:
                 episode_data.append(
@@ -203,6 +216,9 @@ class RerunEpisodeReader:
             json_file = json.load(jsonf)
 
         text_info = json_file["text"]
+        if not "steps" in text_info:
+            return None
+        
         steps = ""
         if isinstance(text_info["steps"], dict):
             for step_number, cur_step in text_info["steps"].items():

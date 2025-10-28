@@ -10,7 +10,7 @@ action_type: "end_effector_pose"
 # euler quaternion
 action_orientation_type: "euler"
 # jonit_position ee_pose jonit_position_ee_pose mask
-observation_type: "joint_position"
+observation_type: "ee_pose"
 is_debug: false
 
 reset_space: "joint"
@@ -34,7 +34,7 @@ enable_hardware: true
 
 num_episodes: 8
 max_timestamps: 1500
-execution_chunk_steps: 15
+execution_chunk_steps: 35
 action_weight_mode: "uniform"
 action_weight_gain: -0.01
 async_execution: false

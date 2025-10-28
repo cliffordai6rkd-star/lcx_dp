@@ -97,7 +97,6 @@ class LerobotLoader(DataLoaderBase):
         state_step_list = []; action_step_list = []; 
         # 每一个task下的所有episodes
         for task_id, task_dir in tqdm(enumerate(self._task_list), desc=f"processing tasks", unit="task"):
-            # text_info = self._all_episode_text[i]
             dirs = os.listdir(task_dir)
             # 同一个task下的每一个episode
             for cur_episode_dir in tqdm(dirs, desc=f"processing episodes", unit="episode"):

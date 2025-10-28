@@ -18,6 +18,7 @@ class GymApi(gym.Env):
         self._action_type = config.get("action_type", "joint_position")
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
+        self._delta_action_target = {}
         self._obs_type = config.get("observation_type", ObservationType.JOINT_POSITION_ONLY)
         self._use_relative_pose = config.get("use_relative_pose", False)
         self._init_pose = {}
@@ -46,11 +47,13 @@ class GymApi(gym.Env):
         
     def set_init_pose(self):
         time.sleep(1.0)
-        if self._use_relative_pose:
-            ee_states = self.get_ee_state()
-            for key, cur_ee_state in ee_states.items():
+        ee_states = self.get_ee_state()
+        for key, cur_ee_state in ee_states.items():
+            self._delta_action_target[key] = cur_ee_state["pose"]
+            log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
+            if self._use_relative_pose:
                 self._init_pose[key] = cur_ee_state["pose"]
-    
+                log.info(f'Updated init pose!!!')
     def set_action_type(self, action_type: ActionType):
         self._action_type = action_type
         
@@ -78,7 +81,7 @@ class GymApi(gym.Env):
         elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
             cur_ee_pose = self.get_ee_state()
             action_index = 0
-            for j, pose in enumerate(list(cur_ee_pose.values())):
+            for j, (key, pose) in enumerate(list(cur_ee_pose.items())):
                 pose = pose["pose"]
                 if self._action_ori_type == "euler":
                     index_l = 6 * j + action_index
@@ -92,7 +95,10 @@ class GymApi(gym.Env):
                     cur_arm_action = np.hstack((cur_arm_action, [0]))
                     cur_arm_action[3:] = R.from_euler("xyz", cur_arm_action[3:6]).as_quat()
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
-                   cur_arm_action = transform_pose(pose, cur_arm_action, True)
+                    # try to use the fixed reset pose
+                   cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action, True)
+                   self._delta_action_target[key] = cur_arm_action
+                # for umi absolute relative pose
                 elif self._use_relative_pose:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)

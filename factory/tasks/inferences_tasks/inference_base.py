@@ -1,7 +1,8 @@
 import abc
 from factory.components.gym_interface import GymApi
 from hardware.base.utils import ToolControlMode
-from factory.tasks.inferences_tasks.utils import display_images, AnimationPlotter
+from factory.tasks.inferences_tasks.utils.display import display_images
+from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
 from sshkeyboard import listen_keyboard, stop_listening
