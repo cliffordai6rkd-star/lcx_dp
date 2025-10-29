@@ -22,6 +22,8 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
             raise RuntimeError("Camera is not initialized, cannot capture data.")
         
         _, image, time_stamp = self.read_image()
+        image = copy.deepcopy(image)
+        time_stamp = copy.deepcopy(time_stamp)
         if self._contain_depth:
             _, depth_map = self.read_depth_map() 
         else:
@@ -47,8 +49,8 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
                           f"still not retrieve the image{self._image_data is None}")
             return False, None, None
         self._lock.acquire()
-        image = copy.deepcopy(self._image_data)
-        time_stamp = copy.deepcopy(self._time_stamp)
+        image = self._image_data
+        time_stamp = self._time_stamp
         self._lock.release()
         return True, image, time_stamp
     

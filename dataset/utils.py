@@ -3,6 +3,7 @@ import enum
 class ObservationType(enum.Enum):
     JOINT_POSITION_ONLY = "jonit_position"
     END_EFFECTOR_POSE = "ee_pose"
+    DELTA_END_EFFECTOR_POSE = "delta_ee_pose"
     JOINT_POSITION_END_EFFECTOR = "jonit_position_ee_pose"
     MASK = "mask"
 

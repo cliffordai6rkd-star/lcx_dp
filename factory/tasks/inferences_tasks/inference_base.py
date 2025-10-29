@@ -238,7 +238,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     def start_common_inference(self):
         # rollout episodes
         query_frequency = int(50 / self._infer_frequency)
-        query_frequency = 25
+        query_frequency = 15
         for episode_id in range(self._num_episodes):
             if self._quit: break
             

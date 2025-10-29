@@ -160,8 +160,8 @@ class RerunEpisodeReader:
                 for key, pose in ee_states.items():
                     cur_actions[key] = np.zeros(7)
                     next_pose = np.array(next_state_data[key]["pose"])
-                    next_pose = self.apply_rotation_offset(next_pose, key)
-                    cur_pose = self.apply_rotation_offset(np.array(pose["pose"]), key)
+                    next_pose = self.apply_rotation_offset(next_pose, key, init_ee_poses[key])
+                    cur_pose = self.apply_rotation_offset(np.array(pose["pose"]), key, init_ee_poses[key])
                     cur_actions[key] = self.get_pose_diff(next_pose, cur_pose)
                 if self._action_ori_type == "euler":
                     modified_action = {}

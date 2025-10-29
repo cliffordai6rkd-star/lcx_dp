@@ -24,6 +24,7 @@ class GymApi(gym.Env):
         self._init_pose = {}
         robot_motion_cfg = config["motion_config"]
         self._tool_position_dof = config.get("tool_position_dof", 1)
+        self._tool_state_max = config.get("tool_state_max", 1)
         
         self._reset_space = config.get("reset_space", "joint")
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
@@ -31,14 +32,15 @@ class GymApi(gym.Env):
         self._reset_tool_command = config.get("reset_tool_command", [[1]])
         self._is_debug = config.get("is_debug", False)
         self._use_hardware = config.get("enable_hardware", True)
-        log.info(f'execute hardware: {self._use_hardware}')
         
         self._robot_system = RobotFactory(robot_motion_cfg)
         self._robot_motion = MotionFactory(robot_motion_cfg, self._robot_system)
         self._robot_motion.create_motion_components()
         if self._use_hardware:
             self._robot_motion.update_execute_hardware(True)
-            self._robot_system._use_hardware = True
+            self._robot_system._enable_hardware = True
+            time.sleep(0.3)
+            log.info("The robot hardware all enabled!!!!!!")
         log.info("The robot motion component is successfully created in gym api!")
         
         # variable used for gym api
@@ -227,7 +229,10 @@ class GymApi(gym.Env):
                 obs_state[key] = np.hstack((obs_state[key], joint_state["position"]))
             if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 obs_state[key] = np.hstack((obs_state[key], ee_states[key]["pose"]))
-            obs_state[key] = np.hstack((obs_state[key], tools_dict[key]["position"]))
+            if self._obs_type != ObservationType.MASK:
+                tool_state = tools_dict[key]["position"] / self._tool_state_max
+                obs_state[key] = np.hstack((obs_state[key], tool_state))
+            else: obs_state[key] = np.hstack((obs_state[key], [0]))
         
         # other sensors: @TODO: zyx
         

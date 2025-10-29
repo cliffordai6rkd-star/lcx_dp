@@ -1,5 +1,5 @@
 # usage platform
-use_hardware: false
+use_hardware: true
 use_simulation: true
 
 robot: "fr3"
@@ -18,15 +18,21 @@ auto_enable_async_control: true    # Auto-enable async mode on initialization (n
 # sensor infos
 sensor_dicts:
   cameras:
-    - name: "ee_cam"
+    # - name: "ee_cam"
+    #   type: "realsense_camera"
+    #   cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
+    # - name: "third_person_cam"
+    #   type: "realsense_camera"
+    #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_third_person.yaml
+    # - name: "side_cam"
+    #   type: "realsense_camera"
+    #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
+    - name: "left_hand"
       type: "realsense_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
-    - name: "third_person_cam"
-      type: "realsense_camera"
-      cfg: !include hardware/sensors/cameras/config/rs_cfg_right_third_person.yaml
-    - name: "side_cam"
-      type: "realsense_camera"
-      cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
+    - name: "left_hand_fisheye"
+      type: "opencv_camera"
+      cfg: !include hardware/sensors/cameras/config/right_pika_fisheye_cfg.yaml
   # ft_sensors:
   #   - name: "ee_ft"
   #     type: "ati_ft"
