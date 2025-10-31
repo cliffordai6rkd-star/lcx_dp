@@ -141,7 +141,6 @@ class DataReplay:
         log.info(f"Starting replay at {self._replay_frequency}Hz")
         next_run_time = time.perf_counter()
 
-        init_robot_pose = self._gym_api.get_ee_state()
         init_episode_pose = episode_data[0]["ee_states"]
         for key, pose in init_episode_pose.items():
             pose["pose"][3:] = transform_quat(pose["pose"][3:], self._rotation_transform[key])
@@ -161,19 +160,9 @@ class DataReplay:
             # relative pose reprensentation
             if self._rotation_transform and self._action_type == ActionType.END_EFFECTOR_POSE:
                 for key, cur_action in actions.items():
-                    if self._action_ori_type == "euler":
-                        rotation = R.from_euler("xyz", cur_action[3:6])
-                    elif self._action_ori_type == "quaternion":
-                        rotation = R.from_quat(cur_action[3:7])
-                    cur_pose = np.hstack((cur_action[:3], rotation.as_quat()))
-                    init_data_pose = init_episode_pose[key]["pose"]
-                    delta_rot = pose_diff(cur_pose, np.array(init_data_pose))
-                    execute_pose = transform_pose(init_robot_pose[key]["pose"], delta_rot)
-                    if self._action_ori_type == "euler":
-                        euler = R.from_quat(execute_pose[3:]).as_euler('xyz')
-                        actions[key][:6] = np.hstack((execute_pose[:3], euler))
-                    elif self._action_ori_type == "quaternion":
-                        actions[key][:7] = execute_pose
+                    # @TODO: umi data replay hack
+                    # cur_action[2] -= 0.3
+                    actions[key] = cur_action 
                         
             gym_action = self._convert_to_gym_format(actions)
             self._gym_api.step(gym_action)

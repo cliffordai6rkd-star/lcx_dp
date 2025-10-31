@@ -60,7 +60,20 @@ class DP_Inferencer(InferenceBase):
         self._obs_queue = deque(maxlen=self._n_obs_steps)
         
         log.info(f"DP model loaded. obs_steps: {self._n_obs_steps}, action_horizon: {self._action_horizon}")
+    
+    def policy_reset(self):
+        self._dp_policy.reset()
+        self._obs_queue.clear()
         
+    def policy_prediction(self, obs):
+        with torch.no_grad():
+            start_time = time.perf_counter()
+            result = self._dp_policy.predict_action(obs)
+            log.info(f'infer used time: {time.perf_counter() - start_time}s')
+            log.info(f'dp result action: {result["action"].shape}')
+            action_np = result['action'][0].detach().cpu().numpy()
+        return action_np
+    
     def start_inference(self) -> None:
         """Main inference loop following PI0 pattern."""
         execution_thread = None
@@ -306,7 +319,8 @@ def main():
     config = dynamic_load_yaml(args.config)
     print(f'dp config: {config}')
     dp_executor = DP_Inferencer(config)
-    dp_executor.start_inference()
+    # dp_executor.start_inference()
+    dp_executor.start_common_inference()
     
 if __name__ == "__main__":
     main()

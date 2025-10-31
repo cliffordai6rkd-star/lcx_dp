@@ -1,21 +1,23 @@
 motion_config: !include factory/components/motion_configs/right_fr3_with_pika_ati_ik.yaml
 
-task_data_dir: "dataset/data/1024_left_fr3_pick_n_place_humanhand_135eps"
+task_data_dir: "dataset/data/1028_left_fr3_pick_n_place_humanhand_154eps"
 action_prediction_step: 2
 # skip_steps: 2
 # end_effector_pose_delta
 action_type: "end_effector_pose"
 action_orientation_type: "euler"
-use_relative_pose: false
+use_relative_pose: true
 rotation_transform: 
   single: [0.7071068, 0, 0.7071068, 0]
 
 replay_frequency: 30
 tool_position_dof: 1
 tool_max: 90
-enable_hardware: false
+enable_hardware: true
 
 # move to start position
 # [-6.120230489417065e-05, -0.7827681732663258, -0.0008224786135059742, -2.3566525744448925, 0.0015880230540836664, 1.572229182095289, 0.7941674346782676]
-reset_arm_command: [0.08970076997658086, -1.0446335702673328, -0.21342641730033804, -2.9321269071918556, -0.19632348805023883, 3.3759368775795817, 0.7652398654934537]
+# reset_arm_command: [0.08970076997658086, -1.0446335702673328, -0.21342641730033804, -2.9321269071918556, -0.19632348805023883, 3.3759368775795817, 0.7652398654934537]
+# new arm command
+reset_arm_command: [-1.739511885028377, -1.15393908890327, -0.5111689909133162, -2.3949934097530203, 1.0834711604762148, 1.0181745575183847, -0.6134346582714251]
 reset_space: "joint"

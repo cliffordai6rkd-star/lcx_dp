@@ -6,20 +6,17 @@
 motion_config: !include factory/components/motion_configs/right_fr3_with_pika_ati_ik.yaml
 max_step_nums: 150 # for gym steps
 # end_effector_pose_delta joint_position
-action_type: "end_effector_pose"
+action_type: "end_effector_pose_delta"
 # euler quaternion
 action_orientation_type: "euler"
-# jonit_position ee_pose jonit_position_ee_pose mask
-observation_type: "end_effector_pose"
+# jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose
+observation_type: "delta_ee_pose"
 use_relative_pose: true
 is_debug: false
 
 reset_space: "joint"
-# reset_arm_command: [-0.0016708960744338654, -0.7861180279768628, 
-#                       0.0011242960248884306, -2.3515749674770583, 
-#                       -0.0019059956649008665, 1.581831610375827, 
-#                       0.7904221443917989]
-reset_arm_command: [0.08970076997658086, -1.0446335702673328, -0.21342641730033804, -2.9321269071918556, -0.19632348805023883, 3.3759368775795817, 0.7652398654934537]
+reset_arm_command: [-1.739511885028377, -1.15393908890327, -0.5111689909133162, -2.3949934097530203, 1.0834711604762148, 1.0181745575183847, -0.6134346582714251]
+# reset_arm_command: [-0.41425065466379796, -1.39557627627586, 0.06088346008408975, -2.694321648428242, 0.3244465598980649, 2.0187975945253904, 0.34468665065276416]
 reset_tool_command: [[1]]
 
 tool_control_mode: "incremental"

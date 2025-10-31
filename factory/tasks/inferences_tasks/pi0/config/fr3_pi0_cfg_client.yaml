@@ -9,7 +9,7 @@ max_step_nums: 150 # for gym steps
 action_type: "joint_position"
 # euler quaternion
 action_orientation_type: "euler"
-# jonit_position ee_pose jonit_position_ee_pose mask
+# jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose
 observation_type: "jonit_position"
 is_debug: false
 
@@ -46,4 +46,4 @@ async_execution: false
 # tasks: "collect a portion of rice with spoon and transfer it into the bowl"
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
-"grasp the pin board on the left and insert it into the board slot in the middle"
+tasks: "grasp the pin board on the left and insert it into the board slot in the middle"

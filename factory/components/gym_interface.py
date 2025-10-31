@@ -56,6 +56,7 @@ class GymApi(gym.Env):
             if self._use_relative_pose:
                 self._init_pose[key] = cur_ee_state["pose"]
                 log.info(f'Updated init pose!!!')
+                
     def set_action_type(self, action_type: ActionType):
         self._action_type = action_type
         
@@ -100,6 +101,8 @@ class GymApi(gym.Env):
                     # try to use the fixed reset pose
                    cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action, True)
                    self._delta_action_target[key] = cur_arm_action
+                    # @TODO: how to deal with delta pose with umi
+                        
                 # for umi absolute relative pose
                 elif self._use_relative_pose:
                     # for relative pose action representation
