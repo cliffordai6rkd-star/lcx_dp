@@ -36,11 +36,6 @@ class GymApi(gym.Env):
         self._robot_system = RobotFactory(robot_motion_cfg)
         self._robot_motion = MotionFactory(robot_motion_cfg, self._robot_system)
         self._robot_motion.create_motion_components()
-        if self._use_hardware:
-            self._robot_motion.update_execute_hardware(True)
-            self._robot_system._enable_hardware = True
-            time.sleep(0.3)
-            log.info("The robot hardware all enabled!!!!!!")
         log.info("The robot motion component is successfully created in gym api!")
         
         # variable used for gym api
@@ -140,6 +135,11 @@ class GymApi(gym.Env):
         return observation, reward, done, False, info
         
     def reset(self, *, seed = None, options = None):
+        if self._use_hardware:
+            self._robot_motion.update_execute_hardware(True)
+            self._robot_system._enable_hardware = True
+            time.sleep(0.3)
+            log.info("The robot hardware all enabled!!!!!!")
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)

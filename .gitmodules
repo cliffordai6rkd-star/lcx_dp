@@ -19,3 +19,6 @@
 [submodule "dependencies/pika_sdk"]
 	path = dependencies/pika_sdk
 	url = git@github.com:linkage-x/pika_sdk.git
+[submodule "dependencies/BC_Policy"]
+	path = dependencies/BC_Policy
+	url = git@github.com:linkage-x/BC_Policy.git

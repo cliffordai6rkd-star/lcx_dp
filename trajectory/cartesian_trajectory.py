@@ -84,6 +84,7 @@ class CartessianTrajectory(TrajectoryBase):
             self._buffer.push_data(curr_point, time_stamp)
             self._buffer_lock.release()
             # time.sleep(self.dt)
+            time.sleep(0.001)
             
             # time printing
         #     loop_time = time.time() - start_time

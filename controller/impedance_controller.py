@@ -29,6 +29,7 @@ class ImpedanceController(ControllerBase):
         self.saturation_values = config["saturation"]
         self.Kp_nullspace = np.array(config.get("kp_null", None)).astype(np.float64)
         self.q_des = config.get("q_des", None)
+        self.velocity_limits = config.get("velocity_limits", [1.57, 1.57, 1.57, 1.57, 2.5, 2.5, 2.5])
     
     def compute_controller(self, target: list[dict[str, np.ndarray]], 
                            robot_state: RobotJointState | None = None):
@@ -42,8 +43,6 @@ class ImpedanceController(ControllerBase):
         self._robot_model.update_kinematics(robot_state._positions, robot_state._velocities, 
                                             robot_state._accelerations)
         ee_pose_homo = self._robot_model.get_frame_pose(frame_name)
-        # target_homo = convert_7D_2_homo(target)
-        # pose_error = get_pose_error(target_homo, ee_pose_homo)
         ee_pose = convert_homo_2_7D_pose(ee_pose_homo)
         pose_error = compute_pose_diff(target, ee_pose)
         # print(f'pose err: {pose_error}, norm: {np.linalg.norm(pose_error)}')
@@ -63,9 +62,15 @@ class ImpedanceController(ControllerBase):
         task_inertial_inv = J @ M_inv @ J.T  
         task_inertial = np.linalg.pinv(task_inertial_inv)
 
+        # compute scale
+        s = self.velocity_scale_global(robot_state._velocities)
+        print(f'vel scale: {s}')
+        # s = 1
+        
         # compute the target end-effector wrench
         if self._damping is None:
             kp_sqrt = scipy_matrix_sqrt(self._stiffness)
+            # kp_sqrt = np.sqrt(self._stiffness)
             # @TODO: check why the close loop damped system is not stable
             # task_inertial_sqrt = matrix_sqrt(task_inertial)
             task_inertial_sqrt = scipy_matrix_sqrt(task_inertial)
@@ -74,7 +79,6 @@ class ImpedanceController(ControllerBase):
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
         # @TODO: check acceleration not stable
         des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
-        # des_local_wrench = - des_local_wrench
         
         C = self._robot_model.get_coriolis_matrix(robot_state._positions, robot_state._velocities,
                                                   dims=self.arm_joint_idxes)
@@ -86,7 +90,7 @@ class ImpedanceController(ControllerBase):
         # print(f'base tau: {tau}')
         tau_impedance = J.T @ des_local_wrench
         # print(f'impedance tau: {tau_impedance}')
-        tau -= tau_impedance
+        tau -= s * tau_impedance
                 
         # nullspace 
         if self.Kp_nullspace is not None and self.q_des is not None:
@@ -97,7 +101,7 @@ class ImpedanceController(ControllerBase):
             J_bar = M_inv @ J.T @ task_inertial
             tau_nullsapce = (np.eye(self._robot_model.nv) - J.T @ J_bar.T) @ null_err
             # print(f'nullspace tau: {tau_nullsapce}')
-            tau += tau_nullsapce
+            tau += s * tau_nullsapce
 
         # tau=np.zeros(7)
         # saturation
@@ -108,3 +112,18 @@ class ImpedanceController(ControllerBase):
     def set_damping(self, damping):
         self._damping = damping
         
+    def velocity_scale_global(self, dq, s_min=0.1):
+        abs_dq = np.abs(dq)
+        margin = 0.15 * np.array(self.velocity_limits)
+        
+        low  = np.maximum(0.0, np.array(self.velocity_limits) - margin) 
+        high = np.array(self.velocity_limits)
+        
+        s_j = np.ones_like(dq)
+        mask = abs_dq > low
+        span = np.maximum(high - low, 1e-12)
+        s_j[mask] = s_min + (1.0 - s_min) * np.clip((high[mask] - abs_dq[mask]) / span[mask], 0.0, 1.0)
+
+        s = float(np.clip(s_j.min(), 0.0, 1.0))
+        return s
+    

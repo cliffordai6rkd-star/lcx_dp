@@ -1,5 +1,5 @@
 # usage platform
-use_hardware: false
+use_hardware: true
 use_simulation: true
 
 robot: "fr3"
@@ -9,13 +9,13 @@ gripper_config: !include hardware/tools/grippers/config/right_pika_gripper_cfg.y
 
 # sensor infos
 sensor_dicts:
-  # cameras:
-    # - name: "ee_cam"
-    #   type: "realsense_camera"
-    #   cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
-    # - name: "third_person_cam"
-    #   type: "realsense_camera"
-    #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_third_person.yaml
+  cameras:
+    - name: "ee_cam"
+      type: "realsense_camera"
+      cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
+    - name: "third_person_cam"
+      type: "realsense_camera"
+      cfg: !include hardware/sensors/cameras/config/rs_cfg_right_third_person.yaml
     # - name: "side_cam"
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
