@@ -384,6 +384,7 @@ class RobotFactory:
             # handle dof other than arms 
             if len(dofs) > 2:
                 total_dof = self.get_total_dofs()
+                rest_dof = total_dof - len(sim_mode)
                 sim_mode = [mode[0]] * total_dof
             self._simulation.set_joint_command(sim_mode, joint_command)
         
@@ -550,6 +551,24 @@ class RobotFactory:
                     'data': cur_ft_data.tolist(), 'time_stamp': cur_time_stamp})
         return ft_data
     
+    def async_save_ft_data(self, save_dir):
+        if not self._use_hardware or not 'FT_sensor' in self._sensors:
+            return False
+        
+        ft_sensors:List[FTBase] = self._sensors['FT_sensor']
+        for ft_sensor in ft_sensors:
+            ft_name = ft_sensor["name"]; ft_obj: FTBase = ft_sensor["object"]
+            ft_obj.save_ft_data(save_dir, ft_name)
+            
+    def write_ft_data(self):
+        if not self._use_hardware or not 'FT_sensor' in self._sensors:
+            return False
+        
+        ft_sensors:List[FTBase] = self._sensors['FT_sensor']
+        for ft_sensor in ft_sensors:
+            ft_obj: FTBase = ft_sensor["object"]
+            ft_obj.write_data()
+        
     def get_tactile_data(self):
         """Get tactile sensor data from all tactile sensors"""
         tactile_data = {}
