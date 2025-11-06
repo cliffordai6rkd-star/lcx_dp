@@ -59,6 +59,8 @@ class TeleoperationFactory:
         self._task_description_goal = config.get("task_description_goal", None)
         self._task_description_step = config.get("task_description_step", None)
         self._data_record_frequency = config.get("data_record_frequency", 30)
+        self._aync_save_ft = config.get("aync_save_ft", False)
+        self._cur_episode_dir = None
         self._img_visualization = config.get("image_visualization", True)
         self._img_shm = None
         self._teleop_thread_running = True
@@ -179,7 +181,7 @@ class TeleoperationFactory:
             cur_tcp_pose = {}
             for i, cur_ee_link in enumerate(self.ee_link):
                 key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
-                cur_tcp_pose[key] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
+                cur_tcp_pose[self._ee_index[i]] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
                 # log.info(f'tcp pose {cur_tcp_pose[key]} for {key}')
             self._robot_motion_system.sim_visualize_tcp(cur_tcp_pose)
             
@@ -321,8 +323,9 @@ class TeleoperationFactory:
                 joint_states = {}; ee_states = {}; gripper_state = {}
                 all_joint_states = self._robot_system.get_joint_states()
                 tool_state_dict = self._robot_system.get_tool_dict_state()
-                ft_data = self._robot_system.get_ft_data()
-                
+                if not self._aync_save_ft:
+                    ft_data = self._robot_system.get_ft_data()
+                    
                 # Get end effector links properly
                 for i, cur_ee_link in enumerate(self.ee_link):
                     key = self._ee_index[i]
@@ -342,7 +345,7 @@ class TeleoperationFactory:
                     ee_states[key]["twist"] = cur_ee_pose[7:13].tolist()
                     ee_states[key]["time_stamp"] = sliced_joint_states._time_stamp
                     # @TODO: parsed FT sensor data, wait to be checked!!!
-                    if ft_data:
+                    if not self._aync_save_ft and ft_data:
                         if len(self._ee_index) == 1:
                             ee_states[key]["ft"] = ft_data [0]["data"]
                             ee_states[key]["ft_time_stamp"] = ft_data[0]["time_stamp"]
@@ -351,9 +354,10 @@ class TeleoperationFactory:
                                 if key in cur_ft_data["name"]:
                                     ee_states[key]["ft"] = cur_ft_data["data"]
                                     ee_states[key]["ft_time_stamp"] = cur_ft_data["time_stamp"]
-                                    break
-                            
-                        
+                                else: 
+                                    log.warn(f'Could not find {key} in ft data {cur_ft_data["name"]}!!!!')
+                                    continue
+                
                     # get tool state
                     if tool_state_dict is not None:
                         gripper_state[key] = {}
@@ -418,12 +422,18 @@ class TeleoperationFactory:
         if self._enable_recording: # start record a new episode
             # Record the episode data
             self._robot_motion_system.change_update_action_status(True)
-            if not self.data_recorder.create_episode():
+            succ, episode_dir = self.data_recorder.create_episode()
+            if not succ:
                 warnings.warn(f'Episode write failed to create a episode for recording data!!!!')
             else:
+                self._cur_episode_dir = copy.deepcopy(episode_dir)
+                if self._aync_save_ft:
+                    self._robot_system.async_save_ft_data(self._cur_episode_dir)
                 log.info(f"{'='*15}Data recorder started to write the episode data!!!!{'='*15}")
         else: # finish the episode write
             self.data_recorder.save_episode()
+            if self._aync_save_ft:
+                self._robot_system.write_ft_data()
             self._robot_motion_system.change_update_action_status(False)
             time.sleep(0.5)
             log.info(f"{'='*15}Data recorder stoped recording the episode data!!!!{'='*15}")

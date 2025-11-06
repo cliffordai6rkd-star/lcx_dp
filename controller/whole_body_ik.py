@@ -69,7 +69,7 @@ class WholeBodyIk(ControllerBase):
             q_target = self.opti.value(self.var_q)
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
-            return True, q_target, "position"
+            return True, q_target, ["position"]*len(target)
         except Exception as e:
             print(f"ERROR in convergence{e}")
             return False, None, "position"

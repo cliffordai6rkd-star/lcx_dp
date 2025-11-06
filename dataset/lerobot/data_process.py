@@ -137,7 +137,7 @@ class EpisodeWriter():
 
         self.is_available = False  # After the episode is created, the class is marked as unavailable until the episode is successfully saved
         log.info(f"==> New episode created: {self.episode_dir}")
-        return True  # Return True if the episode is successfully created
+        return True, self.episode_dir  # Return True if the episode is successfully created
         
     def add_item(self, colors, depths=None, joint_states=None, ee_states=None, 
                 tools=None, tactiles=None, imus=None, audios=None, actions=None):

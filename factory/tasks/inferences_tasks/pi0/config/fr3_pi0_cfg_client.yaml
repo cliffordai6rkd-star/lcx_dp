@@ -45,5 +45,5 @@ async_execution: false
 # tasks: "grasp the right cup and pour it into the left cup"
 # tasks: "collect a portion of rice with spoon and transfer it into the bowl"
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
-# tasks: "pick up the kiwi fruit and place it into the red box"
-tasks: "grasp the pin board on the left and insert it into the board slot in the middle"
+tasks: "pick up the kiwi fruit and place it into the red box"
+# tasks: "grasp the pin board on the left and insert it into the board slot in the middle"
