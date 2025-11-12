@@ -19,7 +19,10 @@ class GymApi(gym.Env):
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
         self._delta_action_target = {}
-        self._obs_type = config.get("observation_type", ObservationType.JOINT_POSITION_ONLY)
+        self._obs_type = config.get("observation_type", "jonit_position")
+        self._obs_type = ObservationType(self._obs_type)
+        self._contain_ft = config.get('contain_ft', False)
+        self._last_ee = {}
         self._use_relative_pose = config.get("use_relative_pose", False)
         self._init_pose = {}
         robot_motion_cfg = config["motion_config"]
@@ -47,9 +50,11 @@ class GymApi(gym.Env):
         ee_states = self.get_ee_state()
         for key, cur_ee_state in ee_states.items():
             self._delta_action_target[key] = cur_ee_state["pose"]
+            self._last_ee[key] = cur_ee_state["pose"]
             log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
             if self._use_relative_pose:
                 self._init_pose[key] = cur_ee_state["pose"]
+                self._last_ee[key] = pose_diff(self._last_ee[key], self._init_pose[key])
                 log.info(f'Updated init pose!!!')
                 
     def set_action_type(self, action_type: ActionType):
@@ -189,7 +194,7 @@ class GymApi(gym.Env):
         relative_pose = {}
         for key, cur_ee_state in ee_states.items():
             pose = cur_ee_state["pose"]
-            relative_pose[key] = pose_diff(pose, self._init_pose[key])
+            relative_pose[key] = dict(pose=pose_diff(pose, self._init_pose[key]))
         return relative_pose
 
     def get_camera_infos(self):
@@ -210,15 +215,35 @@ class GymApi(gym.Env):
         cameras_data = {"color": cur_colors, "depth": cur_depths, "imu": cur_imus}
         return cameras_data
     
+    def get_ft_infos(self):
+        ft_data = self._robot_system.get_ft_data()
+        if not ft_data: return ft_data
+        
+        key = ["single"] if len(ft_data) == 1 else ["left", "right"]
+        ft_dict = {}
+        for i, cur_key in enumerate(key):
+            if cur_key == "single":
+                ft_dict[cur_key] = ft_data[i]["data"]
+            else:
+                for j, cur_ft_data in enumerate(ft_data):
+                    if cur_key in cur_ft_data[i]["name"]:
+                        ft_dict[cur_key] = cur_ft_data["data"]
+                        ft_data.pop(j) # increase the efficency
+                        break
+        return ft_dict
+    
     @abc.abstractmethod
     def get_observation(self):
         obs_state = {}
         joint_states = self.get_joint_state()
-        if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+        joint_check = [ObservationType.JOINT_POSITION_ONLY, ObservationType.JOINT_POSITION_END_EFFECTOR]
+        if self._obs_type in joint_check:
             if len(joint_states) == 0:
                 raise ValueError(f'Cur {self._obs_type} do not get joint states!!!')
-        ee_states = self.get_ee_state()
-        if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+        ee_states = self.get_ee_state() if not self._use_relative_pose else self.get_relative_ee_pose()
+        ee_check = [ObservationType.DELTA_END_EFFECTOR_POSE, ObservationType.END_EFFECTOR_POSE, 
+                    ObservationType.JOINT_POSITION_END_EFFECTOR]
+        if self._obs_type in ee_check:
             if len(ee_states) == 0:
                 raise ValueError(f'Cur {self._obs_type} do not get ee states!!!')
         visual_ee_poses = {}
@@ -226,19 +251,31 @@ class GymApi(gym.Env):
             visual_ee_poses[key] = pose["pose"]
         self._robot_motion.sim_visualize_tcp(visual_ee_poses)
         tools_dict = self.get_tool_state()
+        ft_dict = self.get_ft_infos()
+        log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
         for key, joint_state in joint_states.items():
             obs_state[key] = np.array([])
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 obs_state[key] = np.hstack((obs_state[key], joint_state["position"]))
             if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 obs_state[key] = np.hstack((obs_state[key], ee_states[key]["pose"]))
-            if self._obs_type != ObservationType.MASK:
+            if self._obs_type == ObservationType.DELTA_END_EFFECTOR_POSE:
+                delta_ee = pose_diff(ee_states[key]["pose"], self._last_ee[key])
+                obs_state[key] = np.hstack((obs_state[key], delta_ee))
+                self._last_ee[key] = ee_states[key]["pose"]
+            if self._obs_type == ObservationType.MASK:
+                obs_state[key] = np.hstack((obs_state[key], np.zeros(7)))
+            if self._contain_ft or self._obs_type == ObservationType.FT_ONLY:
+                if ft_dict is None:
+                    raise ValueError(f'The obs contain ft {self._contain_ft} with obs type {self._obs_type} need ft data from hardware!!!')
+                obs_state[key] = np.hstack((obs_state[key], ft_dict[key]))
+            # tool state
+            if self._obs_type == ObservationType.MASK:
+                # @Note: for umi data, you always collecting 0-1 state
                 tool_state = tools_dict[key]["position"] / self._tool_state_max
                 obs_state[key] = np.hstack((obs_state[key], tool_state))
             else: obs_state[key] = np.hstack((obs_state[key], [0]))
-        
-        # other sensors: @TODO: zyx
-        
+            log.info(f'obs state {key} shape: {obs_state[key].shape}')
         camera_data = self.get_camera_infos()
         obs_dict = {'state': obs_state, 'colors': camera_data["color"], 
                     'depths': camera_data["depth"]}

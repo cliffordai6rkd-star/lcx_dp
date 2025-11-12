@@ -339,7 +339,7 @@ class TeleoperationFactory:
                     joint_states[key]["torque"] = sliced_joint_states._torques.tolist()
                     joint_states[key]["time_stamp"] = sliced_joint_states._time_stamp
                     cur_ee_pose = self._robot_motion_system.get_frame_pose_with_joint_state(
-                                all_joint_states, cur_ee_link, key, need_vel=True)
+                                all_joint_states, cur_ee_link, robot_key, need_vel=True)
                     ee_states[key] = {}
                     ee_states[key]["pose"] = cur_ee_pose[:7].tolist()
                     ee_states[key]["twist"] = cur_ee_pose[7:13].tolist()

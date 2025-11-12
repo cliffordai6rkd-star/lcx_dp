@@ -23,7 +23,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._action_type = config["action_type"]
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
-        self._obs_type = config.get("observation_type", ObservationType.JOINT_POSITION_ONLY)
+        self._obs_type = config.get("observation_type", "jonit_position")
+        self._obs_type = ObservationType(self._obs_type)
         
         # tool related config
         self._tool_position_dof = config.get("tool_position_dof", 1)
@@ -239,7 +240,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # rollout episodes
         query_frequency = int(50 / self._infer_frequency)
         # 15
-        query_frequency = 8
+        query_frequency = 2
         for episode_id in range(self._num_episodes):
             if self._quit: break
             

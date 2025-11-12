@@ -6,6 +6,7 @@ class ObservationType(enum.Enum):
     DELTA_END_EFFECTOR_POSE = "delta_ee_pose"
     JOINT_POSITION_END_EFFECTOR = "jonit_position_ee_pose"
     MASK = "mask"
+    FT_ONLY = "ft_only"
 
 class ActionType(enum.Enum):
     JOINT_POSITION = 0

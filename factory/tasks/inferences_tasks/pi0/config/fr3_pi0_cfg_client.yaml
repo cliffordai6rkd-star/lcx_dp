@@ -6,11 +6,12 @@
 motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
 max_step_nums: 150 # for gym steps
 # end_effector_pose_delta joint_position
-action_type: "joint_position"
+action_type: "end_effector_pose_delta"
 # euler quaternion
 action_orientation_type: "euler"
-# jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose
-observation_type: "jonit_position"
+# jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose ft_only
+observation_type: "mask"
+contain_ft: true
 is_debug: false
 
 reset_space: "joint"
@@ -44,6 +45,6 @@ async_execution: false
 # tasks: "pick up the peg out of the stack and put it into the hole"
 # tasks: "grasp the right cup and pour it into the left cup"
 # tasks: "collect a portion of rice with spoon and transfer it into the bowl"
-# tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
-tasks: "pick up the kiwi fruit and place it into the red box"
+tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
+# tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "grasp the pin board on the left and insert it into the board slot in the middle"

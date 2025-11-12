@@ -11,6 +11,7 @@ action_type: "end_effector_pose_delta"
 action_orientation_type: "euler"
 # jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose
 observation_type: "delta_ee_pose"
+contain_ft: false
 use_relative_pose: true
 is_debug: false
 

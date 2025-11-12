@@ -1,4 +1,4 @@
-import os
+import os, glob
 import json
 import cv2
 import numpy as np
@@ -13,6 +13,7 @@ class ObservationType(enum.Enum):
     DELTA_END_EFFECTOR_POSE = "delta_ee_pose"
     JOINT_POSITION_END_EFFECTOR = "jonit_position_ee_pose"
     MASK = "mask"
+    FT_ONLY = "ft_only"
 
 class ActionType(enum.Enum):
     JOINT_POSITION = 0
@@ -37,11 +38,12 @@ class RerunEpisodeReader:
                  action_type: ActionType = ActionType.JOINT_POSITION,
                  action_prediction_step = 2, action_ori_type = "euler", 
                  observation_type = ObservationType.JOINT_POSITION_ONLY,
-                 rotation_transform = None):
+                 rotation_transform = None, contain_ft=False):
         self.task_dir = task_dir
         self.json_file = json_file
         self.action_type = action_type
         self._obs_type = observation_type
+        self._contain_ft = contain_ft
         self._action_prediction_step = action_prediction_step
         self._action_ori_type = action_ori_type
         # None or dict[str, np.ndarray]
@@ -58,6 +60,12 @@ class RerunEpisodeReader:
 
         with open(json_path, 'r', encoding='utf-8') as jsonf:
             json_file = json.load(jsonf)
+            
+        # check if async save ft， @TODO: assumING not using async
+        search_pattern = os.path.join("/workspace/dataset/data/insert_tube/episode_0003", "*ft*.json")
+        async_ft_files = glob.glob(search_pattern)
+        async_save_ft = True if len(async_ft_files) else False
+        if async_save_ft: log.info(f'Async save ft files: {async_ft_files}')
 
         episode_data = []
 
@@ -82,7 +90,6 @@ class RerunEpisodeReader:
             audios = self._process_audio(item_data, 'audios', episode_dir)
             
             # Append the observation state data in the item_data list
-            cur_obs = {}
             joint_states = item_data.get("joint_states", {})
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 if joint_states is None or len(joint_states) == 0:
@@ -101,6 +108,14 @@ class RerunEpisodeReader:
                 if ee_states is None or len(ee_states) == 0:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             
+            if self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
+                if async_save_ft:
+                    assert len(async_ft_files) == len(list(ee_states.keys())), f'len async save ft files {len(async_ft_files)} != len ee {len(list(ee_states.keys()))}'
+                else:
+                    for key, state in ee_states.items():
+                        if 'ft' not in state:
+                            raise ValueError(f'ee state {key} not contain ft keys')
+            cur_obs = {}
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 for key in joint_states.keys():
                     cur_obs[key] = np.array(joint_states[key]["position"])
@@ -123,9 +138,18 @@ class RerunEpisodeReader:
                         next_pose = self.apply_rotation_offset(next_pose, key,
                                                 init_data=init_ee_poses[key])
                         cur_obs[key] = self.get_pose_diff(next_pose, ee_pose)
+            elif self._obs_type == ObservationType.FT_ONLY:
+                for key, state in ee_states.items():
+                    cur_obs[key] = np.array(state["ft"])
             elif self._obs_type == ObservationType.MASK:
                 for key in ee_states.keys():
                     cur_obs[key] = np.zeros(7)
+            if self._contain_ft :
+                if self._obs_type != ObservationType.FT_ONLY:
+                    for key, state in ee_states.items():
+                        cur_obs[key] = np.hstack((cur_obs[key], state["ft"]))
+                else:
+                    log.warn(f'Your obs type is already ft only so no need to contain ft anymore!!!!')
             
             # Append the action data in the item_data list
             cur_actions = {}

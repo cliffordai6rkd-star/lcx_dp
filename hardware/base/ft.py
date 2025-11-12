@@ -1,12 +1,14 @@
 import abc, threading, copy, time, os, json
 import glog as log
 import numpy as np
+from hardware.base.lpf import LowPassFilter
 
 class FTBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
         self._config = config
         self._thread_lock = threading.Lock()
         self._zero_offset = np.zeros(6)
+        self._raw_value = np.zeros(6)
         self._ft_data = np.zeros(6)
         self._time_stamp = time.perf_counter()
         self._update_frequency = config.get("frequency", 300)
@@ -16,6 +18,8 @@ class FTBase(abc.ABC, metaclass=abc.ABCMeta):
             self._save_freq = config.get('save_freq', 200)
             self._ready_save = False
             self._aync_save_thread = None
+        cutoff_freq = config.get(f'cutoff_frequency', 40)
+        self._lpf = LowPassFilter(cutoff_freq)
         
     @abc.abstractmethod
     def initialize(self):
@@ -31,6 +35,9 @@ class FTBase(abc.ABC, metaclass=abc.ABCMeta):
         time_stamp = copy.copy(self._time_stamp)
         self._thread_lock.release()
         return ft_data, time_stamp
+    
+    def get_raw_value(self):
+        return self._raw_value
     
     def save_ft_data(self, save_dir , key):
         if not  self._aync_save:
