@@ -64,7 +64,7 @@ class ImpedanceController(ControllerBase):
 
         # compute scale
         s = self.velocity_scale_global(robot_state._velocities)
-        print(f'vel scale: {s}')
+        # print(f'vel scale: {s}')
         # s = 1
         
         # compute the target end-effector wrench
