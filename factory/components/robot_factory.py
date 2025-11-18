@@ -7,7 +7,7 @@ from simulation.base.sim_base import SimBase
 from hardware.fr3.fr3_arm import Fr3Arm
 from hardware.duo_arm import DuoArm
 from hardware.agibot_g1.agibot_g1 import AgibotG1
-from hardware.monte01.monte01 import Monte01
+# from hardware.monte01.monte01 import Monte01
 from hardware.fr3.franka_hand import FrankaHand
 from hardware.unitreeG1.unitree_g1 import UnitreeG1
 from hardware.unitreeG1.Dex3_Hand import Dex3Hand
@@ -18,7 +18,7 @@ from hardware.base.camera import CameraBase
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from hardware.sensors.cameras.agibot_cameras import AgibotCamera
-from hardware.sensors.cameras.ros2_camera import Ros2Camera
+# from hardware.sensors.cameras.ros2_camera import Ros2Camera
 from hardware.sensors.ft_sensor.ati_ft import AtiFt
 from hardware.sensors.cameras.network_camera import NetworkCamera
 from hardware.base.tactile_base import TactileBase
@@ -85,7 +85,7 @@ class RobotFactory:
         self._robot_classes = {
             'fr3': Fr3Arm,
             'agibot_g1': AgibotG1,
-            'monte01': Monte01,
+            # 'monte01': Monte01,
             'duo_arm': DuoArm,
             'unitree_g1': UnitreeG1,
         }
@@ -101,7 +101,7 @@ class RobotFactory:
             'realsense_camera': RealsenseCamera,
             'opencv_camera': OpencvCamera,
             'agibot_camera': AgibotCamera,
-            'ros2_camera': Ros2Camera,
+            # 'ros2_camera': Ros2Camera,
             'network_camera': NetworkCamera,
         }
         

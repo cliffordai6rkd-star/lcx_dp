@@ -240,7 +240,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # rollout episodes
         query_frequency = int(50 / self._infer_frequency)
         # 15
-        query_frequency = 2
+        query_frequency = 15
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -255,6 +255,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             # inference timestamp
             pred_action_chunk = None
             for t in range(self._max_timestamps):
+                start_time = time.perf_counter()
                 # if self._action_ori_type == "quaternion" and self._weight_mode != WeightMode.NO_WEIGHT:
                 #     raise ValueError(f'Action aggregation does not support quaternion action orientation')
                     
@@ -278,7 +279,16 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 log.info(f'aggregated action: {aggregated_action}')
                 gym_action = self.convert_to_gym_action_single_step(aggregated_action, pred_action_chunk[t%query_frequency])
+                step_start = time.perf_counter()
                 res = self._gym_robot.step(gym_action)
+                step_time = time.perf_counter() - step_start
+                dt = time.perf_counter() - start_time
+                if dt < 1.0 / 50.0:
+                    sleep_time = (1.0 / 50) -  dt
+                    time.sleep(sleep_time)
+                else: 
+                    time.sleep(0.01)
+                    log.warn(f"{'=='*15} Execution is slow: {1.0 / dt:.3f}Hz {step_time:.5f}  {'=='*15}")
                 gym_obs = res[0]
                 obs = self.convert_from_gym_obs(gym_obs)
                 t += 1

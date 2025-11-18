@@ -91,7 +91,8 @@ class RerunEpisodeReader:
             
             # Append the observation state data in the item_data list
             joint_states = item_data.get("joint_states", {})
-            if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            joint_check = [ObservationType.JOINT_POSITION_ONLY, ObservationType.JOINT_POSITION_END_EFFECTOR]
+            if self._obs_type in joint_check:
                 if joint_states is None or len(joint_states) == 0:
                     raise ValueError(f'Do not get the {i}th joint state from {self.task_dir} {episode_dir} for {self._obs_type}')
             ee_states = item_data.get('ee_states', {})
@@ -104,7 +105,9 @@ class RerunEpisodeReader:
                     else: init_ee_poses[key] = None
             # @TODO: used for latter head tracker
             head_pose = ee_states.pop('head', None)
-            if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR or self._obs_type == ObservationType.END_EFFECTOR_POSE:
+            ee_check = [ObservationType.JOINT_POSITION_END_EFFECTOR, ObservationType.END_EFFECTOR_POSE,
+                        ObservationType.DELTA_END_EFFECTOR_POSE] 
+            if self._obs_type in ee_check:
                 if ee_states is None or len(ee_states) == 0:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             
@@ -124,20 +127,19 @@ class RerunEpisodeReader:
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
             elif self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.DELTA_END_EFFECTOR_POSE:
-                next_id = i + 1
-                if next_id >= len_json_file: continue
-                next_ee_states = json_data[next_id].get("ee_states", {})
+                last_id = i - 1
+                last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
                 for key in ee_states.keys():
                     ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                         init_data=init_ee_poses[key])
                     if self._obs_type == ObservationType.END_EFFECTOR_POSE:
                         cur_obs[key] = np.array(ee_pose)
                     else:
-                        next_pose = next_ee_states[key]["pose"]
+                        last_pose = last_ee_states[key]["pose"]
                         # @TODO: think about it
-                        next_pose = self.apply_rotation_offset(next_pose, key,
+                        last_pose = self.apply_rotation_offset(last_pose, key,
                                                 init_data=init_ee_poses[key])
-                        cur_obs[key] = self.get_pose_diff(next_pose, ee_pose)
+                        cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
             elif self._obs_type == ObservationType.FT_ONLY:
                 for key, state in ee_states.items():
                     cur_obs[key] = np.array(state["ft"])
