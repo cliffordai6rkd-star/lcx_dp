@@ -130,15 +130,17 @@ class RerunEpisodeReader:
                 last_id = i - 1
                 last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
                 for key in ee_states.keys():
+                    # get cur rotated relative pose
                     ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                         init_data=init_ee_poses[key])
                     if self._obs_type == ObservationType.END_EFFECTOR_POSE:
                         cur_obs[key] = np.array(ee_pose)
                     else:
                         last_pose = last_ee_states[key]["pose"]
-                        # @TODO: think about it
+                        # if has rotation offset, calculate the rotated relative pose 
                         last_pose = self.apply_rotation_offset(last_pose, key,
                                                 init_data=init_ee_poses[key])
+                        # delta: the diff between two relative pose if has rot offset
                         cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
             elif self._obs_type == ObservationType.FT_ONLY:
                 for key, state in ee_states.items():
@@ -312,6 +314,11 @@ class RerunEpisodeReader:
         return rot_ac.as_quat()  # [qx, qy, qz, qw]
     
     def apply_rotation_offset(self, pose, key, init_data = None):
+        """
+            @brief: Get rotation offseted pose mainly for umi data
+                    for specified key and calculate the delta pose
+                    if init data is provided as the last para
+        """
         new_pose = copy.deepcopy(pose)
         if self._rotation_transform is not None:
             if key not in self._rotation_transform:

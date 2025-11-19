@@ -54,6 +54,10 @@ class GymApi(gym.Env):
             log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
             if self._use_relative_pose:
                 self._init_pose[key] = cur_ee_state["pose"]
+                # for action
+                self._delta_action_target[key] = pose_diff(
+                    self._delta_action_target[key], self._init_pose[key])
+                # for obs
                 self._last_ee[key] = pose_diff(self._last_ee[key], self._init_pose[key])
                 log.info(f'Updated init pose!!!')
                 
@@ -63,48 +67,27 @@ class GymApi(gym.Env):
     def step(self, action):
         # action execution
         arm_action = action['arm']
-        execute_arm_action = np.array([]); execute_tool_action = []
-              
+        execute_arm_action = []; execute_tool_action = []
         # @TODO: hack
         gripper_position_dof = self._tool_position_dof
         if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
-            dofs = self._robot_motion.get_model_dof_list()[1:]
-            cur_joint_position = self.get_joint_state()
-            action_index = 0
-            for j, (key, jps) in enumerate(cur_joint_position.items()):
-                jps = jps["position"]
-                index_l = gripper_position_dof*j + action_index
-                index_r = gripper_position_dof*j + dofs[j] + action_index
-                action_index = index_r
-                cur_arm_action = arm_action[index_l:index_r]
-                if self._action_type == ActionType.JOINT_POSITION_DELTA:
-                    cur_arm_action += jps
-                execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
+            execute_arm_action = arm_action
+            if self._action_type == ActionType.JOINT_POSITION_DELTA:
+                cur_joint_position = self._robot_system.get_joint_states()
+                execute_arm_action += cur_joint_position
             self.set_joint_position(execute_arm_action)
         elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
-            cur_ee_pose = self.get_ee_state()
+            end_effector_names = self._robot_motion.get_model_end_effector_link_list()
+            ee_index = ['left', 'right'] if len(end_effector_names) > 1 else ['single']
             action_index = 0
-            for j, (key, pose) in enumerate(list(cur_ee_pose.items())):
-                pose = pose["pose"]
-                if self._action_ori_type == "euler":
-                    index_l = 6 * j + action_index
-                    index_r = 6 * (j+1) + action_index
-                else: 
-                    index_l = 7 * j + action_index
-                    index_r = 7 * (j+1) + action_index
-                action_index = index_r
-                cur_arm_action = arm_action[index_l:index_r]
-                if self._action_ori_type == "euler":
-                    cur_arm_action = np.hstack((cur_arm_action, [0]))
-                    cur_arm_action[3:] = R.from_euler("xyz", cur_arm_action[3:6]).as_quat()
+            for j ,key in enumerate(ee_index):
+                cur_arm_action = arm_action[action_index:action_index+7]
+                action_index += 7
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
                     # try to use the fixed reset pose
-                   cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action, True)
-                   self._delta_action_target[key] = cur_arm_action
-                    # @TODO: how to deal with delta pose with umi
-                        
-                # for umi absolute relative pose
-                elif self._use_relative_pose:
+                    cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action)
+                    self._delta_action_target[key] = cur_arm_action
+                if self._use_relative_pose:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
@@ -136,14 +119,13 @@ class GymApi(gym.Env):
         done = done or (self._step_counter >= self._max_step_nums)
         info = self.get_info()
         info['obs_time'] = obs_time
-        
         return observation, reward, done, False, info
         
     def reset(self, *, seed = None, options = None):
         if self._use_hardware:
             self._robot_motion.update_execute_hardware(True)
             self._robot_system._enable_hardware = True
-            time.sleep(0.3)
+            time.sleep(0.1)
             log.info("The robot hardware all enabled!!!!!!")
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
@@ -226,7 +208,7 @@ class GymApi(gym.Env):
                 ft_dict[cur_key] = ft_data[i]["data"]
             else:
                 for j, cur_ft_data in enumerate(ft_data):
-                    if cur_key in cur_ft_data[i]["name"]:
+                    if cur_key in cur_ft_data["name"]:
                         ft_dict[cur_key] = cur_ft_data["data"]
                         ft_data.pop(j) # increase the efficency
                         break

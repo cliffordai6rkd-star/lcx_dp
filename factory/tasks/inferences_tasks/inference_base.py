@@ -11,6 +11,7 @@ import torch as th
 import numpy as np
 from collections import deque
 from factory.tasks.inferences_tasks.utils.action_aggreagator import ActionAggregator, WeightMode
+from scipy.spatial.transform import Rotation as R
 
 class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -103,21 +104,24 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         action = {'arm': np.array([]), 'tool': np.array([])}
         action_index = 0
         gripper_position_dof = self._tool_position_dof
-        log.info(f'len dof: {len(dofs)}')
+        # log.info(f'len dof: {len(dofs)}')
         for j in range(len(dofs)):
             if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
                 index_l = gripper_position_dof*j + action_index
                 index_r = gripper_position_dof*j + dofs[j] + action_index
                 action_index = index_r+gripper_position_dof
-                log.info(f'arm index for joint: {index_l}, {index_r}')
+                # log.info(f'arm index for joint: {index_l}, {index_r}')
                 cur_arm_action = cur_action[index_l:index_r]
             elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
                 pose_dof = 6 if self._action_ori_type == "euler" else 7
-                log.info(f'arm index for pose: {action_index}')
+                # log.info(f'arm index for pose: {action_index}')
                 cur_arm_action = cur_action[action_index:action_index+pose_dof].copy()
                 cur_arm_action[3:] = raw_action[action_index+3:action_index+pose_dof]
                 index_r = action_index+pose_dof
                 action_index = index_r+gripper_position_dof 
+                if self._action_ori_type == "euler":
+                    cur_action = np.hstack((cur_action, [0]))
+                    cur_action[3:] = R.from_euler("xyz", cur_action[3:6]).as_quat()
             else:
                 raise ValueError(f"Unsupported action type: {self._action_type}")
 
@@ -277,7 +281,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 # calculate aggregated action
                 aggregated_action = self._action_aggregation.aggregation_action(t, self._weight_mode)
                 
-                log.info(f'aggregated action: {aggregated_action}')
+                # log.info(f'aggregated action: {aggregated_action}')
                 gym_action = self.convert_to_gym_action_single_step(aggregated_action, pred_action_chunk[t%query_frequency])
                 step_start = time.perf_counter()
                 res = self._gym_robot.step(gym_action)
@@ -287,7 +291,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     sleep_time = (1.0 / 50) -  dt
                     time.sleep(sleep_time)
                 else: 
-                    time.sleep(0.01)
+                    time.sleep(0.001)
                     log.warn(f"{'=='*15} Execution is slow: {1.0 / dt:.3f}Hz {step_time:.5f}  {'=='*15}")
                 gym_obs = res[0]
                 obs = self.convert_from_gym_obs(gym_obs)

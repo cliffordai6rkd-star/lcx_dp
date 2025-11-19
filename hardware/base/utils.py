@@ -165,7 +165,6 @@ def quaternion_error(q1, q2):
     quat2 = R.from_quat(q2)
     conjugate_quat2 = quat2.inv()
     quat_error = quat1 * conjugate_quat2
-    # quat_error = conjugate_quat2 * quat1 
     return np.array(quat_error.as_quat())
 
 def compute_pose_diff(pose1, pose2):
