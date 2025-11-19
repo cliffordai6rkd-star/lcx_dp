@@ -7,7 +7,8 @@ space_mouse:
   low_threshold: [0.02, 0.02, 0.02, 0.04, 0.04, 0.04]
   enable_rotation: true
   # "incremental" "binary"
-  tool_mode: "binary"
-  incremental_step: 0.002
+  initial_position: 1.0
+  tool_mode: "incremental"
+  incremental_step: 0.02
   move_time: 0.002
   

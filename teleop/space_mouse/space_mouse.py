@@ -23,7 +23,7 @@ class SpaceMouse(TeleoperationDeviceBase):
             self._rising_edge_detector = RisingEdgeDetector()
         else: self._last_change_time = time.perf_counter()
         self._tool_control_mode = ToolControlMode(self._tool_control_mode)
-        self._last_command = 1.0 # True for open, False for close
+        self._last_command = config.get("initial_position", 1.0) # True for open, False for close
         self._data = None
         self._device = None
         self.target_updated = False
@@ -119,13 +119,15 @@ class SpaceMouse(TeleoperationDeviceBase):
         if not self.target_updated:
             return False, None, None
 
+        buttons = np.zeros(2)
         self.lock.acquire()
         # self._data.pitch, self._data.roll
         data = np.array([-self._data.y, self._data.x, self._data.z,
                 self._data.roll, self._data.pitch, self._data.yaw])
         # data = [0,0,0,
         #         0, self._data.roll,0]
-        buttons = np.array([self._data.buttons[0], self._data.buttons[1]])
+        buttons[0] = self._data.buttons[0]
+        buttons[1] = self._data.buttons[1]
         self.lock.release()
         
         if 'absolute' in mode:

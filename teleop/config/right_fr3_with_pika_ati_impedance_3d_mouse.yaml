@@ -25,6 +25,8 @@ teleoperation_loop_time: 0.005
 #                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
 reset_arm_command: [0.52551845, -0.00609361,  0.18745535,  1, 0, 0, 0]
 reset_space: "cartesian"
+reset_tool_command: [[0.0]]
+aync_save_ft: false
 
 # data collection related
 save_path_prefix: "test"

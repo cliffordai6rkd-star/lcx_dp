@@ -25,10 +25,10 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
         
         # Incremental control state (for incremental mode only)
         if self._control_mode == ToolControlMode.INCREMENTAL:
-            self._current_position_scaled = config.get("initial_position", 1.0)  # Default fully open position
             self._step_size = config.get("step_size", 0.02)  # Maximum position change per step
             self._last_move_time = 0.0
-            
+        self._current_position_scaled = config.get("initial_position", 1.0)  # Default fully open position
+        
         # retarget control config
         if self._control_mode == ToolControlMode.HAND_RETARGET:
             self._model = RobotModel(config=config["hand_model"])

@@ -71,3 +71,13 @@ tasks:
     step1: left arm picks up the spoon; right arm picks up the ampoule.
     step2: scoop powder from the ampoule with the spoon.
     step3: transfer the powder to another container.
+  
+- id: 6
+  name: "Plug the Charger"
+  save_path_prefix: "plug_charger"
+  task_description: "pick up the charger and plug it into the power strip"
+  task_description_goal: "locate the charger and pick it up and insert it to the extension cord"
+  task_description_step: |
+    step1: left arm picks up the spoon; right arm picks up the ampoule.
+    step2: scoop powder from the ampoule with the spoon.
+    step3: transfer the powder to another container.

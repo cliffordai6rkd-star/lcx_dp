@@ -37,7 +37,12 @@ class PikaGripper(ToolBase):
         
         # Initialize ToolBase after setting required attributes
         super().__init__(config)
-       
+        self.set_hardware_command(self._current_position_scaled)
+        self._state._position = \
+            self._current_position_scaled * (self._max_distance - self._min_distance)\
+            + self._min_distance
+        log.info(f'init posi: {self._state._position}')
+
         # State management
         self._state._tool_type = self._tool_type
         

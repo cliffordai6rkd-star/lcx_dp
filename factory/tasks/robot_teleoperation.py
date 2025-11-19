@@ -21,7 +21,7 @@ from simulation.base.sim_base import SimBase
 from dataset.lerobot.data_process import EpisodeWriter
 from hardware.base.utils import convert_homo_2_7D_pose, Buffer, negate_pose, transform_pose, object_class_check
 from hardware.base.utils import ToolState, ToolType
-from hardware.base.img_utils import combine_image, combine_images_2x2_grid
+from factory.tasks.inferences_tasks.utils.display import display_images
 from teleop.base.utils import RisingEdgeDetector
 import warnings, os
 import numpy as np
@@ -295,7 +295,6 @@ class TeleoperationFactory:
             image_list = []
             cur_colors = {}; cur_depths = {}; cur_imus = {}
             if cameras_data is not None:
-                
                 for cam_data in cameras_data:
                     name = cam_data['name']
                     if 'color' in name:
@@ -305,18 +304,13 @@ class TeleoperationFactory:
                         cur_depths[name] = {"data": cam_data['img'], "time_stamp": cam_data['time_stamp']}
                     if 'imu' in name:
                         cur_imus[name] = {"data": cam_data['imu'], "time_stamp": cam_data['time_stamp']}
-
-            # image visualization
-            if len(image_list) and (self._img_visualization or self._img_shm is not None):
-                combined_imgs = combine_images_2x2_grid(image_list)
-                if self._img_visualization:
-                    cv2.imshow('combined image', combined_imgs)
-                    cv2.waitKey(1)
-                # xr visualization 
-                if self._img_shm is not None:
-                    combined_imgs = cv2.resize(combined_imgs, self._xr_img_shape[1::-1])
-                    np.copyto(self._image_array, np.array(combined_imgs))
-                    
+                if len(cur_colors) > 0 and (self._img_visualization or self._img_shm is not None):
+                    display_images(cur_colors, "Teleoperation images", attributes="data")
+                    # xr visualization 
+                    if self._img_shm is not None:
+                        combined_imgs = cv2.resize(combined_imgs, self._xr_img_shape[1::-1])
+                        np.copyto(self._image_array, np.array(combined_imgs))
+           
             # recording episode data
             if self._enable_recording and self.data_recorder is not None:
                 # get robot propioceptive info 
@@ -442,7 +436,8 @@ class TeleoperationFactory:
         # move to start
         self._update_high_level_state = False
         log.info(f"{'='*20}, Blocking the Motion process to reset the robot to init state{'='*20}")
-        log.info(f'reset space: {self._reset_space}, command: {self._reset_arm_command}')
+        log.info(f'reset space: {self._reset_space}, command: {self._reset_arm_command}\
+                 tool command: {self._reset_tool_command}')
         self._robot_motion_system.reset_robot_system(self._reset_arm_command, self._reset_space,
                                                         self._reset_tool_command)
         if not self._robot_motion_system._use_traj_planner:

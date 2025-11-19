@@ -12,7 +12,7 @@ inteface_output_mode: "relative"
 # set use_simulation_target as true
 use_simulation_target: false
 teleoperation_loop_time: 0.005
-aync_save_ft: true
+aync_save_ft: false
 
 # reset related
 # 平行joint: [-0.12811446303481758, -0.5941484292388739, 0.5812243630046557, -3.013044449006018, 0.3912777097642327, 4.008831121234368, 0.7964079609386593]

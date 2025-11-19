@@ -25,7 +25,8 @@ def calculate_grid_layout(num_images: int) -> tuple[int, int]:
 
 
 def create_image_grid(images_dict: dict[str, np.ndarray],
-                        target_size: tuple[int, int] = (240, 320)) -> np.ndarray:
+                    target_size: tuple[int, int] = (240, 320),
+                    attributes = None) -> np.ndarray:
     """Create a grid of images for display.
 
     Args:
@@ -52,6 +53,8 @@ def create_image_grid(images_dict: dict[str, np.ndarray],
     processed_images = []
     for name, img in images_dict.items():
         try:
+            if attributes:
+                img = img[attributes]
             # Ensure image is 3-channel BGR
             if len(img.shape) == 2:  # Grayscale
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
@@ -99,7 +102,8 @@ def create_image_grid(images_dict: dict[str, np.ndarray],
     return grid_image
 
 def display_images(images_dict: dict[str, np.ndarray],
-                   display_window_name: str, target_size = (240, 320)) -> np.ndarray | None:
+                   display_window_name: str, target_size = (240, 320),
+                   attributes = None) -> np.ndarray | None:
     """Display images in a unified OpenCV window.
 
     Args:
@@ -109,18 +113,18 @@ def display_images(images_dict: dict[str, np.ndarray],
     Returns:
         Combined grid image if successful, None if failed
     """
-    try:
-        grid_image = create_image_grid(images_dict, target_size)
-        cv2.imshow(display_window_name, grid_image)
-        cv2.waitKey(1)  # Non-blocking update
-        return grid_image
+    # try:
+    grid_image = create_image_grid(images_dict, target_size, attributes)
+    cv2.imshow(display_window_name, grid_image)
+    cv2.waitKey(1)  # Non-blocking update
+    return grid_image
 
-    except cv2.error as e:
-        log.warning(f"OpenCV display error: {e}")
-        return None
-    except ValueError as e:
-        log.error(f"Image processing error: {e}")
-        return None
-    except Exception as e:
-        log.error(f"Unexpected error in image display: {e}")
-        return None
+    # except cv2.error as e:
+    #     log.warning(f"OpenCV display error: {e}")
+    #     return None
+    # except ValueError as e:
+    #     log.error(f"Image processing error: {e}")
+    #     return None
+    # except Exception as e:
+    #     log.error(f"Unexpected error in image display: {e}")
+    #     return None

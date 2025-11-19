@@ -70,14 +70,12 @@ class ImpedanceController(ControllerBase):
         # compute the target end-effector wrench
         if self._damping is None:
             kp_sqrt = scipy_matrix_sqrt(self._stiffness)
-            # kp_sqrt = np.sqrt(self._stiffness)
-            # @TODO: check why the close loop damped system is not stable
-            # task_inertial_sqrt = matrix_sqrt(task_inertial)
             task_inertial_sqrt = scipy_matrix_sqrt(task_inertial)
             self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
+            # for i in range(3,6):
+            #     self._damping[i, i] *= 2.5
             # self._damping = 2.0 * kp_sqrt
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
-        # @TODO: check acceleration not stable
         des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
         
         C = self._robot_model.get_coriolis_matrix(robot_state._positions, robot_state._velocities,
@@ -103,7 +101,6 @@ class ImpedanceController(ControllerBase):
             # print(f'nullspace tau: {tau_nullsapce}')
             tau += s * tau_nullsapce
 
-        # tau=np.zeros(7)
         # saturation
         if not self.saturation_values is None:
             tau = np.clip(tau, self.saturation_values["min"], self.saturation_values["max"])
