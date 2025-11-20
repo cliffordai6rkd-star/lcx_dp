@@ -60,7 +60,7 @@ class RealsenseCamera(CameraBase):
         self._thread_handler = threading.Thread(target=self.update_camera_thread)
         self._thread_handler.start()
         while self._image_data is None:
-            pass
+            time.sleep(0.001)
         
         log.info(f'The realsesne camera {self._serial_number} is successfully initialized!!!')
         return True

@@ -41,18 +41,6 @@ class ArmBase(abc.ABC, metaclass=abc.ABCMeta):
             dof = self._dof
         return dof
     
-    # def get_tcp_pose(self):
-    #     """
-    #         return the tcp pose in the format [x,y,z,qx,qy,qz,qw]
-    #     """
-    #     if self.is_initialized:
-    #         self._lock.acquire()
-    #         tcp_pose = copy.deepcopy(self._tcp_pose)
-    #         self._lock.release()
-    #         return tcp_pose
-    #     else:
-    #         raise RuntimeError("Arm is not initialized, cannot get TCP pose.")
-
     def get_joint_states(self)-> RobotJointState: 
         if self._is_initialized:
             with self._lock:

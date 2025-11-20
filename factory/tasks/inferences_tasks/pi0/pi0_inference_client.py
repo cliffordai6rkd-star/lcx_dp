@@ -124,8 +124,8 @@ class PI0_Inferencer(InferenceBase):
                     mapped_pi0_obs[self._key_mapping["gripper_state"]] = np.array([value[-1]])
             pi0_obs = mapped_pi0_obs
         
-        if not self._key_mapping:
-            log.info(f'pi0_obs: {pi0_obs["state"]}')
+        # if not self._key_mapping:
+        #     log.info(f'pi0_obs: {pi0_obs["state"]}')
         # else: log.info(f'pi0_obs: {pi0_obs}')
         return pi0_obs
         

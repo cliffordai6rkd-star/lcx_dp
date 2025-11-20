@@ -69,6 +69,7 @@ class GymApi(gym.Env):
         arm_action = action['arm']
         execute_arm_action = []; execute_tool_action = []
         # @TODO: hack
+        arm_action_satrt = time.perf_counter()
         gripper_position_dof = self._tool_position_dof
         if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
             execute_arm_action = arm_action
@@ -94,7 +95,8 @@ class GymApi(gym.Env):
             self.set_ee_pose(execute_arm_action)
         else:
             raise ValueError(f"Unsupported action type: {self._action_type}")
-        
+        arm_action_time = time.perf_counter() - arm_action_satrt
+        tool_satrt = time.perf_counter()
         # tool execution
         tool_action = np.array(action['tool'])
         tool_type_dict = self._robot_system.get_tool_dict_state()
@@ -109,16 +111,20 @@ class GymApi(gym.Env):
                 tool_index = index_r
             log.info(f'tool action: {tool_action}')
             self._robot_motion.set_tool_command(np.array(tool_action))
+        tool_time = time.perf_counter() - tool_satrt
         
         # obs
         start = time.perf_counter()
+        obs_start = time.perf_counter()
         observation = self.get_observation()
+        obs_time = time.perf_counter() - obs_start
         # observation = {}
         obs_time = time.perf_counter() - start
         reward, done = self.compute_rewards()
         done = done or (self._step_counter >= self._max_step_nums)
         info = self.get_info()
         info['obs_time'] = obs_time
+        log.info(f'step freq: {1.0/arm_action_time:.5f}Hz {1.0/tool_time:.5f}Hz {1.0/obs_time:.5f}Hz')
         return observation, reward, done, False, info
         
     def reset(self, *, seed = None, options = None):
@@ -234,7 +240,7 @@ class GymApi(gym.Env):
         self._robot_motion.sim_visualize_tcp(visual_ee_poses)
         tools_dict = self.get_tool_state()
         ft_dict = self.get_ft_infos()
-        log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
+        # log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
         for key, joint_state in joint_states.items():
             obs_state[key] = np.array([])
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:

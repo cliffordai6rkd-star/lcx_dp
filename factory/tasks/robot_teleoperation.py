@@ -129,7 +129,10 @@ class TeleoperationFactory:
         # data recording thread
         self._data_recording_thread = threading.Thread(target=self.add_teleoperation_data)
         self._data_recording_thread.start()
-            
+        self._data_record_thread_started = False
+        while not self._data_record_thread_started:
+            time.sleep(0.001)
+        
         # keyboard listener
         self._is_initialized = True
         listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
@@ -291,6 +294,9 @@ class TeleoperationFactory:
         
         start_time = time.perf_counter()
         while self._teleop_thread_running:
+            if not self._data_record_thread_started:
+                self._data_record_thread_started = True
+            
             cameras_data = self._robot_system.get_cameras_infos()
             image_list = []
             cur_colors = {}; cur_depths = {}; cur_imus = {}

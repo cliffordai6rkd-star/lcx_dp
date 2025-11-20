@@ -56,8 +56,11 @@ class MujocoSim(SimBase):
         self._theread_running = True
         self._thread = threading.Thread(target=self.sim_thread)
         self._thread.start()
+        self._sim_started = False
         # @TODO: decide sleep time
-        time.sleep(0.5)
+        # time.sleep(0.5)
+        while not self._sim_started:
+            time.sleep(0.001)
     
     def sim_thread(self):
         if self._model is None or self._data is None:
@@ -94,6 +97,7 @@ class MujocoSim(SimBase):
                         self.render(viewer)
 
                 viewer.sync()
+                if not self._sim_started: self._sim_started = True
 
                 # Step 2: State update with lock (separate from render_lock to avoid deadlock)
                 with self.lock:
@@ -107,7 +111,7 @@ class MujocoSim(SimBase):
                     log.warn(f"Mujoco node frequency is not enough, "
                                   f"actual: {used_time}, expected: {self._dt}")
             viewer.close()
-            print(f'The mujoco simulation thread successfully stopped!')
+            log.info(f'The mujoco simulation thread successfully stopped!')
 
     def update_simulation_states(self):
         """Update the joint states from the Mujoco simulation."""
@@ -296,7 +300,7 @@ class MujocoSim(SimBase):
                 cam_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_CAMERA, sensor_name)
                 self._cam_render[sensor_name] =  mujoco.Renderer(self._model, attributes['resolution'][0], attributes['resolution'][1])
                 self._cam_infos.append({'name': sensor_name, 'id': cam_id, 'resolution': attributes['resolution']})
-                print(f'add camera {sensor_name}, id: {cam_id}')
+                log.info(f'add camera {sensor_name}, id: {cam_id}')
         
     def get_camera_img(self, camera_name) -> None | np.ndarray:
         img = None

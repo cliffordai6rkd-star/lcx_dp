@@ -125,18 +125,23 @@ class MotionFactory:
             log.warning("Failed to enable async control in MotionFactory")
         
         # thread starting
+        self._threads_flags = []
         self._controller_thread_running = True
         self._controller_thread = threading.Thread(target=self._controller_task)
         self._controller_thread.start()
+        self._threads_flags.append(False)
         
         if self._use_traj_planner:
             self._traj_thread_running = True
             self._traj_thread = threading.Thread(target=self._traj_task)
             self._traj_thread.start()
+            self._threads_flags.append(False)
         
         self._ee_links = self.get_model_end_effector_link_list()
         self._ee_index = ["single"] if len(self._ee_links) == 1 else ["left", "right"]
         self._sim_world2base, _ = self.get_sim_base_world_transform()
+        while not any(self._threads_flags):
+            time.sleep(0.001)
         
     def _controller_task(self):
         log.info('Controller thread started!!!')
@@ -148,6 +153,8 @@ class MotionFactory:
         while self._controller_thread_running:
             loop_start_time = time.perf_counter()
             next_run_time = loop_start_time
+            if not self._threads_flags[0]: 
+                self._threads_flags[0] = True
             
             iteration_count += 1
             
@@ -259,6 +266,8 @@ class MotionFactory:
         model_types = self.get_model_types()
         while self._traj_thread_running:
             start_time = time.perf_counter()
+            if not self._threads_flags[1]: 
+                self._threads_flags[1] = True
             
             if self._high_level_updated and not self._blocking_motion:
                 nums_target = 0

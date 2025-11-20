@@ -60,6 +60,7 @@ class RobotFactory:
         self._sensors = {}
         self._tool = None
         self._enable_hardware = False
+        self._is_initialize = False
         
         # Smoother configuration
         self._use_smoother = config.get('use_smoother', False)
@@ -210,7 +211,7 @@ class RobotFactory:
             print("use smoother",self._use_smoother)
         
         # initialize all objects
-        self._initialize()
+        self._is_initialize = self._initialize()
         
     def _create_smoother(self, dof: int) -> None:
         """Create smoother instance based on configuration"""
@@ -236,6 +237,9 @@ class RobotFactory:
             self._smoother = None
     
     def _initialize(self):
+        if self._is_initialize:
+            return True
+        
         if self._use_hardware:
             if not self._robot.initialize():
                 raise ValueError(f"robot hardware {self._robot_type} failed intialization")
@@ -284,7 +288,8 @@ class RobotFactory:
                 log.info("Async control auto-enabled based on configuration")
             else:
                 log.warning("Failed to auto-enable async control")
-                
+        return True
+        
     def get_joint_states(self):
         joint_states = None
         if self._use_simulation:
@@ -677,7 +682,8 @@ class RobotFactory:
             name="AsyncControlLoop"
         )
         self._async_thread.start()
-        self._async_mode = True
+        while not self._async_mode:
+            time.sleep(0.001)
         
         log.info(f"Async control enabled at {self._async_frequency}Hz")
         return True
@@ -710,19 +716,28 @@ class RobotFactory:
         log.info(f"Starting async command loop at {self._async_frequency}Hz")
         
         dofs = self.get_robot_dofs()
+        last_set = time.perf_counter()
+        start_time = time.perf_counter()
         while self._async_running:
             loop_start = time.perf_counter()
+            if not self._async_mode: self._async_mode = True
             
             # Get smoothed command from smoother
             with timer("async_smoother", "robot_factory"):
+                loop_time = time.perf_counter() - start_time
+                start_time = time.perf_counter()
+                log.info(f'loop time freq: {1.0/loop_time}Hz')
                 if self._smoother is not None:
                     smoothed_command, is_active = self._smoother.get_command()
+                    log.info(f"smoother is active: {is_active}" )
                     
                     if is_active:
                         mode = ["position"] * len(dofs)
                         self.set_robot_joint_command(smoothed_command, mode,
                                             execute_hardware=self._enable_hardware,
                                             update_action=self._update_action)
+                        log.info(f'smoother update freq: {1.0/(time.perf_counter() - last_set)}Hz')
+                        last_set = time.perf_counter()
 
             # Timing management
             next_time += dt

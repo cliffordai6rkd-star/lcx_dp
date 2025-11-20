@@ -70,8 +70,8 @@ class Fr3Arm(ArmBase):
             
     def initialize(self):
         # Stop any existing controller to avoid concurrent operation errors
-        if self._control_mode is not None:
-            self._fr3_robot.stop_controller()
+        # if self._control_mode is not None:
+        #     self._fr3_robot.stop_controller()
         
         if self._control_mode is None:
             self._panda_py_controller = controllers.JointPosition()
@@ -102,8 +102,9 @@ class Fr3Arm(ArmBase):
             
         self._fr3_state_update_flag = False
         while not self._fr3_state_update_flag:
-            pass
-        log.info(f'Fr3 robot with ip {self._ip} is successfully updated!!!')
+            time.sleep(0.001)
+        flag = "initialized" if not self._is_initialized else "updated"
+        log.info(f'Fr3 robot with ip {self._ip} is successfully {flag}!!!')
         return True
     
     def close(self):
@@ -135,11 +136,16 @@ class Fr3Arm(ArmBase):
         if self._need_recover:
             log.warn(f'Fr3 with {self._ip} is still in the recover mode!!')
             return False
+
+        if not self._is_initialized:
+            log.warn(f'Fr3 with {self._ip} is still waiting to be initialized!!')
+            return False
         
         # controller setting or controller change
-        if not self._is_initialized or self._control_mode != mode:
+        if self._control_mode != mode:
             # Stop current controller before switching modes
             if self._control_mode != mode and self._control_mode is not None:
+                log.info(f'stop controller in set joint command')
                 self.stop_controller()
             
             if mode == 'position':
@@ -165,8 +171,7 @@ class Fr3Arm(ArmBase):
         # checking error state
         if self.recover():
             log.warn(f'The robot falls in error state and finished recover!!!')
-            self._recovery_occurred = True  # Mark that recovery happened
-            time.sleep(1.0)
+            time.sleep(0.5)
             self._fr3_state_update_flag = False
             while not self._fr3_state_update_flag:
                 time.sleep(0.001)
@@ -212,7 +217,8 @@ class Fr3Arm(ArmBase):
         """
             stop the controller
         """
-        self._fr3_robot.stop_controller()
+        with self._controller_lock:
+            self._fr3_robot.stop_controller()
         self._control_mode = None
         
     def recover(self) -> bool:
@@ -227,6 +233,7 @@ class Fr3Arm(ArmBase):
         except:
             self._need_recover = True
             # Stop controller before recovery to avoid concurrent operation error
+            log.info(f'stop controller in recover')
             self.stop_controller()
             
             # Only acquire lock for the actual recover call
@@ -240,11 +247,11 @@ class Fr3Arm(ArmBase):
             self._recovery_occurred = True  # Mark that recovery happened
             return True
     
-    # @TODO: check move2start bug
     def move_to_start(self, joint_commands = None):
         if self._init_joint_positions is None \
             and joint_commands is None:
             # Stop controller before move_to_start to avoid concurrent operation
+            log.info(f'stop controller in move2start')
             self.stop_controller()
             
             # Only acquire lock for the actual move_to_start call

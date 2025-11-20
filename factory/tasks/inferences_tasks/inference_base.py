@@ -141,7 +141,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 else: self._last_gripper_open[j] = False
             else: cur_tool_action /= self._tool_max
             action["tool"] = np.hstack((action["tool"], cur_tool_action))
-            log.info(f'tranformed tool action for {j}: {cur_tool_action}')
+            # log.info(f'tranformed tool action for {j}: {cur_tool_action}')
         return action
     
     def convert_to_gym_action(self, model_action: np.ndarray):
@@ -282,7 +282,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 aggregated_action = self._action_aggregation.aggregation_action(t, self._weight_mode)
                 
                 # log.info(f'aggregated action: {aggregated_action}')
+                convert_start = time.perf_counter()
                 gym_action = self.convert_to_gym_action_single_step(aggregated_action, pred_action_chunk[t%query_frequency])
+                convert_time = time.perf_counter() - convert_start
                 step_start = time.perf_counter()
                 res = self._gym_robot.step(gym_action)
                 step_time = time.perf_counter() - step_start
@@ -292,7 +294,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     time.sleep(sleep_time)
                 else: 
                     time.sleep(0.001)
-                    log.warn(f"{'=='*15} Execution is slow: {1.0 / dt:.3f}Hz {step_time:.5f}  {'=='*15}")
+                    log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ  {'=='*8}")
                 gym_obs = res[0]
                 obs = self.convert_from_gym_obs(gym_obs)
                 t += 1
