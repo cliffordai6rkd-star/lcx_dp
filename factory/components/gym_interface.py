@@ -2,12 +2,13 @@ from factory.components.robot_factory import RobotFactory
 from factory.components.motion_factory import MotionFactory
 from hardware.base.utils import transform_pose, pose_diff
 import glog as log
-import abc, time
+import abc, time, os
 import gymnasium as gym
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import numpy as np
 from factory.components.motion_factory import Robot_Space
 from scipy.spatial.transform import Rotation as R
+from dataset.lerobot.data_process import EpisodeWriter
 
 class GymApi(gym.Env):
     def __init__(self, config):
@@ -41,6 +42,17 @@ class GymApi(gym.Env):
         self._robot_motion.create_motion_components()
         log.info("The robot motion component is successfully created in gym api!")
         
+        # record data
+        self._data_dir = config.get("data_save_path", None)
+        self._data_recorder = None
+        if self._data_dir:
+            cur_path = os.path.dirname(os.path.abspath(__file__))
+            task_dir = os.path.join(cur_path, "../../dataset/data", self._data_dir)
+            self._data_recorder = EpisodeWriter(task_dir=task_dir,
+                                                rerun_log=False)
+            self._is_recording = False
+            self._episode_id = self._data_recorder.episode_id
+            
         # variable used for gym api
         self._step_counter = 0
         self.reset()
@@ -238,9 +250,13 @@ class GymApi(gym.Env):
         for key, pose in ee_states.items():
             visual_ee_poses[key] = pose["pose"]
         self._robot_motion.sim_visualize_tcp(visual_ee_poses)
+        if self._data_recorder and self._is_recording:
+            self._data_recorder.add_item(joint_states=joint_states, ee_states=ee_states)
         tools_dict = self.get_tool_state()
         ft_dict = self.get_ft_infos()
         # log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
+        
+        # data process
         for key, joint_state in joint_states.items():
             obs_state[key] = np.array([])
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
@@ -264,6 +280,7 @@ class GymApi(gym.Env):
                 obs_state[key] = np.hstack((obs_state[key], tool_state))
             else: obs_state[key] = np.hstack((obs_state[key], [0]))
             log.info(f'obs state {key} shape: {obs_state[key].shape}')
+        
         camera_data = self.get_camera_infos()
         obs_dict = {'state': obs_state, 'colors': camera_data["color"], 
                     'depths': camera_data["depth"]}
@@ -315,9 +332,43 @@ class GymApi(gym.Env):
         if self._is_debug:
             self._wait_key('c', 'please press c to proceed next command!!!!')
     
-    def close(self):
-        self._robot_motion.close()
+    def record_data(self, joint=None, ee=None):
+        if not self._data_recorder:
+            log.warn('Data recorder is not configured to be created')
+            
+        if not self._is_recording:
+            log.warn(f'The data recorder is not enabled for saving data to episode {self._episode_id}')
+        
+        self._data_recorder.add_item(joint_states=joint, ee_states=ee)
     
+    def start_recording(self):
+        if not self._data_recorder:
+            log.warn('Data recorder is not configured to be created')
+        
+        if not self._is_recording:
+            self._data_recorder.create_episode()
+            time.sleep(0.5)
+            self._episode_id = self._data_recorder.episode_id
+            self._is_recording = True
+        else:
+            log.warn("data recoreder is already in the enable state!!!")
+
+    def save_recording(self):
+        if not self._data_recorder:
+            log.warn('Data recorder is not configured to be created')
+        
+        if self._is_recording:
+            self._data_recorder.save_episode()
+            time.sleep(1.5)
+            self._is_recording = False
+            log.info(f'Successfully save the data episode {self._episode_id}')
+        else:
+            log.warn("data recoreder is already in the disable state!!!")
+    
+    def close(self):
+        self._data_recorder.close()
+        self._robot_motion.close()
+        
     @abc.abstractmethod
     def compute_rewards(self):
         """
@@ -340,7 +391,7 @@ def main():
     arguments = {"config": {"short_cut": "-c",
                             "symbol": "--config",
                             "type": str, 
-                            "default": "factory/tasks/inferences_tasks/pi0/config/fr3_pi0_cfg.yaml",
+                            "default": "factory/tasks/inferences_tasks/pi0/config/fr3_pi0_cfg_client.yaml",
                             "help": "Path to the config file"}}
     args = parse_args("pi0 inference", arguments)
     
@@ -384,12 +435,12 @@ def main():
             log.info(f'action: {action}')
             res = fr3_gym.step(action)
             obs = res[0]
-            for key, image in obs["colors"].items():
-                # log.info(f'key: {key}, iamge: {image}')
-                cv2.imshow(key, image)
-                cv2.waitKey(1)
+            # for key, image in obs["colors"].items():
+            #     # log.info(f'key: {key}, iamge: {image}')
+            #     cv2.imshow(key, image)
+            #     cv2.waitKey(1)
             # log.info(f'command: {position} for {config["action_type"]}')
-        time.sleep(0.001)
+        time.sleep(0.01)
         
         # reset pose test for a given pose
     cv2.destroyAllWindows()

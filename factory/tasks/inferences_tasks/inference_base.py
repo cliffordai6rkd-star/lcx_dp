@@ -20,6 +20,12 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._gym_robot = GymApi(config)
         self._status_ok = True
         self._quit = False
+        self._data_record = False
+        if "data_save_path" in config:
+            self._data_record = True
+            log.info(f'Enable data record in inference!!!!')
+        else:
+            log.info(f'Not using the data recorder for inference!!!!')
         
         self._action_type = config["action_type"]
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
@@ -127,7 +133,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             action["arm"] = np.hstack((action["arm"], cur_arm_action))
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -241,6 +247,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         raise NotImplementedError
     
     def start_common_inference(self):
+        time.sleep(0.001)
+        pass
         # rollout episodes
         query_frequency = int(50 / self._infer_frequency)
         # 15
@@ -248,6 +256,12 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
+            if self._data_record:
+                if episode_id:
+                    self._gym_robot.save_recording()
+                    log.info(f'save infer data traj!!!')
+                self._gym_robot.start_recording()
+                log.info(f'start record infer data traj!!!')
             if self._action_aggregation:
                 self._action_aggregation.reset()
             self._gym_robot.reset()
@@ -260,8 +274,6 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             pred_action_chunk = None
             for t in range(self._max_timestamps):
                 start_time = time.perf_counter()
-                # if self._action_ori_type == "quaternion" and self._weight_mode != WeightMode.NO_WEIGHT:
-                #     raise ValueError(f'Action aggregation does not support quaternion action orientation')
                     
                 if not self._status_ok or self._quit: 
                     break

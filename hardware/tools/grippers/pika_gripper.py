@@ -70,10 +70,10 @@ class PikaGripper(ToolBase):
             self._state._position = self._max_distance
             
             # Start state update thread
+            self._gripper_state_updated = False
             self._thread_running = True
             self._update_thread = threading.Thread(target=self.update_state, daemon=True)
             self._update_thread.start()
-            self._gripper_state_updated = False
             
             while not self._gripper_state_updated:
                 time.sleep(0.001)

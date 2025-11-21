@@ -50,7 +50,8 @@ class Fr3Arm(ArmBase):
             last_read_time = time.perf_counter()
             
             # diff acceleration
-            self._fr3_state = self._fr3_robot.get_state()
+            with self._controller_lock:
+                self._fr3_state = self._fr3_robot.get_state()
             state_reading_time = time.perf_counter() - last_read_time
             self._fr3_state_update_flag = True
             self._joint_states._accelerations = (np.array(self._fr3_state.dq) - self._last_velocities) / dt
@@ -68,7 +69,7 @@ class Fr3Arm(ArmBase):
             #         f"{read_frequency}Hz, actual: {1.0 / dt}Hz, reading freq: {1.0/state_reading_time}Hz")
         log.info(f'Fr3 with ip {self._ip} stopped its thread!!!')
             
-    def initialize(self):
+    def initialize(self, restart_controller=False):
         # Stop any existing controller to avoid concurrent operation errors
         # if self._control_mode is not None:
         #     self._fr3_robot.stop_controller()
@@ -89,8 +90,11 @@ class Fr3Arm(ArmBase):
             not isinstance(self._panda_py_controller, controllers.PureTorque):
             self._panda_py_controller.set_filter(self._filter_coefficient)
         # controller start
-        with self._controller_lock:
-            self._fr3_robot.start_controller(self._panda_py_controller)    
+        flag = "initialized" if not self._is_initialized else "updated"
+        if not self._is_initialized or restart_controller:
+            with self._controller_lock:
+                self._fr3_robot.start_controller(self._panda_py_controller) 
+            log.info(f'Started fr3 controller for {flag}')
 
         if not self._is_initialized:
             if self._collision_behaviour is not None:
@@ -103,7 +107,6 @@ class Fr3Arm(ArmBase):
         self._fr3_state_update_flag = False
         while not self._fr3_state_update_flag:
             time.sleep(0.001)
-        flag = "initialized" if not self._is_initialized else "updated"
         log.info(f'Fr3 robot with ip {self._ip} is successfully {flag}!!!')
         return True
     
@@ -143,11 +146,6 @@ class Fr3Arm(ArmBase):
         
         # controller setting or controller change
         if self._control_mode != mode:
-            # Stop current controller before switching modes
-            if self._control_mode != mode and self._control_mode is not None:
-                log.info(f'stop controller in set joint command')
-                self.stop_controller()
-            
             if mode == 'position':
                 self._panda_py_controller = controllers.JointPosition()
             elif mode == 'velocity':
@@ -157,8 +155,9 @@ class Fr3Arm(ArmBase):
             else:
                 log.warn(f"Unsupported control mode: {mode}")
                 return False
+            log.info(f're-initialize in set joint command with mode switching from {self._control_mode} {type(self._control_mode)} to {mode} {type(mode)}')
             self._control_mode = mode
-            self._is_initialized = self.initialize()
+            self._is_initialized = self.initialize(True)
             if not self._is_initialized:
                 raise ValueError(f'Failed to reset controller for fr3 with ip {self._ip}')
 
@@ -171,30 +170,29 @@ class Fr3Arm(ArmBase):
         # checking error state
         if self.recover():
             log.warn(f'The robot falls in error state and finished recover!!!')
-            time.sleep(0.5)
+            time.sleep(0.3)
             self._fr3_state_update_flag = False
             while not self._fr3_state_update_flag:
                 time.sleep(0.001)
             log.info(f'Successfully finished the reset procedures!!!!')
-            time.sleep(0.5)
+            # time.sleep(0.5)
             self._need_recover = False
             return False
         
         # set command
-        if mode == 'position':
-            self.set_joint_position(command)
-        elif mode == 'velocity':
-            self.set_joint_velocity(command)
-        elif mode == 'torque':
-            self.set_joint_torque(command)
-        else:
-            log.warn(f'fr3 did not support control mode {mode}')
-            return False
+        with self._controller_lock:
+            if mode == 'position':
+                self.set_joint_position(command)
+            elif mode == 'velocity':
+                self.set_joint_velocity(command)
+            elif mode == 'torque':
+                self.set_joint_torque(command)
+            else:
+                log.warn(f'fr3 did not support control mode {mode}')
+                return False
         return True
             
-            
     def set_joint_position(self, position):
-        # @TODO: wait for testing
         self._panda_py_controller.set_control(position)
     
     def set_joint_velocity(self, velocity):
@@ -228,22 +226,21 @@ class Fr3Arm(ArmBase):
         """
         # check whether need to recover
         try:
-            self._fr3_robot.raise_error()
+            with self._controller_lock:
+                self._fr3_robot.raise_error()
             return False
         except:
             self._need_recover = True
-            # Stop controller before recovery to avoid concurrent operation error
             log.info(f'stop controller in recover')
             self.stop_controller()
-            
             # Only acquire lock for the actual recover call
             self._controller_lock.acquire()
             try:
                 self._fr3_robot.recover()
             finally:
                 self._controller_lock.release()
-            
-            self.initialize()
+            log.info(f'Initialize in recover mode')
+            self.initialize(True)
             self._recovery_occurred = True  # Mark that recovery happened
             return True
     

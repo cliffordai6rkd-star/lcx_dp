@@ -53,10 +53,10 @@ class MujocoSim(SimBase):
         self.parse_config()
         
         # start mujoco thread
+        self._sim_started = False
         self._theread_running = True
         self._thread = threading.Thread(target=self.sim_thread)
         self._thread.start()
-        self._sim_started = False
         # @TODO: decide sleep time
         # time.sleep(0.5)
         while not self._sim_started:

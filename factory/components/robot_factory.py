@@ -288,6 +288,8 @@ class RobotFactory:
                 log.info("Async control auto-enabled based on configuration")
             else:
                 log.warning("Failed to auto-enable async control")
+        else:
+            log.info(f'Configured not to enable async control!!!!')
         return True
         
     def get_joint_states(self):
@@ -341,7 +343,8 @@ class RobotFactory:
             self._update_action = update_action
         # Check if we should use smoother
         should_use_smoother = self._should_use_smoother(mode)
-        # log.info(f"Should use smoother: {should_use_smoother}, mode: {mode}")
+        # log.info(f"Should use smoother: {should_use_smoother}, mode: {mode},\
+        #          {execute_hardware}, {self._enable_hardware}")
         
         if should_use_smoother:
             # Update smoother target
@@ -356,10 +359,11 @@ class RobotFactory:
             smoothed_command, is_active = self._smoother.get_command()
             if is_active:
                 joint_command = smoothed_command
-        
+            log.info(f'set robot command with non async: {joint_command} with {execute_hardware}')
+    
         # Only execute direct commands in synchronous mode or when smoother not used
         if not self._async_mode or not should_use_smoother:
-            self.set_robot_joint_command(joint_command, mode, execute_hardware,update_action)
+            self.set_robot_joint_command(joint_command, mode, execute_hardware, update_action)
                 
     def check_robot_recovery(self) -> bool:
         """
@@ -726,17 +730,18 @@ class RobotFactory:
             with timer("async_smoother", "robot_factory"):
                 loop_time = time.perf_counter() - start_time
                 start_time = time.perf_counter()
-                log.info(f'loop time freq: {1.0/loop_time}Hz')
+                # log.info(f'loop time freq: {1.0/loop_time}Hz')
                 if self._smoother is not None:
                     smoothed_command, is_active = self._smoother.get_command()
-                    log.info(f"smoother is active: {is_active}" )
+                    # log.info(f"smoother is active: {is_active}" )
                     
                     if is_active:
                         mode = ["position"] * len(dofs)
+                        # log.info(f"smoother command: {smoothed_command}, {mode}, {self._enable_hardware}" )
                         self.set_robot_joint_command(smoothed_command, mode,
                                             execute_hardware=self._enable_hardware,
                                             update_action=self._update_action)
-                        log.info(f'smoother update freq: {1.0/(time.perf_counter() - last_set)}Hz')
+                        # log.info(f'smoother update freq: {1.0/(time.perf_counter() - last_set)}Hz')
                         last_set = time.perf_counter()
 
             # Timing management

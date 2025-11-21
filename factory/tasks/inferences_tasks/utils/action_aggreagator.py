@@ -32,7 +32,7 @@ class ActionAggregator:
         if weight_mode != WeightMode.NO_WEIGHT:
             action_for_cur_step = self._all_time_action[:, t]
             # log.info(f'action for cur step: {action_for_cur_step.shape}')
-            actions_populated = np.all(action_for_cur_step != 0, axis=1)
+            actions_populated = np.any(action_for_cur_step != 0, axis=1)
             # log.info(f'action populated: {action_for_cur_step.shape}')
             action_for_cur_step = action_for_cur_step[actions_populated]
             # log.info(f'action for cur step: {action_for_cur_step.shape}')

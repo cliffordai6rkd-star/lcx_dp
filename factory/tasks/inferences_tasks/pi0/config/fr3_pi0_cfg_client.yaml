@@ -28,17 +28,18 @@ tool_max: 90
 # tool_open_thresh: 45
 # tool_close_thresh: 45
 
-enable_display: true
+enable_display: false
 display_window_name: "pi0 client inference"
 enable_plotting: false
 enable_hardware: true
 
 num_episodes: 150
-max_timestamps: 350
+max_timestamps: 1500
 execution_chunk_steps: 35
 action_weight_mode: "uniform"
 action_weight_gain: -0.01
 async_execution: false
+# data_save_path: "infer/insert_pinboard"
 
 # prompt guidance
 # tasks: "pick up the blue cube and place it onto the top of red cube and then pick up the yellow cube and place it onto the blue cube"

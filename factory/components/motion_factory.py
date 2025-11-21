@@ -125,22 +125,22 @@ class MotionFactory:
             log.warning("Failed to enable async control in MotionFactory")
         
         # thread starting
-        self._threads_flags = []
+        self._threads_flags = [False]
         self._controller_thread_running = True
         self._controller_thread = threading.Thread(target=self._controller_task)
         self._controller_thread.start()
-        self._threads_flags.append(False)
         
         if self._use_traj_planner:
+            self._threads_flags.append(False)
             self._traj_thread_running = True
             self._traj_thread = threading.Thread(target=self._traj_task)
             self._traj_thread.start()
-            self._threads_flags.append(False)
         
         self._ee_links = self.get_model_end_effector_link_list()
         self._ee_index = ["single"] if len(self._ee_links) == 1 else ["left", "right"]
         self._sim_world2base, _ = self.get_sim_base_world_transform()
-        while not any(self._threads_flags):
+        while not all(self._threads_flags):
+            log.info(f'blocking here {self._threads_flags}!!!')
             time.sleep(0.001)
         
     def _controller_task(self):

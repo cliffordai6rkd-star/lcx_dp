@@ -97,7 +97,7 @@ class EpisodeWriter():
         
     def add_text_prompt(self, goal, desc, steps):
         if goal is None or desc is None or steps is None:
-            warnings.warn(f'Task description is not fully defined!!!!')
+            log.warn(f'Task description is not fully defined!!!!')
             return 
         
         self.text["goal"] = goal
@@ -139,7 +139,7 @@ class EpisodeWriter():
         log.info(f"==> New episode created: {self.episode_dir}")
         return True, self.episode_dir  # Return True if the episode is successfully created
         
-    def add_item(self, colors, depths=None, joint_states=None, ee_states=None, 
+    def add_item(self, colors=None, depths=None, joint_states=None, ee_states=None, 
                 tools=None, tactiles=None, imus=None, audios=None, actions=None):
         """
             called from external to add new data for current episode,
@@ -206,6 +206,16 @@ class EpisodeWriter():
                 np.save(os.path.join(self.audio_dir, audio_name), audio.astype(np.int16))
                 item_data['audios'][mic] = os.path.join('audios', audio_name)
 
+        # serialize data
+        data_keys = ["joint_states", "ee_states", "imus", "tools", "actions"]
+        for cur_key in data_keys:
+            cur_data = item_data.get(cur_key, {})
+            if cur_data:
+                log.info(f"{cur_key} before serial: {cur_data}")
+                serialized_data = self.serialize_data(cur_data)
+                item_data[cur_key] = serialized_data
+                log.info(f"{cur_key} after serial: {serialized_data}")
+        
         # Update episode data
         self.episode_data.append(item_data)
 
@@ -287,6 +297,19 @@ class EpisodeWriter():
             
         return False
     
+    def serialize_data(self, data):
+        if data is None:
+            return None
+        
+        if isinstance(data, dict):
+            for key, value in data.items():
+                data[key] = self.serialize_data(value)
+        else:
+            single_number_type = [int, float, bool, complex]
+            if not any([isinstance(data, cur_type) for cur_type in single_number_type]):
+                if isinstance(data, np.ndarray) and data.ndim:
+                    data = data.tolist()
+        return data
     
 class EpisodeLoader():
     def __init__(self, task_dir):
