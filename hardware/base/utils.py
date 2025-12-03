@@ -342,3 +342,39 @@ def fast_mat_inv(mat):
     ret[:3, :3] = mat[:3, :3].T
     ret[:3, 3] = -mat[:3, :3].T @ mat[:3, 3]
     return ret
+
+def normalize(vec, eps=1e-12):
+    norm = np.linalg.norm(vec, axis=-1)
+    norm = np.maximum(norm, eps)
+    out = (vec.T / norm).T
+    return out
+
+def rot6d_to_quat(d6):
+    a1, a2 = d6[..., :3], d6[..., 3:]
+    b1 = normalize(a1)
+    b2 = a2 - np.sum(b1 * a2, axis=-1, keepdims=True) * b1
+    b2 = normalize(b2)
+    b3 = np.cross(b1, b2, axis=-1)
+    mat = np.stack((b1, b2, b3), axis=-2)
+    out = R.from_matrix(mat).as_quat()
+    return out
+
+def quat_to_rot6d(quat):
+    mat = np.array(R.from_quat(quat).as_matrix())
+    out = mat[..., :2, :].copy().reshape(6,)
+    return out
+
+# quat1 = np.array([0,0,1,0])
+# quat2 = np.array([1,0,0,0])
+# rot1 = R.from_quat(quat1)
+# rot2 = R.from_quat(quat2)
+# euler1 = rot1.as_euler('xyz')
+# euler2 = rot2.as_euler('xyz')
+# mat1 = rot1.as_matrix()
+# mat2 = rot2.as_matrix()
+# # quat1 - quat2 
+# quat_relative = rot2.inv() * rot1
+# print(f'quat relative: {quat_relative.as_quat()}')
+# # quat2 + quat1 - quat2 = quat1
+# quat_recovered = transform_quat(quat2, quat_relative.as_quat())
+# print(f'recovered: {quat_recovered}')

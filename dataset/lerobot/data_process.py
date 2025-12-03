@@ -211,10 +211,10 @@ class EpisodeWriter():
         for cur_key in data_keys:
             cur_data = item_data.get(cur_key, {})
             if cur_data:
-                log.info(f"{cur_key} before serial: {cur_data}")
+                # log.info(f"{cur_key} before serial: {cur_data}")
                 serialized_data = self.serialize_data(cur_data)
                 item_data[cur_key] = serialized_data
-                log.info(f"{cur_key} after serial: {serialized_data}")
+                # log.info(f"{cur_key} after serial: {serialized_data}")
         
         # Update episode data
         self.episode_data.append(item_data)

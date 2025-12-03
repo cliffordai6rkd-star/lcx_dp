@@ -1,5 +1,6 @@
 from factory.components.robot_factory import RobotFactory
 from factory.components.motion_factory import MotionFactory
+from factory.tasks.inferences_tasks.utils.collision_avoidance import solve_table_collision, prevent_table_collision
 from hardware.base.utils import transform_pose, pose_diff
 import glog as log
 import abc, time, os
@@ -22,6 +23,7 @@ class GymApi(gym.Env):
         self._delta_action_target = {}
         self._obs_type = config.get("observation_type", "jonit_position")
         self._obs_type = ObservationType(self._obs_type)
+        self._chunk_anchor_mode = config.get("chunk_action_mode", None)
         self._contain_ft = config.get('contain_ft', False)
         self._last_ee = {}
         self._use_relative_pose = config.get("use_relative_pose", False)
@@ -29,6 +31,9 @@ class GymApi(gym.Env):
         robot_motion_cfg = config["motion_config"]
         self._tool_position_dof = config.get("tool_position_dof", 1)
         self._tool_state_max = config.get("tool_state_max", 1)
+        
+        # collision_related
+        self._collision_height_thresh = config.get("height_thresh", 0.02)
         
         self._reset_space = config.get("reset_space", "joint")
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
@@ -82,7 +87,6 @@ class GymApi(gym.Env):
         execute_arm_action = []; execute_tool_action = []
         # @TODO: hack
         arm_action_satrt = time.perf_counter()
-        gripper_position_dof = self._tool_position_dof
         if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
             execute_arm_action = arm_action
             if self._action_type == ActionType.JOINT_POSITION_DELTA:
@@ -92,6 +96,9 @@ class GymApi(gym.Env):
         elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
             end_effector_names = self._robot_motion.get_model_end_effector_link_list()
             ee_index = ['left', 'right'] if len(end_effector_names) > 1 else ['single']
+            # assume the gym action step is alredy represented with quaternion
+            assert arm_action.shape[-1] == len(ee_index) * 7, \
+                f"{arm_action.shape[-1]} != {len(ee_index) * 7} with {ee_index}"
             action_index = 0
             for j ,key in enumerate(ee_index):
                 cur_arm_action = arm_action[action_index:action_index+7]
@@ -100,19 +107,26 @@ class GymApi(gym.Env):
                     # try to use the fixed reset pose
                     cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action)
                     self._delta_action_target[key] = cur_arm_action
-                if self._use_relative_pose:
+                # 使用relative (abs）pose，而非chunk relative
+                if self._use_relative_pose and not self._chunk_anchor_mode:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
+                
+                # @TODO: desk collision avoidance, 厚度维35mm， 开合维100mm
+                # solve_table_collision(cur_arm_action, 0.1, 0.02, 35/1000.0)
+                prevent_table_collision(cur_arm_action, self._collision_height_thresh)
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
         else:
             raise ValueError(f"Unsupported action type: {self._action_type}")
         arm_action_time = time.perf_counter() - arm_action_satrt
+        
         tool_satrt = time.perf_counter()
         # tool execution
         tool_action = np.array(action['tool'])
         tool_type_dict = self._robot_system.get_tool_dict_state()
         tool_index = 0
+        gripper_position_dof = self._tool_position_dof
         if tool_type_dict is not None:
             for j in range(len(tool_type_dict)):
                 index_r = tool_index + gripper_position_dof
@@ -138,13 +152,17 @@ class GymApi(gym.Env):
         info['obs_time'] = obs_time
         log.info(f'step freq: {1.0/arm_action_time:.5f}Hz {1.0/tool_time:.5f}Hz {1.0/obs_time:.5f}Hz')
         return observation, reward, done, False, info
-        
+    
+    def change_hardware_state(self, hw_state:bool):
+        self._use_hardware = hw_state
+        self.reset()
+    
     def reset(self, *, seed = None, options = None):
-        if self._use_hardware:
-            self._robot_motion.update_execute_hardware(True)
-            self._robot_system._enable_hardware = True
-            time.sleep(0.1)
-            log.info("The robot hardware all enabled!!!!!!")
+        # if self._use_hardware:
+        self._robot_motion.update_execute_hardware(self._use_hardware)
+        self._robot_system._enable_hardware = self._use_hardware
+        time.sleep(0.1)
+        log.info(f"The robot hardware state is set to {self._use_hardware}!!!!!!")
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)
@@ -246,8 +264,9 @@ class GymApi(gym.Env):
         if self._obs_type in ee_check:
             if len(ee_states) == 0:
                 raise ValueError(f'Cur {self._obs_type} do not get ee states!!!')
+        visual_ee_states = ee_states if not self._use_relative_pose else self.get_ee_state()
         visual_ee_poses = {}
-        for key, pose in ee_states.items():
+        for key, pose in visual_ee_states.items():
             visual_ee_poses[key] = pose["pose"]
         self._robot_motion.sim_visualize_tcp(visual_ee_poses)
         if self._data_recorder and self._is_recording:
@@ -322,7 +341,7 @@ class GymApi(gym.Env):
                     self._wait_key('c', 'please press c to execute in hardware!!!!')
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
-        self._robot_motion.update_high_level_command(poses)
+        # self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}
@@ -366,7 +385,8 @@ class GymApi(gym.Env):
             log.warn("data recoreder is already in the disable state!!!")
     
     def close(self):
-        self._data_recorder.close()
+        if self._data_recorder:
+            self._data_recorder.close()
         self._robot_motion.close()
         
     @abc.abstractmethod

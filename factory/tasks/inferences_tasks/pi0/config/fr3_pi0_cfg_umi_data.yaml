@@ -5,24 +5,33 @@
 # robot + motion factory
 motion_config: !include factory/components/motion_configs/right_fr3_with_pika_ati_ik.yaml
 max_step_nums: 150 # for gym steps
-# end_effector_pose_delta joint_position
-action_type: "end_effector_pose_delta"
-# euler quaternion
-action_orientation_type: "euler"
-# jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose
-observation_type: "delta_ee_pose"
+action_type: "end_effector_pose"
+# euler quaternion 6d_rotation
+action_orientation_type: "6d_rotation"
+# ee_pose mask 
+observation_type: "ee_pose"
 contain_ft: false
+# relative delta
+# chunk_action_mode: "relative"
 use_relative_pose: true
 is_debug: false
 
+# collision related parameters
+tool_wdith: 0.1
+tool_thickness: 0.0255
+# height_thresh: 0.02
+height_thresh: 0.01
+
 reset_space: "joint"
-reset_arm_command: [-1.739511885028377, -1.15393908890327, -0.5111689909133162, -2.3949934097530203, 1.0834711604762148, 1.0181745575183847, -0.6134346582714251]
-# reset_arm_command: [-0.41425065466379796, -1.39557627627586, 0.06088346008408975, -2.694321648428242, 0.3244465598980649, 2.0187975945253904, 0.34468665065276416]
+# z: 0.39570194
+# [0.12914971577308007, -1.1414848191903935, -1.0206527956929927, -2.4291060833756553, -0.74327029123007, 1.9775413167802187, 0.32370524816915264]
+reset_arm_command: [0.24926367185098658, -1.0425780090835255, -1.1887405299550489, -2.4203714233442803, -0.83565228390469, 2.045317454320303, 0.30392395819882406]
+# now z: 0.32969364
 reset_tool_command: [[1]]
 
 tool_control_mode: "incremental"
 tool_min: 0
-tool_max: 1
+tool_max: 1.1
 tool_state_max: 90
 # tool_control_mode: "binary"
 # tool_open_thresh: 45

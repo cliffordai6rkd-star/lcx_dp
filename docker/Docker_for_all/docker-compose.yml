@@ -43,6 +43,7 @@ services:
       - SDL_AUDIODRIVER=pulse
       # 设备权限相关
       - UDEV=1
+      - SHELL=/bin/bash
       # - http_proxy=http://127.0.0.1:7897
       # - https_proxy=http://127.0.0.1:7897
       # - no_proxy=localhost,127.0.0.1

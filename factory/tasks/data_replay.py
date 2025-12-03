@@ -1,6 +1,7 @@
 from factory.components.gym_interface import GymApi
 from dataset.lerobot.reader import RerunEpisodeReader, Action_Type_Mapping_Dict, ActionType, ObservationType
 from hardware.base.utils import transform_pose, pose_diff, transform_quat
+from factory.tasks.inferences_tasks.utils.display import display_images
 import threading
 import time
 import numpy as np
@@ -64,6 +65,7 @@ class DataReplay:
         self._gym_api: Optional[GymApi] = None
         self._is_initialized = False
         self._init_pose = None
+        self._enable_hardware = False
 
         log.info(f"DataReplay initialized: {self._task_data_dir}, {action_type_str}, {self._replay_frequency}Hz")
 
@@ -102,6 +104,10 @@ class DataReplay:
         target_period = 1.0 / self._replay_frequency
 
         while self._replay_thread_running:
+            imgs = self._gym_api.get_camera_infos()
+            if imgs:
+                display_images(imgs["color"], f"Data replay for {self._task_data_dir}")
+            
             with self._state_lock:
                 current_state = self._state
 
@@ -119,6 +125,7 @@ class DataReplay:
 
     def _execute_replay(self, target_period: float):
         if self._current_episode_id is None:
+            log.warn(f'Do not retrive the correct episode id for execution')
             return
 
         episode_id = self._current_episode_id
@@ -141,10 +148,13 @@ class DataReplay:
         log.info(f"Starting replay at {self._replay_frequency}Hz")
         next_run_time = time.perf_counter()
 
+        # 获取episode start的pose
         init_episode_pose = episode_data[0]["ee_states"]
-        for key, pose in init_episode_pose.items():
-            pose["pose"][3:] = transform_quat(pose["pose"][3:], self._rotation_transform[key])
-            init_episode_pose[key]["pose"] = pose["pose"]
+        if self._rotation_transform:
+            for key, pose in init_episode_pose.items():
+                pose["pose"][3:] = transform_quat(pose["pose"][3:], self._rotation_transform[key])
+                init_episode_pose[key]["pose"] = pose["pose"]
+        # iterate over the whole episode
         for frame_data in episode_data:
             with self._state_lock:
                 if self._state != ReplayState.REPLAYING:
@@ -174,6 +184,7 @@ class DataReplay:
                 time.sleep(sleep_time)
             else:
                 next_run_time = time.perf_counter()
+                time.sleep(1.0 / self._replay_frequency)
 
         log.info(f"Episode {episode_id} completed")
 
@@ -207,14 +218,23 @@ class DataReplay:
                 self._state = ReplayState.WATING_INPUT
             self._episode_id_str = ''
         if key >= '0' and key <= '9' and state == ReplayState.WATING_INPUT:
-            self._episode_id_str += key
-            log.info(f'cur episode id str is {self._episode_id_str}')
+            try:
+                self._episode_id_str += key
+                log.info(f'cur episode id str is {self._episode_id_str}')
+            except:
+                log.warn(f'catch exception the input {key} is not a single number')
+                log.warn(f'Please continue to enter the single number or s \
+                         to the get the replay episode, cur episode: {self._current_episode_id}')
         if key == 's' and state == ReplayState.WATING_INPUT:
             self._current_episode_id = int(self._episode_id_str)
             with self._state_lock:
                 self._state = ReplayState.REPLAYING
             log.info(f'Will start to replay {self._current_episode_id} data from {self._task_data_dir}')
-
+        if key == 'h':
+            self._enable_hardware = not self._enable_hardware
+            self._gym_api.change_hardware_state(self._enable_hardware)
+            log.info(f'Data replay set to hw state {self._enable_hardware}!!!')
+        
     def close(self):
         log.info("Closing replay system")
         self._replay_thread_running = False

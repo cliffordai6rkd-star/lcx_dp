@@ -33,10 +33,10 @@ sensor_dicts:
     - name: "left_hand_fisheye"
       type: "opencv_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_fisheye_cfg.yaml
-  ft_sensors:
-    - name: "ee_ft"
-      type: "ati_ft"
-      cfg: !include hardware/sensors/ft_sensor/config/right_ati_cfg.yaml
+  # ft_sensors:
+  #   - name: "ee_ft"
+  #     type: "ati_ft"
+  #     cfg: !include hardware/sensors/ft_sensor/config/right_ati_cfg.yaml
   
 control_frequency: 800
 controller_type: "ik"

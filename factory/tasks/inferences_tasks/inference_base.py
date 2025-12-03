@@ -1,8 +1,9 @@
 import abc
 from factory.components.gym_interface import GymApi
-from hardware.base.utils import ToolControlMode
+from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose
 from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
+from factory.tasks.inferences_tasks.utils.collision_avoidance import solve_table_collision, prevent_table_collision
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
 from sshkeyboard import listen_keyboard, stop_listening
@@ -32,6 +33,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._action_ori_type = config.get("action_orientation_type", "euler")
         self._obs_type = config.get("observation_type", "jonit_position")
         self._obs_type = ObservationType(self._obs_type)
+        # relative or delta
+        self._chunk_anchor_mode = config.get("chunk_action_mode", None)
         
         # tool related config
         self._tool_position_dof = config.get("tool_position_dof", 1)
@@ -98,10 +101,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             gym_obs = self._gym_robot.get_observation()
         return gym_obs
     
-    def convert_to_gym_action_single_step(self, action, raw_action=None):
+    def convert_to_gym_action_single_step(self, action, raw_action=None, chunk_anchor=None):
         dofs = self._gym_robot._robot_motion.get_model_dof_list()[1:]
         cur_action = action
-        # log.info(f'Executing action for {i}th action: {cur_action}')
         with self._lock:
             joint_state = copy.deepcopy(self._joint_positions)
         self.update_plotter(joint_state, cur_action)
@@ -118,6 +120,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 action_index = index_r+gripper_position_dof
                 # log.info(f'arm index for joint: {index_l}, {index_r}')
                 cur_arm_action = cur_action[index_l:index_r]
+                if chunk_anchor: cur_obs_anchor = chunk_anchor[index_l:index_r]
             elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
                 pose_dof = 6 if self._action_ori_type == "euler" else 7
                 # log.info(f'arm index for pose: {action_index}')
@@ -126,14 +129,22 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 index_r = action_index+pose_dof
                 action_index = index_r+gripper_position_dof 
                 if self._action_ori_type == "euler":
-                    cur_action = np.hstack((cur_action, [0]))
-                    cur_action[3:] = R.from_euler("xyz", cur_action[3:6]).as_quat()
+                    cur_arm_action = np.hstack((cur_arm_action, [0]))
+                    cur_arm_action[3:] = R.from_euler("xyz", cur_arm_action[3:6]).as_quat()
+                elif self._action_ori_type == "6d_rotation":
+                    rot_6d = cur_arm_action[3:9]
+                    cur_arm_action = cur_arm_action[:7]
+                    cur_arm_action[3:] = rot6d_to_quat(rot_6d)
+                # obs anchor
+                if self._chunk_anchor_mode:
+                    assert chunk_anchor is not None
+                    cur_arm_action = transform_pose(cur_obs_anchor, cur_arm_action)
             else:
                 raise ValueError(f"Unsupported action type: {self._action_type}")
 
             action["arm"] = np.hstack((action["arm"], cur_arm_action))
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -272,6 +283,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             log.info(f'Starting the {episode_id} th episodes')
             # inference timestamp
             pred_action_chunk = None
+            chunk_anchor = None
             for t in range(self._max_timestamps):
                 start_time = time.perf_counter()
                     
@@ -283,19 +295,26 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 if t % query_frequency == 0:
                     pred_action_chunk = self.policy_prediction(obs)
+                    # update chunk anchor
+                    if self._chunk_anchor_mode:
+                        chunk_anchor = obs["state"]
+                    
                 if self._action_aggregation is None:
                     predicted_action_chunk_size = pred_action_chunk.shape[0]
                     self._action_aggregation = ActionAggregator(query_frequency=query_frequency,
                         chunk_size=predicted_action_chunk_size, max_timestamps=self._max_timestamps,
                         action_size=pred_action_chunk.shape[1], k=self._weight_gain)
-                # update action chunk
-                self._action_aggregation.add_action_chunk(t, pred_action_chunk)
+                if t % query_frequency == 0:
+                    # update action chunk
+                    self._action_aggregation.add_action_chunk(t, pred_action_chunk)
+
                 # calculate aggregated action
                 aggregated_action = self._action_aggregation.aggregation_action(t, self._weight_mode)
-                
                 # log.info(f'aggregated action: {aggregated_action}')
+                
                 convert_start = time.perf_counter()
-                gym_action = self.convert_to_gym_action_single_step(aggregated_action, pred_action_chunk[t%query_frequency])
+                gym_action = self.convert_to_gym_action_single_step(
+                    aggregated_action, pred_action_chunk[t%query_frequency], chunk_anchor)
                 convert_time = time.perf_counter() - convert_start
                 step_start = time.perf_counter()
                 res = self._gym_robot.step(gym_action)

@@ -1,23 +1,27 @@
 motion_config: !include factory/components/motion_configs/right_fr3_with_pika_ati_ik.yaml
+max_step_nums: 150 # for gym steps
+is_debug: false
 
-task_data_dir: "dataset/data/1028_left_fr3_pick_n_place_humanhand_154eps"
+task_data_dir: "dataset/data/1126_left_fr3_pick_n_place_humanhand_100eps"
 action_prediction_step: 2
 # skip_steps: 2
 # end_effector_pose_delta
 action_type: "end_effector_pose"
-action_orientation_type: "euler"
+action_orientation_type: "quaternion"
+observation_type: "ee_pose"
+contain_ft: false
 use_relative_pose: true
 rotation_transform: 
   single: [0.7071068, 0, 0.7071068, 0]
 
 replay_frequency: 30
 tool_position_dof: 1
-tool_max: 90
-enable_hardware: true
+tool_max: 1.0
+enable_hardware: false
 
-# move to start position
-# [-6.120230489417065e-05, -0.7827681732663258, -0.0008224786135059742, -2.3566525744448925, 0.0015880230540836664, 1.572229182095289, 0.7941674346782676]
-# reset_arm_command: [0.08970076997658086, -1.0446335702673328, -0.21342641730033804, -2.9321269071918556, -0.19632348805023883, 3.3759368775795817, 0.7652398654934537]
-# new arm command
-reset_arm_command: [-1.739511885028377, -1.15393908890327, -0.5111689909133162, -2.3949934097530203, 1.0834711604762148, 1.0181745575183847, -0.6134346582714251]
+# move to start position for pick n place
+# cartesian
+# reset_arm_command: [0.21374957, -0.38555737,  0.39685211, 0.97728997, -0.01475875,  0.20979072,  0.02596818]
+# reset_space: "cartesian"
+reset_arm_command: [0.12914971577308007, -1.1414848191903935, -1.0206527956929927, -2.4291060833756553, -0.74327029123007, 1.9775413167802187, 0.32370524816915264]
 reset_space: "joint"

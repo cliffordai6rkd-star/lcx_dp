@@ -96,6 +96,7 @@ class RerunEpisodeReader:
                 if joint_states is None or len(joint_states) == 0:
                     raise ValueError(f'Do not get the {i}th joint state from {self.task_dir} {episode_dir} for {self._obs_type}')
             ee_states = item_data.get('ee_states', {})
+            # 拿到当前episode的初始pose
             if len(init_ee_poses) != len(ee_states):
                 for key, cur_ee_state in ee_states.items():
                     if self._rotation_transform:
@@ -110,6 +111,11 @@ class RerunEpisodeReader:
             if self._obs_type in ee_check:
                 if ee_states is None or len(ee_states) == 0:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
+            # update head to cur ee state, 确保head是在最后一个key
+            if head_pose:
+                ee_states:dict
+                ee_states.update(head_pose)
+                log.info(f'ee states contain head pose')
             
             if self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
                 if async_save_ft:
@@ -118,15 +124,17 @@ class RerunEpisodeReader:
                     for key, state in ee_states.items():
                         if 'ft' not in state:
                             raise ValueError(f'ee state {key} not contain ft keys')
+            
+            ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
             cur_obs = {}
-            if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            if self._obs_type in joint_check:
                 for key in joint_states.keys():
                     cur_obs[key] = np.array(joint_states[key]["position"])
                     if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                         ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
-            elif self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.DELTA_END_EFFECTOR_POSE:
+            elif self._obs_type in ee_check:
                 last_id = i - 1
                 last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
                 for key in ee_states.keys():
@@ -169,15 +177,29 @@ class RerunEpisodeReader:
                 cur_actions = self._get_absolute_action(item_data.get("ee_states", {}),
                                     action_state=json_data[action_state_id]["ee_states"],
                                     attribute_name="pose", init_data=init_data)
-                if self._action_ori_type == 'euler':
-                    modified_action = {}
-                    for key, action in cur_actions.items():
-                        modified_action[key] = np.zeros(6)
-                        modified_action[key][:3] = action[:3]
-                        modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz", False)
-                    cur_actions = modified_action
-                elif self._action_ori_type != "quaternion":
-                    raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
+                # different action rotation representation than quaternion
+                for key, action in cur_actions.items():
+                    if self._action_ori_type == 'euler':
+                        modified_action = np.zeros(6)
+                        modified_action[:3] = action[:3]
+                        modified_action[3:] = R.from_quat(action[3:]).as_euler("xyz", False)
+                    elif self._action_ori_type == "6d_rotation":
+                        modified_action = np.zeros(9)
+                        modified_action[:3] = action[:3]
+                        modified_action[3:] = self.convert_qaut_to_6d_rot(action[3:])
+                    elif self._action_ori_type != "quaternion":
+                        raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
+                    else: break
+                    cur_actions[key] = modified_action
+                # legacy
+                # if self._action_ori_type == 'euler':
+                #     for key, action in cur_actions.items():
+                #         modified_action[key] = np.zeros(6)
+                #         modified_action[key][:3] = action[:3]
+                #         modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz", False)
+                #     cur_actions = modified_action
+                # elif self._action_ori_type != "quaternion":
+                #     raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
             elif self.action_type == ActionType.JOINT_POSITION_DELTA:
                 joint_states = item_data.get("joint_states", {})
                 next_state_data = json_data[action_state_id].get("joint_states", {})
@@ -191,17 +213,32 @@ class RerunEpisodeReader:
                     next_pose = self.apply_rotation_offset(next_pose, key, init_ee_poses[key])
                     cur_pose = self.apply_rotation_offset(np.array(pose["pose"]), key, init_ee_poses[key])
                     cur_actions[key] = self.get_pose_diff(next_pose, cur_pose)
-                if self._action_ori_type == "euler":
-                    modified_action = {}
-                    for key, action in cur_actions.items():
-                        modified_action[key] = np.zeros(6)
-                        modified_action[key][:3] = action[:3]
-                        modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz")
-                    cur_actions = modified_action
-                elif self._action_ori_type != "quaternion":
-                    raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
-            else:
-                raise ValueError(f'The action type {self.action_type} is not supported for reading episode data')
+                    # different action rotation representation than quaternion
+                    if self._action_ori_type == 'euler':
+                        modified_action = np.zeros(6)
+                        modified_action[:3] = cur_actions[key][:3]
+                        modified_action[3:] = R.from_quat(cur_actions[key][3:]).as_euler("xyz", False)
+                    elif self._action_ori_type == "6d_rotation":
+                        modified_action = np.zeros(9)
+                        modified_action[:3] = cur_actions[key][:3]
+                        modified_action[3:] = self.convert_qaut_to_6d_rot(cur_actions[key][3:])
+                    elif self._action_ori_type != "quaternion":
+                        raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
+                    else: continue
+                    cur_actions[key] = modified_action
+            #     legacy
+            #     if self._action_ori_type == "euler":
+            #         modified_action = {}
+            #         for key, action in cur_actions.items():
+            #             modified_action[key] = np.zeros(6)
+            #             modified_action[key][:3] = action[:3]
+            #             modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz")
+            #         cur_actions = modified_action
+            #     elif self._action_ori_type != "quaternion":
+            #         raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
+            # else:
+            #     raise ValueError(f'The action type {self.action_type} is not supported for reading episode data')
+            
             # tool state
             tool_states = item_data.get("tools", {})
             for key, tool_state in tool_states.items():
@@ -306,6 +343,15 @@ class RerunEpisodeReader:
             all_ee_states_euler[key][:3] = state["pose"][:3]
             all_ee_states_euler[key][3:] = R.from_quat(state["pose"][3:]).as_euler('xyz', degrees=False)
         return all_ee_states_euler
+    
+    def convert_qaut_to_6d_rot(self, quat):
+        if not isinstance(quat, np.ndarray):
+            quat = np.array(quat)
+        rot_mat = R.from_quat(quat[..., :4]).as_matrix()
+        batch_dim = quat.shape[:-1]
+        rot_6d = np.zeros((batch_dim + (6,)))
+        rot_6d[..., :6] = rot_mat[..., :2, :].reshape(batch_dim + (6,))
+        return rot_6d
     
     def transform_quat(self, quat1, quat2):
         rot_ab = R.from_quat(quat1)

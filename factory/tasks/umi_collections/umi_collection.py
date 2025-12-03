@@ -180,7 +180,7 @@ if __name__ == "__main__":
             "short_cut": "-c",
             "symbol": "--config",
             "type": str,
-            "default": "teleop/config/franka_3d_mouse.yaml",
+            "default": "factory/tasks/umi_collections/config/umi_collection_left_only_cfg.yaml",
             "help": "Path to the config file"
         },
     }

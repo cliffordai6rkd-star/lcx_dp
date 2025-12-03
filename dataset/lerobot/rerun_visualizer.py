@@ -392,12 +392,12 @@ if __name__ == "__main__":
     # # TEST DATA OF data_dir
     # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
     # /workspace/dataset/data/peg_in_hole
-    data_dir = "/home/tele/Code/zyx/HIROLRobotPlatform/dataset/data/1106-insert_tube_fr3_3dmouse_contain_ft_249eps"
+    data_dir = "/home/tele/Code/zyx/HIROLRobotPlatform/dataset/data/1126_left_fr3_pick_n_place_humanhand_100eps"
     # data_dir = "/home/hanyu/Data_Collection/1018_block_stacking_fr3_3Dmosue_110eps"
-    episode_data_number = 8
-    fps = 40
+    episode_data_number = 56
+    fps = 28
     skip_step_nums = 1
-    action_ori_type = "euler"
+    action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     umi_rotation_transform = {"single": [0.7071068, 0, 0.7071068, 0]}
     contain_ft = False
@@ -405,7 +405,7 @@ if __name__ == "__main__":
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
         episode_reader = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
                                              action_prediction_step=1, action_ori_type=action_ori_type,
-                                             observation_type=ObservationType.FT_ONLY,
+                                             observation_type=ObservationType.END_EFFECTOR_POSE,
                                              rotation_transform=None,
                                              contain_ft=contain_ft)
         episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
