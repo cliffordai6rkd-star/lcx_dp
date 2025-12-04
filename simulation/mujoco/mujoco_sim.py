@@ -188,10 +188,10 @@ class MujocoSim(SimBase):
             
             # command execution
             if mode[i] == 'position':
-                actuator_id = self._model.actuator(self._actuator_names[i]).id
-                self._data.ctrl[actuator_id] = target
-                # qpos_adr = self._model.jnt_qposadr[joint_id]
-                # self._data.qpos[qpos_adr] = target
+                # actuator_id = self._model.actuator(self._actuator_names[i]).id
+                # self._data.ctrl[actuator_id] = target
+                qpos_adr = self._model.jnt_qposadr[joint_id]
+                self._data.qpos[qpos_adr] = target
             elif mode[i] == "velocity":
                 qvel_adr = self._model.jnt_dofadr[joint_id]
                 self._data.qvel[qvel_adr] = target

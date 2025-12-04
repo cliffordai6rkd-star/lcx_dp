@@ -127,9 +127,9 @@ class TeleoperationFactory:
         log.info(f'ee links: {self.ee_link}')
         
         # data recording thread
+        self._data_record_thread_started = False
         self._data_recording_thread = threading.Thread(target=self.add_teleoperation_data)
         self._data_recording_thread.start()
-        self._data_record_thread_started = False
         while not self._data_record_thread_started:
             time.sleep(0.001)
         

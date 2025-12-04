@@ -1,0 +1,31 @@
+# usage platform
+use_hardware: false
+use_simulation: true
+
+# Notice: the config file path should contain ../ to locate the file
+# from the project directory
+robot: "unitree_g1"
+robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
+# gripper: "duo_tool"
+# gripper_config: !include hardware/config/duo_dex3_hand_cfg.yaml
+
+control_frequency: 800
+controller_type: "whole_body_ik"
+controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
+
+model_type: "model"
+model_config:
+  name: "unitree_g1_only_upper"
+  cfg: !include motion/config/robot_model_cfg_unitree_g1_only_upper.yaml
+  
+use_trajectory_planner: false
+buffer_type: "duo_buffer"
+trajectory_planner_type: "cart_polynomial"
+plan_type: "cartesian"
+trajectory_config: !include trajectory/config/cartesian_polynomial_traj_cfg.yaml
+traj_frequency: 450
+
+simulation: "mujoco"
+simulation_config: !include simulation/config/mujoco_unitree_g1_only_upper.yaml
+target_site_name: ["targetL_site", "targetR_site"]
+tcp_visualization_site: ["TCPL_site", "TCPR_site"]

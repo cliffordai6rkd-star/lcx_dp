@@ -113,7 +113,7 @@ class UmiCollection:
                     "right": "targetR", "head": "targetH"}
         while self._collection_running:
             # images
-            cur_colors = {}; display_image_dicts = {}
+            cur_colors = {}
             for cam_name, camera in self._camera_dict.items():
                 cam_obj:CameraBase = camera["object"]
                 cam_data = cam_obj.capture_all_data()
@@ -121,12 +121,12 @@ class UmiCollection:
                     image = cam_data["image"]
                     color_name = cam_name + '_color'
                     cur_colors[color_name] = {"data": image, "time_stamp": cam_data['time_stamp']}
-                    display_image_dicts[color_name] = image
+                    # display_image_dicts[color_name] = image
                 else:
                     raise ValueError(f'{cam_name} do not get color image data')
                 
             # display
-            display_images(display_image_dicts, "UMI collection images")
+            display_images(cur_colors, "UMI collection images", attributes="data")
             
             # pika poses
             success, poses, tools = self._pika.parse_data_2_robot_target(self._pika_mode)
@@ -143,9 +143,11 @@ class UmiCollection:
                         if self._pika_mode == "absolute_delta":
                             if 'left' in pose_key:
                                 visual_pose[1] += 0.3
+                                visual_pose[2] += 0.45
                             elif 'right' in pose_key:
                                 visual_pose[1] -= 0.3
-                            visual_pose[2] += 0.45
+                                visual_pose[2] += 0.45
+                            else: visual_pose[2] += 0.95
                         self._mujoco.set_target_mocap_pose(mocap, visual_pose)
                     if not isinstance(pose, list):
                         ee_states[pose_key] = dict(pose=pose.tolist(), time_stamp=time.perf_counter())
@@ -154,7 +156,7 @@ class UmiCollection:
                     if tool_key not in ee_states:
                         raise ValueError(f'tool {tool_key} not in poses {list(ee_states.keys())}')
                     # give the gripper normalized value to the ee_tools
-                    ee_tools[pose_key] = dict(position=float(tool[0]), time_stamp=time.perf_counter())
+                    ee_tools[tool_key] = dict(position=float(tool[0]), time_stamp=time.perf_counter())
                     # log.info(f'tool posi: {tool[0]}')
                     
                 # data write

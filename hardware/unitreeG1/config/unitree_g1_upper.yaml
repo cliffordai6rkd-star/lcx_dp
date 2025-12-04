@@ -1,0 +1,8 @@
+unitree_g1:
+  network_interface: "eth0"
+  enable_low_level: false
+  control_frequency: 500
+  update_frequency: 800
+  ankle_mode: "pr" # pr or ab
+  control_mode: "position"
+  

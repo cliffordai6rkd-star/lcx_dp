@@ -25,8 +25,8 @@ class PikaTracker(TeleoperationDeviceBase):
                            [ 0, 0, 0, 1]])
     # T_TRACKER_ROBOT = np.eye(4)
     
-    # init pose for absolute delta pose calculation
-    INIT_TARGET_POSE = [[0,0,0,0,0,0,1], [0,0,0,0,0,0,1]]
+    # init pose for absolute delta pose calculation, left, right, head
+    INIT_TARGET_POSE = [[0,0,0,0,0,0,1], [0,0,0,0,0,0,1], [0,0,0,0,0,0,1]]
     
     def __init__(self, config):
         self._serial_port: dict = config.get("serial_ports")
@@ -75,6 +75,13 @@ class PikaTracker(TeleoperationDeviceBase):
         
         # head info
         self._head_info = config.get('head', None)
+        if self._head_info: self._index["head"] = 2
+        self.T_TRACKER_HEAD = config.get("trakcer_head_trans", None)
+        if self.T_TRACKER_HEAD is None:
+            self.T_TRACKER_HEAD = np.eye(4)
+        else: 
+            self.T_TRACKER_HEAD = np.array(self.T_TRACKER_HEAD)
+            log.info(f'T tracker head: {self.T_TRACKER_HEAD}')
         
         super().__init__(config)
     
@@ -106,7 +113,8 @@ class PikaTracker(TeleoperationDeviceBase):
         if self._head_info:
             pose_offset = {}
             pose_offset[self._head_info["device"]] = False
-            for key, cur_uid in self._device_id.items:
+            # device id only contain hand infos
+            for key, cur_uid in self._device_id.items():
                 if cur_uid:
                     pose_offset[cur_uid] = True
         self._tracker = ViveTracker(pose_offset=pose_offset, use_uid=True)
@@ -194,6 +202,9 @@ class PikaTracker(TeleoperationDeviceBase):
             if self._output_right and self._device_id["right"] == device_name:
                 self._update_pose(pose_quat, "right", cur_pose)
                 all_pose_flag["right"] = True
+        # could not read left & right pose
+        if not all(list(all_pose_flag.values())):
+            return None, None
         
         tool_data = {}
         for key, sense in self._sense.items():
@@ -253,10 +264,13 @@ class PikaTracker(TeleoperationDeviceBase):
           
     def _process_raw_pose(self, pose, key):
         res_pose = np.zeros(7)
-        tracker_robot_quat = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+        if key != "head":
+            tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+        else:
+            tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_HEAD)
         # basis change
-        robot_tracker_quat = negate_pose(tracker_robot_quat)
-        res_pose = transform_pose(transform_pose(robot_tracker_quat, pose), tracker_robot_quat)
+        robot_tracker_trans = negate_pose(tracker_robot_trans)
+        res_pose = transform_pose(transform_pose(robot_tracker_trans, pose), tracker_robot_trans)
         
         if key != "head":
             # read pose init sync to x forward y left z up 
@@ -304,6 +318,9 @@ class PikaTracker(TeleoperationDeviceBase):
             if mode == "absolute_delta" and self._device_enabled:
                 cur_pose = self._get_diff_trans(cur_pose, self._index[key])
             pose_target[key] = cur_pose
+            # skip the tool target for hear
+            if "head" in key:
+                continue
             tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
         
         if self._key_pressed :

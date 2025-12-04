@@ -58,3 +58,28 @@ class G1JointIndex:
 class Mode:
     PR = 0  # Series Control for Pitch/Roll Joints
     AB = 1  # Parallel Control for A/B Joints
+    
+
+G1_WRIST_MOTORS = [
+    G1JointIndex.LeftWristRoll,
+    G1JointIndex.LeftWristPitch,
+    G1JointIndex.LeftWristYaw,
+    G1JointIndex.RightWristRoll,
+    G1JointIndex.RightWristPitch,
+    G1JointIndex.RightWristYaw,
+]
+
+G1_WEAK_MOTORS = [
+    G1JointIndex.LeftAnklePitch,
+    G1JointIndex.RightAnklePitch,
+    # Left arm
+    G1JointIndex.LeftShoulderPitch,
+    G1JointIndex.LeftShoulderRoll,
+    G1JointIndex.LeftShoulderYaw,
+    G1JointIndex.LeftElbow,
+    # Right arm
+    G1JointIndex.RightShoulderPitch,
+    G1JointIndex.RightShoulderRoll,
+    G1JointIndex.RightShoulderYaw,
+    G1JointIndex.RightElbow,
+]

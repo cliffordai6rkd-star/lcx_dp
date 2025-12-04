@@ -4,7 +4,7 @@ import glog as log
 from collections import deque
 from hardware.base.utils import Buffer
 from hardware.base.arm import ArmBase
-from hardware.unitreeG1.consts import G1_JOINTS_KP, G1_JOINTS_KD, Mode, G1JointIndex
+from hardware.unitreeG1.consts import G1_JOINTS_KP, G1_JOINTS_KD, Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS
 
 # Try to import unitree_sdk2py, fall back to mock if not available
 try:
@@ -66,10 +66,8 @@ class UnitreeG1(ArmBase):
         if self._ankle_mode == "pr":
             self._ankle_mode = Mode.PR
         else: self._ankle_mode = Mode.AB
-        self._last_write_time = time.perf_counter()
         self._control_mode = config.get("control_mode", "position")
-        # self._index = 
-        self._command_buffer = Buffer(35, 20)
+        self._command_buffer = Buffer(20, 30)
         self._zero_finished = True
         
         # dds related 
@@ -112,10 +110,13 @@ class UnitreeG1(ArmBase):
         self._joint_states._accelerations = np.zeros(total_dof)
         self._joint_states._torques = np.zeros(total_dof)
         
-        self._kp = 60.
-        self._kd = 1.5
+        self._kp_high = 300.0
+        self._kd_high = 3.0
+        self._kp_low = 80.0
+        self._kd_low = 3.0
+        self._kp_wrist = 40.0
+        self._kd_wrist = 1.5
 
-        
         super().__init__(config)
         
     def initialize(self):
@@ -139,8 +140,29 @@ class UnitreeG1(ArmBase):
         # low command writer thread
         self._low_state_updated = False
         while not self._low_state_updated:
-            pass
+            time.sleep(0.001)
         log.info(f'Get the low state from the unitree g1')
+        # update command for not used joints
+        for jid in range(self._arm_joints + self._waist_joints + self._leg_joints):
+            self._low_cmd.motor_cmd[jid].mode = 1
+            if jid in self._arm_joints:
+                if jid in G1_WRIST_MOTORS:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_wrist
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_wrist
+                else:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_low
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_low
+            else:
+                if jid in G1_WEAK_MOTORS:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_low
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_low
+                else:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_high
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_high
+            self._low_cmd.motor_cmd[jid].q = self._low_state.motor_state[jid].q
+        log.info(f'Unitree G1 low command initialized to current state!!')
+        
+        self._last_write_time = time.perf_counter()
         self._low_command_writer_thread = RecurrentThread(
             interval=self._control_frequency, target=self._LowCommandWriter, name="control"
         )
@@ -172,7 +194,7 @@ class UnitreeG1(ArmBase):
             self._control_mode = mode[0]
         else: self._control_mode = mode
         
-        g1_command = np.zeros(35)
+        g1_command = np.zeros(30)
         for id, joint_id in enumerate(self._robot_id):
             g1_command[joint_id] = command[id]
         self._command_buffer.push_data(g1_command, time.perf_counter())
@@ -187,7 +209,7 @@ class UnitreeG1(ArmBase):
         self._command_buffer.push_data(np.zeros(35), time.perf_counter())
         self._zero_finished = False
         while not self._zero_finished:
-            pass
+            time.sleep(0.001)
     
     def _LowStateHandler(self, msg: LowState_):
         self._low_state = msg
@@ -218,9 +240,8 @@ class UnitreeG1(ArmBase):
                 self._low_cmd.motor_cmd[joint].tau = 0. 
                 self._low_cmd.motor_cmd[joint].q = 0
                 self._low_cmd.motor_cmd[joint].dq = 0. 
-                self._low_cmd.motor_cmd[joint].q = 0
-                self._low_cmd.motor_cmd[joint].kp = self._kp 
-                self._low_cmd.motor_cmd[joint].kd = self._kd
+                # self._low_cmd.motor_cmd[joint].kp = self._kp 
+                # self._low_cmd.motor_cmd[joint].kd = self._kd
                 if self._control_mode == "position":
                     self._low_cmd.motor_cmd[joint].q = command[joint]
                 elif self._control_mode == "torque":
@@ -235,6 +256,6 @@ class UnitreeG1(ArmBase):
         
         self._low_cmd.crc = self._crc.Crc(self._low_cmd)
         self._lowcmd_publisher.Write(self._low_cmd)
-        if self._zero_finished:
+        if not self._zero_finished:
             self._zero_finished = True
             

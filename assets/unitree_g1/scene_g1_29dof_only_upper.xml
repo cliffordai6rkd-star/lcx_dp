@@ -1,5 +1,5 @@
-<mujoco model="g1_29dof scene">
-  <include file="g1_29dof.xml"/>
+<mujoco model="g1_29dof only upper scene">
+  <include file="g1_29dof_only_upper.xml"/>
   <option gravity="0 0 0" />
   <!-- <option gravity="0 0 -9.81" /> -->
 
@@ -23,21 +23,21 @@
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
     <!-- multi-target -->
-    <body name="lh_cur" pos="0 0.12 0.05" quat="1 0 0 0" mocap="true">
-      <geom type="box" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
-      <site type="sphere" name="lh_cur_site" size="0.005" rgba="0 0 1 1" group="1" />
+    <body name="TCPL" pos="0 0.12 0.05" quat="1 0 0 0" mocap="true">
+      <geom type="sphere" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
+      <site type="sphere" name="TCPL_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>
-    <body name="rh_cur" pos="0 -0.12 0.05" quat="1 0 0 0" mocap="true">
-      <geom type="box" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
-      <site type="sphere" name="rh_cur_site" size="0.005" rgba="0 0 1 1" group="1" />
+    <body name="TCPR" pos="0 -0.12 0.05" quat="1 0 0 0" mocap="true">
+      <geom type="sphere" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
+      <site type="sphere" name="TCPR_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>
-    <body name="lh" pos="0.26 0.15 0.9" quat="1 0 0 0" mocap="true">
+    <body name="targetL" pos="0.26 0.15 0.9" quat="1 0 0 0" mocap="true">
       <geom type="box" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
-      <site type="sphere" name="lh_site" size="0.005" rgba="0 0 1 1" group="1" />
+      <site type="sphere" name="targetL_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>
-    <body name="rh" pos="0.26 -0.15 0.9" quat="1 0 0 0" mocap="true">
+    <body name="targetR" pos="0.26 -0.15 0.9" quat="1 0 0 0" mocap="true">
       <geom type="box" size=".04 .04 .04" contype="0" conaffinity="0" rgba=".6 .3 .3 .4" />
-      <site type="sphere" name="rh_site" size="0.005" rgba="0 0 1 1" group="1" />
+      <site type="sphere" name="targetR_site" size="0.005" rgba="0 0 1 1" group="1" />
     </body>
   </worldbody>
 </mujoco>

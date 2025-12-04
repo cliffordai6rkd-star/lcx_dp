@@ -113,9 +113,8 @@ class RerunEpisodeReader:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             # update head to cur ee state, 确保head是在最后一个key
             if head_pose:
-                ee_states:dict
-                ee_states.update(head_pose)
-                log.info(f'ee states contain head pose')
+                ee_states.update({"head": head_pose})
+                log.info(f'ee states contain head pose: {list(ee_states.keys())}')
             
             if self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
                 if async_save_ft:
@@ -368,7 +367,12 @@ class RerunEpisodeReader:
         new_pose = copy.deepcopy(pose)
         if self._rotation_transform is not None:
             if key not in self._rotation_transform:
-                raise ValueError(f'Got the rotation transform but {key} not found in {self._rotation_transform}')
+                # head key rot trans could be unit qunternion(not rotation offset for key)                
+                if "head" in key:
+                    self._rotation_transform[key] = np.array([0,0,0,1])
+                    log.warn("Set the head rotation transform as unit quanternion")
+                else:
+                    raise ValueError(f'Got the rotation transform but {key} not found in {self._rotation_transform}')
             new_pose[3:] = self.transform_quat(pose[3:], self._rotation_transform[key])
             if init_data:
                 # calculate relative term
