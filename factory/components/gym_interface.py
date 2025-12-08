@@ -16,6 +16,7 @@ class GymApi(gym.Env):
         super().__init__()
         self._config = config
         self._max_step_nums = config["max_step_nums"]
+        self._step_frequency = config.get("step_frequency", 20)
         
         self._action_type = config.get("action_type", "joint_position")
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
@@ -25,6 +26,7 @@ class GymApi(gym.Env):
         self._obs_type = ObservationType(self._obs_type)
         self._chunk_anchor_mode = config.get("chunk_action_mode", None)
         self._contain_ft = config.get('contain_ft', False)
+        self._last_obs_timestamp = None
         self._last_ee = {}
         self._use_relative_pose = config.get("use_relative_pose", False)
         self._init_pose = {}
@@ -69,7 +71,7 @@ class GymApi(gym.Env):
             self._delta_action_target[key] = cur_ee_state["pose"]
             self._last_ee[key] = cur_ee_state["pose"]
             log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
-            if self._use_relative_pose:
+            if self._use_relative_pose or self._chunk_anchor_mode:
                 self._init_pose[key] = cur_ee_state["pose"]
                 # for action
                 self._delta_action_target[key] = pose_diff(
@@ -81,7 +83,12 @@ class GymApi(gym.Env):
     def set_action_type(self, action_type: ActionType):
         self._action_type = action_type
         
-    def step(self, action):
+    def step(self, action, update_obs=True):
+        # visualize cur ee & add record data
+        ee_states = self.get_ee_state()
+        self.visualize_cur_tcp(ee_states)
+        self.add_record_data(ee_states)
+        
         # action execution
         arm_action = action['arm']
         execute_arm_action = []; execute_tool_action = []
@@ -108,7 +115,7 @@ class GymApi(gym.Env):
                     cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action)
                     self._delta_action_target[key] = cur_arm_action
                 # 使用relative (abs）pose，而非chunk relative
-                if self._use_relative_pose and not self._chunk_anchor_mode:
+                if self._use_relative_pose or self._chunk_anchor_mode:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 
@@ -140,12 +147,10 @@ class GymApi(gym.Env):
         tool_time = time.perf_counter() - tool_satrt
         
         # obs
-        start = time.perf_counter()
         obs_start = time.perf_counter()
-        observation = self.get_observation()
+        observation = self.get_observation() if update_obs else None
         obs_time = time.perf_counter() - obs_start
         # observation = {}
-        obs_time = time.perf_counter() - start
         reward, done = self.compute_rewards()
         done = done or (self._step_counter >= self._max_step_nums)
         info = self.get_info()
@@ -219,6 +224,7 @@ class GymApi(gym.Env):
         cameras_data = self._robot_system.get_cameras_infos()
         if cameras_data is None: return None
         
+        total_ts = 0; count = 0
         cur_colors = {}
         cur_depths = {}
         cur_imus = {}
@@ -226,10 +232,13 @@ class GymApi(gym.Env):
             name = cam_data['name']
             if 'color' in name:
                 cur_colors[name] = cam_data['img']
+                total_ts += cam_data["time_stamp"]
+                count += 1
             if 'depth' in name:
                 cur_depths[name] = cam_data['img']
             if 'imu' in name:
                 cur_imus[name] = cam_data['imu']
+        self._last_obs_timestamp = total_ts / count if count > 0 else None
         cameras_data = {"color": cur_colors, "depth": cur_depths, "imu": cur_imus}
         return cameras_data
     
@@ -258,19 +267,13 @@ class GymApi(gym.Env):
         if self._obs_type in joint_check:
             if len(joint_states) == 0:
                 raise ValueError(f'Cur {self._obs_type} do not get joint states!!!')
-        ee_states = self.get_ee_state() if not self._use_relative_pose else self.get_relative_ee_pose()
+        ee_states = self.get_relative_ee_pose() if self._use_relative_pose or self._chunk_anchor_mode else self.get_ee_state()
         ee_check = [ObservationType.DELTA_END_EFFECTOR_POSE, ObservationType.END_EFFECTOR_POSE, 
                     ObservationType.JOINT_POSITION_END_EFFECTOR]
         if self._obs_type in ee_check:
             if len(ee_states) == 0:
                 raise ValueError(f'Cur {self._obs_type} do not get ee states!!!')
-        visual_ee_states = ee_states if not self._use_relative_pose else self.get_ee_state()
-        visual_ee_poses = {}
-        for key, pose in visual_ee_states.items():
-            visual_ee_poses[key] = pose["pose"]
-        self._robot_motion.sim_visualize_tcp(visual_ee_poses)
-        if self._data_recorder and self._is_recording:
-            self._data_recorder.add_item(joint_states=joint_states, ee_states=ee_states)
+        ee_check.remove(ObservationType.DELTA_END_EFFECTOR_POSE)
         tools_dict = self.get_tool_state()
         ft_dict = self.get_ft_infos()
         # log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
@@ -278,9 +281,9 @@ class GymApi(gym.Env):
         # data process
         for key, joint_state in joint_states.items():
             obs_state[key] = np.array([])
-            if self._obs_type == ObservationType.JOINT_POSITION_ONLY or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            if self._obs_type in joint_check:
                 obs_state[key] = np.hstack((obs_state[key], joint_state["position"]))
-            if self._obs_type == ObservationType.END_EFFECTOR_POSE or self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
+            if self._obs_type in ee_check:
                 obs_state[key] = np.hstack((obs_state[key], ee_states[key]["pose"]))
             if self._obs_type == ObservationType.DELTA_END_EFFECTOR_POSE:
                 delta_ee = pose_diff(ee_states[key]["pose"], self._last_ee[key])
@@ -300,10 +303,16 @@ class GymApi(gym.Env):
             else: obs_state[key] = np.hstack((obs_state[key], [0]))
             log.info(f'obs state {key} shape: {obs_state[key].shape}')
         
+        cam_start = time.perf_counter()
         camera_data = self.get_camera_infos()
+        cam_time = time.perf_counter()-cam_start
+        log.info(f'{"=="*5} cam time: {cam_time}s, {1.0/cam_time}Hz {"=="*5}')
         obs_dict = {'state': obs_state, 'colors': camera_data["color"], 
                     'depths': camera_data["depth"]}
         return obs_dict
+    
+    def get_obs_timestamp(self):
+        return self._last_obs_timestamp
     
     def _wait_key(self, right_key, desciption):
         while True:
@@ -341,7 +350,7 @@ class GymApi(gym.Env):
                     self._wait_key('c', 'please press c to execute in hardware!!!!')
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
-        # self._robot_motion.update_high_level_command(poses)
+        self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}
@@ -384,6 +393,19 @@ class GymApi(gym.Env):
         else:
             log.warn("data recoreder is already in the disable state!!!")
     
+    def add_record_data(self, ee_states=None, joint_states=None):
+        ee_states = self.get_ee_state() if ee_states is None else ee_states
+        joint_states = self.get_joint_state() if joint_states is None else joint_states
+        if self._data_recorder and self._is_recording:
+            self._data_recorder.add_item(joint_states=joint_states, ee_states=ee_states)
+
+    def visualize_cur_tcp(self, ee_info=None):
+        visual_ee_states = self.get_ee_state() if ee_info is None else ee_info
+        visual_ee_poses = {}
+        for key, pose in visual_ee_states.items():
+            visual_ee_poses[key] = pose["pose"]
+        self._robot_motion.sim_visualize_tcp(visual_ee_poses)
+            
     def close(self):
         if self._data_recorder:
             self._data_recorder.close()

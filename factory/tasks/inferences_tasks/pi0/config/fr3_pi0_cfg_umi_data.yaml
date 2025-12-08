@@ -5,9 +5,10 @@
 # robot + motion factory
 motion_config: !include factory/components/motion_configs/right_fr3_with_pika_ati_ik.yaml
 max_step_nums: 150 # for gym steps
+step_frequency: 20 # gym interface step calling freq
 action_type: "end_effector_pose"
 # euler quaternion 6d_rotation
-action_orientation_type: "6d_rotation"
+action_orientation_type: "euler"
 # ee_pose mask 
 observation_type: "ee_pose"
 contain_ft: false
@@ -20,7 +21,7 @@ is_debug: false
 tool_wdith: 0.1
 tool_thickness: 0.0255
 # height_thresh: 0.02
-height_thresh: 0.01
+height_thresh: 0.04
 
 reset_space: "joint"
 # z: 0.39570194
@@ -44,9 +45,9 @@ enable_hardware: true
 
 num_episodes: 8
 max_timestamps: 1500
-execution_chunk_steps: 20
 action_weight_mode: "uniform"
 async_execution: false
+infer_frequency: 10
 
 # prompt guidance
 # tasks: "pick up the blue cube and place it onto the top of red cube and then pick up the yellow cube and place it onto the blue cube"

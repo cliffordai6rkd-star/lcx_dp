@@ -3,7 +3,7 @@ from factory.components.gym_interface import GymApi
 from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose
 from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
-from factory.tasks.inferences_tasks.utils.collision_avoidance import solve_table_collision, prevent_table_collision
+from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
 from sshkeyboard import listen_keyboard, stop_listening
@@ -49,7 +49,6 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         
         # used for latter aggregation 
         self._max_timestamps = config.get(f"max_timestamps", 1500)
-        self._execution_action_chunk_size = config.get(f'execution_chunk_steps', 4)
         self._predicted_action_chunks = -1 # policy output action chunk size
         self._infer_frequency = config.get(f'infer_frequency', 10)
         self._weight_mode = WeightMode(config.get('action_weight_mode', "no"))
@@ -115,18 +114,21 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # log.info(f'len dof: {len(dofs)}')
         for j in range(len(dofs)):
             if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
-                index_l = gripper_position_dof*j + action_index
-                index_r = gripper_position_dof*j + dofs[j] + action_index
+                index_l = action_index
+                index_r = action_index + dofs[j]
                 action_index = index_r+gripper_position_dof
                 # log.info(f'arm index for joint: {index_l}, {index_r}')
                 cur_arm_action = cur_action[index_l:index_r]
-                if chunk_anchor: cur_obs_anchor = chunk_anchor[index_l:index_r]
             elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
-                pose_dof = 6 if self._action_ori_type == "euler" else 7
+                if self._action_ori_type == "euler":
+                    pose_dof = 6
+                elif self._action_ori_type == "6d_rotation":
+                    pose_dof = 9
+                else: pose_dof = 7
+                index_r = action_index+pose_dof
                 # log.info(f'arm index for pose: {action_index}')
                 cur_arm_action = cur_action[action_index:action_index+pose_dof].copy()
                 cur_arm_action[3:] = raw_action[action_index+3:action_index+pose_dof]
-                index_r = action_index+pose_dof
                 action_index = index_r+gripper_position_dof 
                 if self._action_ori_type == "euler":
                     cur_arm_action = np.hstack((cur_arm_action, [0]))
@@ -135,9 +137,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     rot_6d = cur_arm_action[3:9]
                     cur_arm_action = cur_arm_action[:7]
                     cur_arm_action[3:] = rot6d_to_quat(rot_6d)
-                # obs anchor
+                # obs anchor   
                 if self._chunk_anchor_mode:
                     assert chunk_anchor is not None
+                    log.info(f'chunk anchor len: {chunk_anchor.shape}')
+                    cur_obs_anchor = chunk_anchor[j*(7+gripper_position_dof):j*(7+gripper_position_dof)+7]
                     cur_arm_action = transform_pose(cur_obs_anchor, cur_arm_action)
             else:
                 raise ValueError(f"Unsupported action type: {self._action_type}")
@@ -259,9 +263,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     
     def start_common_inference(self):
         time.sleep(0.001)
-        pass
         # rollout episodes
-        query_frequency = int(50 / self._infer_frequency)
+        # query_frequency = int(50 / self._infer_frequency)
+        infer_dt = 1.0 / self._infer_frequency
         # 15
         query_frequency = 15
         for episode_id in range(self._num_episodes):
@@ -284,21 +288,33 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             # inference timestamp
             pred_action_chunk = None
             chunk_anchor = None
+            executed_action_id = 0
             for t in range(self._max_timestamps):
                 start_time = time.perf_counter()
                     
                 if not self._status_ok or self._quit: 
-                    break
-                
-                if obs is None: 
-                    obs = self.convert_from_gym_obs(obs)
+                    break 
                 
                 if t % query_frequency == 0:
+                    obs = self.convert_from_gym_obs()
                     pred_action_chunk = self.policy_prediction(obs)
                     # update chunk anchor
                     if self._chunk_anchor_mode:
                         chunk_anchor = obs["state"]
-                    
+                        obs_timestamp = self._gym_robot.get_obs_timestamp()
+                        action_timestamps = (np.arange(len(pred_action_chunk), dtype=np.float64)
+                            ) * infer_dt + obs_timestamp
+                        # action timestamp check
+                        # using 0.005 as the action execution latency
+                        cur_time = time.perf_counter()
+                        is_new = action_timestamps > (cur_time + 0.005)
+                        if np.sum(is_new) == 0:
+                            log.warn(f'action chunk is old, execute the last action from chunk only')
+                            
+                        executed_action_id = 0
+                        # smooth the entire action chunk before ensembling
+                        # pose_intep = PoseTrajectoryInterpolator()
+                
                 if self._action_aggregation is None:
                     predicted_action_chunk_size = pred_action_chunk.shape[0]
                     self._action_aggregation = ActionAggregator(query_frequency=query_frequency,
@@ -311,13 +327,17 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 # calculate aggregated action
                 aggregated_action = self._action_aggregation.aggregation_action(t, self._weight_mode)
                 # log.info(f'aggregated action: {aggregated_action}')
+                # smoothed action
+                execution_time = time.perf_counter()
+                
                 
                 convert_start = time.perf_counter()
                 gym_action = self.convert_to_gym_action_single_step(
                     aggregated_action, pred_action_chunk[t%query_frequency], chunk_anchor)
                 convert_time = time.perf_counter() - convert_start
                 step_start = time.perf_counter()
-                res = self._gym_robot.step(gym_action)
+                res = self._gym_robot.step(gym_action, False)
+                executed_action_id += 1
                 step_time = time.perf_counter() - step_start
                 dt = time.perf_counter() - start_time
                 if dt < 1.0 / 50.0:
@@ -326,8 +346,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 else: 
                     time.sleep(0.001)
                     log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ  {'=='*8}")
-                gym_obs = res[0]
-                obs = self.convert_from_gym_obs(gym_obs)
+                # gym_obs = res[0]
+                # obs = self.convert_from_gym_obs(gym_obs)
                 t += 1
                                 
     @abc.abstractmethod

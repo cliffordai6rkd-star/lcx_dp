@@ -35,11 +35,10 @@ enable_hardware: true
 
 num_episodes: 150
 max_timestamps: 1500
-execution_chunk_steps: 35
 action_weight_mode: "uniform"
 action_weight_gain: -0.01
 async_execution: false
-# data_save_path: "infer/visual_servo"
+infer_frequency: 10
 
 # prompt guidance
 # tasks: "pick up the blue cube and place it onto the top of red cube and then pick up the yellow cube and place it onto the blue cube"

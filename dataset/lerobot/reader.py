@@ -38,7 +38,8 @@ class RerunEpisodeReader:
                  action_type: ActionType = ActionType.JOINT_POSITION,
                  action_prediction_step = 2, action_ori_type = "euler", 
                  observation_type = ObservationType.JOINT_POSITION_ONLY,
-                 rotation_transform = None, contain_ft=False):
+                 rotation_transform = None, contain_ft=False,
+                 camera_keys=None, state_keys=None):
         self.task_dir = task_dir
         self.json_file = json_file
         self.action_type = action_type
@@ -48,6 +49,7 @@ class RerunEpisodeReader:
         self._action_ori_type = action_ori_type
         # None or dict[str, np.ndarray]
         self._rotation_transform = rotation_transform
+        self._camera_keys = camera_keys; self._state_keys = state_keys
 
     def return_episode_data(self, episode_idx, skip_steps_nums=1):
         # Load episode data on-demand
@@ -62,7 +64,7 @@ class RerunEpisodeReader:
             json_file = json.load(jsonf)
             
         # check if async save ft， @TODO: assumING not using async
-        search_pattern = os.path.join("/workspace/dataset/data/insert_tube/episode_0003", "*ft*.json")
+        search_pattern = os.path.join(episode_dir, "*ft*.json")
         async_ft_files = glob.glob(search_pattern)
         async_save_ft = True if len(async_ft_files) else False
         if async_save_ft: log.info(f'Async save ft files: {async_ft_files}')
@@ -115,52 +117,55 @@ class RerunEpisodeReader:
             if head_pose:
                 ee_states.update({"head": head_pose})
                 log.info(f'ee states contain head pose: {list(ee_states.keys())}')
-            
-            if self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
-                if async_save_ft:
-                    assert len(async_ft_files) == len(list(ee_states.keys())), f'len async save ft files {len(async_ft_files)} != len ee {len(list(ee_states.keys()))}'
-                else:
-                    for key, state in ee_states.items():
-                        if 'ft' not in state:
-                            raise ValueError(f'ee state {key} not contain ft keys')
-            
             ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
-            cur_obs = {}
-            if self._obs_type in joint_check:
-                for key in joint_states.keys():
+            
+            found_obs_keys = []; cur_obs = {}
+            for key, cur_ee_state in ee_states.items():
+                if self._state_keys:
+                    if key not in self._state_keys:
+                        continue
+                found_obs_keys.append(key)
+                
+                if self._obs_type in joint_check:
                     cur_obs[key] = np.array(joint_states[key]["position"])
                     if self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                         ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
-            elif self._obs_type in ee_check:
-                last_id = i - 1
-                last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
-                for key in ee_states.keys():
+                elif self._obs_type in ee_check:
                     # get cur rotated relative pose
                     ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
                                                         init_data=init_ee_poses[key])
                     if self._obs_type == ObservationType.END_EFFECTOR_POSE:
                         cur_obs[key] = np.array(ee_pose)
                     else:
+                        last_id = i - 1
+                        last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
                         last_pose = last_ee_states[key]["pose"]
                         # if has rotation offset, calculate the rotated relative pose 
                         last_pose = self.apply_rotation_offset(last_pose, key,
                                                 init_data=init_ee_poses[key])
                         # delta: the diff between two relative pose if has rot offset
                         cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
-            elif self._obs_type == ObservationType.FT_ONLY:
-                for key, state in ee_states.items():
-                    cur_obs[key] = np.array(state["ft"])
-            elif self._obs_type == ObservationType.MASK:
-                for key in ee_states.keys():
+                elif self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
+                    if async_save_ft:
+                        assert len(async_ft_files) == len(list(ee_states.keys())), f'len async save ft files {len(async_ft_files)} != len ee {len(list(ee_states.keys()))}'
+                        # @TODO: zyx, process the asyn ft data
+                        
+                    else:
+                        if 'ft' not in cur_ee_state:
+                            raise ValueError(f'ee state {key} not contain ft keys')
+                        cur_obs[key] = np.array(cur_ee_state["ft"])
+                elif self._obs_type == ObservationType.MASK:
                     cur_obs[key] = np.zeros(7)
-            if self._contain_ft :
-                if self._obs_type != ObservationType.FT_ONLY:
-                    for key, state in ee_states.items():
-                        cur_obs[key] = np.hstack((cur_obs[key], state["ft"]))
-                else:
-                    log.warn(f'Your obs type is already ft only so no need to contain ft anymore!!!!')
+                    
+                if self._contain_ft :
+                    if self._obs_type != ObservationType.FT_ONLY:
+                        cur_obs[key] = np.hstack((cur_obs[key], cur_ee_state["ft"]))
+                    else:
+                        log.warn(f'Your obs type is already ft only so no need to contain ft anymore!!!!')
+            if self._state_keys is None: self._state_keys = found_obs_keys
+            assert len(found_obs_keys) == len(ee_states), f"expected {self._state_keys}, but only found {found_obs_keys}"
             
             # Append the action data in the item_data list
             cur_actions = {}
@@ -172,10 +177,9 @@ class RerunEpisodeReader:
                         action_state=json_data[action_state_id]["joint_states"],
                                                     attribute_name="position")
             elif self.action_type == ActionType.END_EFFECTOR_POSE:
-                init_data = None if len(init_ee_poses) == 0 else init_ee_poses
                 cur_actions = self._get_absolute_action(item_data.get("ee_states", {}),
                                     action_state=json_data[action_state_id]["ee_states"],
-                                    attribute_name="pose", init_data=init_data)
+                                    attribute_name="pose", init_data=init_ee_poses[key])
                 # different action rotation representation than quaternion
                 for key, action in cur_actions.items():
                     if self._action_ori_type == 'euler':
@@ -188,17 +192,8 @@ class RerunEpisodeReader:
                         modified_action[3:] = self.convert_qaut_to_6d_rot(action[3:])
                     elif self._action_ori_type != "quaternion":
                         raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
-                    else: break
+                    else: continue
                     cur_actions[key] = modified_action
-                # legacy
-                # if self._action_ori_type == 'euler':
-                #     for key, action in cur_actions.items():
-                #         modified_action[key] = np.zeros(6)
-                #         modified_action[key][:3] = action[:3]
-                #         modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz", False)
-                #     cur_actions = modified_action
-                # elif self._action_ori_type != "quaternion":
-                #     raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
             elif self.action_type == ActionType.JOINT_POSITION_DELTA:
                 joint_states = item_data.get("joint_states", {})
                 next_state_data = json_data[action_state_id].get("joint_states", {})
@@ -207,6 +202,10 @@ class RerunEpisodeReader:
                 ee_states = item_data.get("ee_states", {})
                 next_state_data = json_data[action_state_id].get("ee_states", {})
                 for key, pose in ee_states.items():
+                    if self._state_keys:
+                        if key not in self._state_keys:
+                            continue
+                        
                     cur_actions[key] = np.zeros(7)
                     next_pose = np.array(next_state_data[key]["pose"])
                     next_pose = self.apply_rotation_offset(next_pose, key, init_ee_poses[key])
@@ -225,27 +224,26 @@ class RerunEpisodeReader:
                         raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
                     else: continue
                     cur_actions[key] = modified_action
-            #     legacy
-            #     if self._action_ori_type == "euler":
-            #         modified_action = {}
-            #         for key, action in cur_actions.items():
-            #             modified_action[key] = np.zeros(6)
-            #             modified_action[key][:3] = action[:3]
-            #             modified_action[key][3:] = R.from_quat(action[3:]).as_euler("xyz")
-            #         cur_actions = modified_action
-            #     elif self._action_ori_type != "quaternion":
-            #         raise ValueError(f'The action orientation type {self._action_ori_type} is not supported for reading episode data')
-            # else:
-            #     raise ValueError(f'The action type {self.action_type} is not supported for reading episode data')
-            
+               
             # tool state
             tool_states = item_data.get("tools", {})
-            for key, tool_state in tool_states.items():
-                cur_actions[key] = np.hstack((cur_actions[key], tool_state["position"]))
-                if self._obs_type == ObservationType.MASK:
-                    cur_obs[key] = np.hstack((cur_obs[key], [0]))
-                else:
-                    cur_obs[key] = np.hstack((cur_obs[key], tool_state["position"]))
+            if tool_states is None or len(tool_states) == 0:
+                log.warn(f'Dataset do not contain tool infos, please double confirm whether you are training a policy without tool usage!!!')
+            else:
+                action_tool_states = json_data[action_state_id].get("tools", {})
+                for key in cur_actions.keys():
+                    if action_tool_states and len(action_tool_states) > 0:
+                        action_tool_state = action_tool_states[key]
+                    if tool_states and len(tool_state) > 0:
+                        tool_state = tool_states[key]
+                    cur_actions[key] = np.hstack((cur_actions[key], action_tool_state["position"]))
+                    if self._obs_type == ObservationType.MASK:
+                        cur_obs[key] = np.hstack((cur_obs[key], [0]))
+                    else:
+                        cur_obs[key] = np.hstack((cur_obs[key], tool_state["position"]))
+                        
+            # @TODO: @zyx add the keyframe to the action
+            assert len(cur_actions.keys()) == len(self._state_keys), f"expected {self._state_keys}, but only found {list(cur_actions.keys())}"
             
             if counter % skip_steps_nums == 0:
                 episode_data.append(
@@ -296,7 +294,11 @@ class RerunEpisodeReader:
     
     def _get_absolute_action(self, states, action_state, attribute_name = None, init_data = None):
         cur_action = {}
-        for key, state in states.items():
+        for key in states.keys():
+            if self._state_keys:
+                if key not in self._state_keys:
+                    continue
+                
             if attribute_name is not None:
                 if attribute_name == "pose":
                     cur_init_pose = init_data[key] if init_data else None
@@ -315,6 +317,9 @@ class RerunEpisodeReader:
             next_state_value[key] = state_value
         
         for key, state in states.items():
+            if self._state_keys:
+                if key not in self._state_keys:
+                    continue
             state_value = state if attribute_name is None else state[attribute_name]
             cur_action[key] = np.array(next_state_value[key]) - np.array(state_value)
         return cur_action
@@ -364,8 +369,8 @@ class RerunEpisodeReader:
                     for specified key and calculate the delta pose
                     if init data is provided as the last para
         """
-        new_pose = copy.deepcopy(pose)
         if self._rotation_transform is not None:
+            new_pose = copy.deepcopy(pose)
             if key not in self._rotation_transform:
                 # head key rot trans could be unit qunternion(not rotation offset for key)                
                 if "head" in key:
@@ -377,7 +382,8 @@ class RerunEpisodeReader:
             if init_data:
                 # calculate relative term
                 new_pose = self.get_pose_diff(new_pose, init_data)
-        return new_pose
+            return new_pose
+        else: return pose
         
     def _process_images(self, item_data, data_type, dir_path):
         images = item_data.get(data_type, {})
@@ -385,8 +391,14 @@ class RerunEpisodeReader:
         if images is None:
             return {}, {}
         
+        found_keys = []
         for key, data in images.items():
+            if self._camera_keys:
+                if key not in self._camera_keys:
+                    continue
+                
             file_name = data["path"]
+            found_keys.append(key)
             if file_name:
                 file_path = os.path.join(dir_path, file_name)
                 if os.path.exists(file_path):
@@ -396,6 +408,9 @@ class RerunEpisodeReader:
                     time_stamp[key] = data["time_stamp"]
                 else:
                     return None, None
+        if self._camera_keys is None:
+            self._camera_keys = found_keys
+        assert len(found_keys) == len(self._camera_keys), f"expected {self._camera_keys}, but only found {found_keys}"
         return images, time_stamp
 
     def _process_audio(self, item_data, data_type, episode_dir):

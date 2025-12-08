@@ -1,5 +1,4 @@
-import abc, os
-import enum
+import abc
 from dataset.lerobot.reader import RerunEpisodeReader, ActionType, ObservationType
 import glog as log
 
@@ -13,6 +12,8 @@ class DataLoaderBase(abc.ABC, metaclass=abc.ABCMeta):
         self._action_ori_type = config.get("action_ori_type", "euler")
         self._rotation_transform = config.get("rotation_transform", None)
         self._contain_ft = config.get(f'contain_ft', False)
+        self._cam_keys = config.get("cam_keys", None)
+        self._state_keys = config.get("state_keys", None)
         self._task_dir = task_dir
         self._json_file = json_file_name
         self._lack_data_json_list = []
@@ -22,13 +23,12 @@ class DataLoaderBase(abc.ABC, metaclass=abc.ABCMeta):
     """
     def load_episode(self, task_dir, episode_dir, skip_steps_nums):
         self._episode_reader = RerunEpisodeReader(task_dir=task_dir,
-                                                  json_file=self._json_file,
-                                                  action_type=self._action_type,
-                                                  action_prediction_step=self._action_prediction_step,
-                                                  action_ori_type=self._action_ori_type,
-                                                  observation_type=self._obs_type,
-                                                  rotation_transform=self._rotation_transform,
-                                                  contain_ft=self._contain_ft)
+                json_file=self._json_file, action_type=self._action_type,
+                action_prediction_step=self._action_prediction_step,
+                action_ori_type=self._action_ori_type, observation_type=self._obs_type,
+                rotation_transform=self._rotation_transform, contain_ft=self._contain_ft,
+                camera_keys=self._cam_keys, state_keys=self._state_keys)
+        
         if 'episode' in episode_dir:
             episode_number = int(episode_dir.lstrip("episode_"))
             episode_id = episode_number
