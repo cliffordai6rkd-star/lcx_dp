@@ -29,7 +29,8 @@ def transform_pose(pose1, pose2):
     
 class RerunLogger:
     def __init__(self, task_dir, prefix = "", IdxRangeBoundary = 30, memory_limit = None, 
-                 example_item_data = None, action_type = ActionType.JOINT_POSITION, action_ori_type="quaternion"):
+                 example_item_data = None, action_type = ActionType.JOINT_POSITION, 
+                 action_ori_type="quaternion", state_keys=None):
         self._task_dir = task_dir
         self.prefix = prefix
         self._action_type = action_type
@@ -37,6 +38,7 @@ class RerunLogger:
         self.IdxRangeBoundary = IdxRangeBoundary
         self.ee_trajectories = {}  # Store ee trajectories (positions) for each ee_key
         self.ee_orientations = {}  # Store ee orientations (quaternions) for each ee_key
+        self.state_keys = state_keys
         
         rr.init(datetime.now().strftime("Runtime_%Y%m%d_%H%M%S"))
         if memory_limit:
@@ -91,6 +93,9 @@ class RerunLogger:
         # Dynamically create ee_states views based on example data
         ee_states = example_item_data.get('ee_states', {})
         for ee_key in ee_states.keys():
+            if ee_key not in self.state_keys:
+                continue
+            
             # Create 3D spatial view for end-effector pose
             ee_spatial_view = rrb.Spatial3DView(
                 origin = f"{self.prefix}{ee_key}/ee_states/pose",
@@ -283,6 +288,9 @@ class RerunLogger:
             
         # Log ee_states (end-effector states) - 7D array: position (3D) + quaternion (4D)
         for ee_key, ee_state in ee_states.items():
+            if ee_key not in self.state_keys:
+                continue
+            
             if ee_state is not None:
                 ee_state = ee_state["pose"]
                 logger_mp.info(f'Logging ee_state {ee_key} with shape: {ee_state.shape if hasattr(ee_state, "shape") else type(ee_state)}')
@@ -392,29 +400,35 @@ if __name__ == "__main__":
     # # TEST DATA OF data_dir
     # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
     # /workspace/dataset/data/peg_in_hole
-    data_dir = "/workspace/dataset/data/duo_unitree_pick_n_place"
+    data_dir = "dataset/data/1207_duo_unitree_pick_n_place_194ep"
     # data_dir = "/home/hanyu/Data_Collection/1018_block_stacking_fr3_3Dmosue_110eps"
-    episode_data_number = 2
-    fps = 28
+    episode_data_number = 185
+    fps = 100
     skip_step_nums = 1
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
-    umi_rotation_transform = {"single": [0.7071068, 0, 0.7071068, 0]}
+    umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
     contain_ft = False
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
+        # camera_keys=["right_hand_color", "right_hand_fisheye_color"],
+                                            #  state_keys=["right"]
         episode_reader = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
                                              action_prediction_step=1, action_ori_type=action_ori_type,
                                              observation_type=ObservationType.END_EFFECTOR_POSE,
-                                             rotation_transform=None,
-                                             contain_ft=contain_ft)
+                                             rotation_transform=umi_rotation_transform,
+                                             contain_ft=contain_ft,
+                                             camera_keys=["right_hand_color", "right_hand_fisheye_color"],
+                                             state_keys=["right"]
+                                            )
         episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
         logger_mp.info(f'Successfully load the episode data')
         logger_mp.info(f'Episode data length: {len(episode_data) if episode_data else 0}')
         # Use first episode data as example for blueprint setup
         example_data = episode_data[0] if episode_data else None
+        state_keys = episode_reader._state_keys
         online_logger = RerunLogger(task_dir=data_dir, prefix="offline/", IdxRangeBoundary = 60, memory_limit="20GB",
-                example_item_data=example_data, action_type=ActionType.END_EFFECTOR_POSE)
+                example_item_data=example_data, action_type=ActionType.END_EFFECTOR_POSE, state_keys=state_keys)
         logger_mp.info(f'Starting to log {len(episode_data)} items...')
         for item_data in episode_data:
             # logger_mp.info(f'item data: {item_data}')

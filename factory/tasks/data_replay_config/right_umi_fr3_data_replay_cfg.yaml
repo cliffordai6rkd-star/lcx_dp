@@ -2,7 +2,7 @@ motion_config: !include factory/components/motion_configs/right_fr3_with_pika_at
 max_step_nums: 150 # for gym steps
 is_debug: false
 
-task_data_dir: "dataset/data/1126_left_fr3_pick_n_place_humanhand_100eps"
+task_data_dir: "dataset/data/1207_duo_unitree_pick_n_place_194ep"
 action_prediction_step: 2
 # skip_steps: 2
 # end_effector_pose_delta
@@ -11,8 +11,9 @@ action_orientation_type: "quaternion"
 observation_type: "ee_pose"
 contain_ft: false
 use_relative_pose: true
+state_keys: ["right"]
 rotation_transform: 
-  single: [0.7071068, 0, 0.7071068, 0]
+  right: [0.7071068, 0, 0.7071068, 0]
 
 replay_frequency: 30
 tool_position_dof: 1
@@ -23,5 +24,7 @@ enable_hardware: false
 # cartesian
 # reset_arm_command: [0.21374957, -0.38555737,  0.39685211, 0.97728997, -0.01475875,  0.20979072,  0.02596818]
 # reset_space: "cartesian"
-reset_arm_command: [0.12914971577308007, -1.1414848191903935, -1.0206527956929927, -2.4291060833756553, -0.74327029123007, 1.9775413167802187, 0.32370524816915264]
+reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
 reset_space: "joint"
+
+reset_arm_to_default: true

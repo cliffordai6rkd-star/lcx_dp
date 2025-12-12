@@ -53,6 +53,7 @@ class DataReplay:
         self._tool_position_dof = self._config["tool_position_dof"]
         self._tool_max = config.get("tool_max", 90)
         self._rotation_transform = config.get("rotation_transform", None)
+        self._state_keys = config.get("state_keys", None)
 
         # State management
         self._state = ReplayState.IDLE
@@ -85,7 +86,8 @@ class DataReplay:
             action_prediction_step=self._action_prediction_step,
             action_ori_type=self._action_ori_type,
             observation_type=ObservationType.MASK,
-            rotation_transform=self._rotation_transform
+            rotation_transform=self._rotation_transform,
+            state_keys=self._state_keys,
         )
 
         # Start keyboard listener
@@ -133,12 +135,11 @@ class DataReplay:
 
         episode_data = self._episode_reader.return_episode_data(episode_id, skip_steps_nums=self._skip_steps)
         log.info(f"Finished loading episode {episode_id} from {self._task_data_dir}")
+        self._state_keys = self._episode_reader._state_keys
         
         if episode_data is None or len(episode_data) == 0:
             log.warning(f"Episode {episode_id} not found or empty")
             return
-
-        log.info(f"Episode {episode_id} loaded: {len(episode_data)} frames")
 
         # Reset robot
         self._gym_api.reset()
@@ -149,22 +150,30 @@ class DataReplay:
         next_run_time = time.perf_counter()
 
         # 获取episode start的pose
-        init_episode_pose = episode_data[0]["ee_states"]
+        data_init_pose = episode_data[0]["ee_states"]
+        init_episode_pose = {}
         if self._rotation_transform:
-            for key, pose in init_episode_pose.items():
+            for key, pose in data_init_pose.items():
+                if key not in self._state_keys:
+                    continue
                 pose["pose"][3:] = transform_quat(pose["pose"][3:], self._rotation_transform[key])
+                init_episode_pose[key] = {}
                 init_episode_pose[key]["pose"] = pose["pose"]
         # iterate over the whole episode
+        log.info(f'Ready to execute repaly data for episode {episode_id} for {len(episode_data)} datapoints with replay state {self._state}')
+        # log.info(f'episode data: {episode_data}')
         for frame_data in episode_data:
             with self._state_lock:
                 if self._state != ReplayState.REPLAYING:
                     if self._state == ReplayState.INTERRUPTION:
                         log.info(f'Data {self._task_data_dir}_{episode_id} replay execution interrupted!!!')
                         self._state = ReplayState.IDLE
+                    log.info(f'Exit replay with state {self._state}')
                     return
 
             actions = frame_data.get("actions", {})
             if not actions:
+                log.warn(f"actions could not find from frame data!!!!")
                 continue
             
             # relative pose reprensentation

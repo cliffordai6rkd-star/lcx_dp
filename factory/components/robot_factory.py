@@ -515,7 +515,7 @@ class RobotFactory:
         cameras_data = None
         
         # Try to get simulation camera data first
-        if self._use_simulation:
+        if self._use_simulation and not self._use_hardware:
             cameras_data = self._simulation.get_all_camera_images()
             if cameras_data is not None and len(cameras_data) > 0:
                 log.debug(f"Got {len(cameras_data)} simulation camera images")
@@ -610,7 +610,7 @@ class RobotFactory:
             log.info(f"Move to start mode: {mode}, command: {joint_commands} with smoother")
             self.set_joint_commands(joint_commands, mode, execute_hardware=self._enable_hardware)
             # @TODO: use detection method to ensure the time is enough for robot to reach the start configuration
-            time.sleep(1.5)
+            time.sleep(4.5)
             
         else:
             # joint_commands is None: use robot's default move_to_start (immediate reset)

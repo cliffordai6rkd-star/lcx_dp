@@ -41,6 +41,7 @@ class GymApi(gym.Env):
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
         self._reset_arm_command = config.get("reset_arm_command", None)
         self._reset_tool_command = config.get("reset_tool_command", [[1]])
+        self._reset_arm_to_default = config.get("reset_arm_to_default", False)
         self._is_debug = config.get("is_debug", False)
         self._use_hardware = config.get("enable_hardware", True)
         
@@ -115,12 +116,13 @@ class GymApi(gym.Env):
                     cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action)
                     self._delta_action_target[key] = cur_arm_action
                 # 使用relative (abs）pose，而非chunk relative
-                if self._use_relative_pose or self._chunk_anchor_mode:
+                if self._use_relative_pose and self._chunk_anchor_mode is None:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 
                 # @TODO: desk collision avoidance, 厚度维35mm， 开合维100mm
                 # solve_table_collision(cur_arm_action, 0.1, 0.02, 35/1000.0)
+                log.info(f'arm action z {cur_arm_action[2]} for {key}')
                 prevent_table_collision(cur_arm_action, self._collision_height_thresh)
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
@@ -168,6 +170,9 @@ class GymApi(gym.Env):
         self._robot_system._enable_hardware = self._use_hardware
         time.sleep(0.1)
         log.info(f"The robot hardware state is set to {self._use_hardware}!!!!!!")
+        if self._reset_arm_to_default:
+            log.info("Reset the robot arm to default position!!!!!!")
+            self._robot_motion.reset_robot_system(tool_command=self._reset_tool_command)
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)

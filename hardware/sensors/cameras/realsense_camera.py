@@ -7,9 +7,10 @@ except (ImportError, ModuleNotFoundError):
     from hardware.mocks import mock_pyrealsense2 as rs
 
 from hardware.base.camera import CameraBase
-import warnings, threading, time
+import threading, time
 import numpy as np
 import glog as log
+
 class RealsenseCamera(CameraBase):
     def __init__(self, config):
         """
@@ -94,13 +95,12 @@ class RealsenseCamera(CameraBase):
 
             if not color_frame:
                 time.sleep(0.01)
-                log.warn(f"Realsense camera {'serial number'} did not get the frame")
+                log.warn(f"Realsense camera {self._serial_number} did not get the frame")
                 continue
 
             self._lock.acquire()
             self._image_data = np.asanyarray(color_frame.get_data())
             self._time_stamp = time.perf_counter()
-            # color_image = cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB)
             self._depth_map_data = np.asanyarray(depth_frame.get_data()) if self._contain_depth else None
             if self._contain_imu:
                 self._imu_data = np.array([accel_data.x, accel_data.y, accel_data.z,
@@ -122,8 +122,10 @@ class RealsenseCamera(CameraBase):
     
     def close(self):
         self._thread_running = False
-        self._thread_handler.join()
-        self._pipeline.stop()
+        if hasattr(self, "_thread_handler"):
+            self._thread_handler.join()
+        if hasattr(self, "_pipeline"):
+            self._pipeline.stop()
         log.info(f'Realsense {self._serial_number} is successfully closed!!!')
     
 if __name__ == "__main__":

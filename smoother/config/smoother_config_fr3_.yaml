@@ -41,9 +41,9 @@ ruckig:
   # max_acceleration: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]  # rad/s² per joint
   # max_jerk: [5000.0, 5000.0, 5000.0, 5000.0, 5000.0, 5000.0, 5000.0]    # rad/s³ per joint
   # 降低速度/加速度/跃度， 使得运动更平滑， 减少振动
-  max_velocity: [2.096, 2.096, 2.096, 2.096, 4.208, 3.344, 4.208]  # rad/s
-  max_acceleration: [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0]                # rad/s²
-  max_jerk: [4000.0, 4000.0, 4000.0, 4000.0, 4000.0, 4000.0, 4000.0]  # rad/s³
+  max_velocity:      [0.6986666667, 0.6986666667, 0.6986666667, 0.6986666667, 1.4026666667, 1.1146666667, 1.4026666667]  # rad/s
+  max_acceleration:  [2.6666666667, 2.6666666667, 2.6666666667, 2.6666666667, 2.6666666667, 2.6666666667, 2.6666666667]  # rad/s²
+  max_jerk:          [1333.3333333, 1333.3333333, 1333.3333333, 1333.3333333, 1333.3333333, 1333.3333333, 1333.3333333]  # rad/s³
   synchronization: true   # Enable synchronization
   sync_mode: "time"      # Sync mode: "phase", "time", or "none"
                           # - "phase": Synchronize velocity profiles (smooth coordinated motion)

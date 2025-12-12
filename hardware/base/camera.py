@@ -1,4 +1,5 @@
-import abc, threading, warnings, copy, time
+import abc, threading, copy, time
+import glog as log
 
 class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -22,14 +23,12 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
             raise RuntimeError("Camera is not initialized, cannot capture data.")
         
         _, image, time_stamp = self.read_image()
-        image = copy.deepcopy(image)
-        time_stamp = copy.deepcopy(time_stamp)
         if self._contain_depth:
             _, depth_map = self.read_depth_map() 
         else:
             depth_map = None
         if self._contain_imu:
-            _, imu_data = self.read_imu() if self._contain_imu else None
+            _, imu_data = self.read_imu()
         else:
             imu_data = None
         return {
@@ -45,22 +44,22 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
 
     def read_image(self):
         if not self._is_initialized or self._image_data is None:
-            warnings.warn(f"The camera is not initialized {self._is_initialized} or "
+            log.warn(f"The camera is not initialized {self._is_initialized} or "
                           f"still not retrieve the image{self._image_data is None}")
             return False, None, None
         self._lock.acquire()
-        image = self._image_data
-        time_stamp = self._time_stamp
+        image = copy.deepcopy(self._image_data)
+        time_stamp = copy.deepcopy(self._time_stamp)
         self._lock.release()
         return True, image, time_stamp
     
     def read_depth_map(self):
         if not self._contain_depth:
-            warnings.warn("This camera does not support depth map")
+            log.warn("This camera does not support depth map")
             return False, None
         
         if not self._is_initialized or self._depth_map_data is None:
-            warnings.warn("The camera is not initialized or "
+            log.warn("The camera is not initialized or "
                           "still not retrieve the depth map")
             return False, None
         self._lock.acquire()
@@ -69,12 +68,12 @@ class CameraBase(abc.ABC, metaclass=abc.ABCMeta):
         return True, depth_map
 
     def read_imu(self):
-        if not self._contain_depth:
-            warnings.warn("This camera does not support imu map")
+        if not self._contain_imu:
+            log.warn("This camera does not support imu map")
             return False, None
         
         if not self._is_initialized or self._imu_data is None:
-            warnings.warn("The camera is not initialized or "
+            log.warn("The camera is not initialized or "
                           "still not retrieve the imu")
             return False, None
         self._lock.acquire()

@@ -27,10 +27,11 @@ sensor_dicts:
     # - name: "side_cam"
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
-    - name: "left_hand"
+    # right_pika_sense_d405_cfg right_pika_sense_fisheye_cfg  right_pika_d405_cfg right_pika_fisheye_cfg
+    - name: "right_hand"
       type: "realsense_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
-    - name: "left_hand_fisheye"
+    - name: "right_hand_fisheye"
       type: "opencv_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_fisheye_cfg.yaml
   # ft_sensors:

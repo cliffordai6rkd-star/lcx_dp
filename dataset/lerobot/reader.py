@@ -99,8 +99,12 @@ class RerunEpisodeReader:
                     raise ValueError(f'Do not get the {i}th joint state from {self.task_dir} {episode_dir} for {self._obs_type}')
             ee_states = item_data.get('ee_states', {})
             # 拿到当前episode的初始pose
-            if len(init_ee_poses) != len(ee_states):
+            if len(init_ee_poses) == 0:
                 for key, cur_ee_state in ee_states.items():
+                    if self._state_keys:
+                        if key not in self._state_keys:
+                            continue
+                        
                     if self._rotation_transform:
                         pose = cur_ee_state["pose"]
                         init_ee_poses[key] = self.apply_rotation_offset(pose, key)      
@@ -116,7 +120,7 @@ class RerunEpisodeReader:
             # update head to cur ee state, 确保head是在最后一个key
             if head_pose:
                 ee_states.update({"head": head_pose})
-                log.info(f'ee states contain head pose: {list(ee_states.keys())}')
+                # log.info(f'ee states contain head pose: {list(ee_states.keys())}')
             ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
             
             found_obs_keys = []; cur_obs = {}
@@ -165,7 +169,7 @@ class RerunEpisodeReader:
                     else:
                         log.warn(f'Your obs type is already ft only so no need to contain ft anymore!!!!')
             if self._state_keys is None: self._state_keys = found_obs_keys
-            assert len(found_obs_keys) == len(ee_states), f"expected {self._state_keys}, but only found {found_obs_keys}"
+            assert len(found_obs_keys) == len(self._state_keys), f"expected {self._state_keys}, but only found {found_obs_keys}"
             
             # Append the action data in the item_data list
             cur_actions = {}
@@ -179,7 +183,7 @@ class RerunEpisodeReader:
             elif self.action_type == ActionType.END_EFFECTOR_POSE:
                 cur_actions = self._get_absolute_action(item_data.get("ee_states", {}),
                                     action_state=json_data[action_state_id]["ee_states"],
-                                    attribute_name="pose", init_data=init_ee_poses[key])
+                                    attribute_name="pose", init_data=init_ee_poses)
                 # different action rotation representation than quaternion
                 for key, action in cur_actions.items():
                     if self._action_ori_type == 'euler':
@@ -232,10 +236,9 @@ class RerunEpisodeReader:
             else:
                 action_tool_states = json_data[action_state_id].get("tools", {})
                 for key in cur_actions.keys():
-                    if action_tool_states and len(action_tool_states) > 0:
-                        action_tool_state = action_tool_states[key]
-                    if tool_states and len(tool_state) > 0:
-                        tool_state = tool_states[key]
+                    if "head" in key: continue
+                    action_tool_state = action_tool_states[key]
+                    tool_state = tool_states[key]
                     cur_actions[key] = np.hstack((cur_actions[key], action_tool_state["position"]))
                     if self._obs_type == ObservationType.MASK:
                         cur_obs[key] = np.hstack((cur_obs[key], [0]))
@@ -244,7 +247,7 @@ class RerunEpisodeReader:
                         
             # @TODO: @zyx add the keyframe to the action
             assert len(cur_actions.keys()) == len(self._state_keys), f"expected {self._state_keys}, but only found {list(cur_actions.keys())}"
-            
+            # log.info(f'color keys: {list(colors.keys())}')
             if counter % skip_steps_nums == 0:
                 episode_data.append(
                     {
@@ -379,7 +382,7 @@ class RerunEpisodeReader:
                 else:
                     raise ValueError(f'Got the rotation transform but {key} not found in {self._rotation_transform}')
             new_pose[3:] = self.transform_quat(pose[3:], self._rotation_transform[key])
-            if init_data:
+            if init_data is not None:
                 # calculate relative term
                 new_pose = self.get_pose_diff(new_pose, init_data)
             return new_pose
@@ -387,11 +390,11 @@ class RerunEpisodeReader:
         
     def _process_images(self, item_data, data_type, dir_path):
         images = item_data.get(data_type, {})
-        time_stamp = {}
         if images is None:
             return {}, {}
         
         found_keys = []
+        new_images = {}; time_stamp = {}
         for key, data in images.items():
             if self._camera_keys:
                 if key not in self._camera_keys:
@@ -404,14 +407,14 @@ class RerunEpisodeReader:
                 if os.path.exists(file_path):
                     image = cv2.imread(file_path)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    images[key] = image
+                    new_images[key] = image
                     time_stamp[key] = data["time_stamp"]
                 else:
                     return None, None
         if self._camera_keys is None:
             self._camera_keys = found_keys
         assert len(found_keys) == len(self._camera_keys), f"expected {self._camera_keys}, but only found {found_keys}"
-        return images, time_stamp
+        return new_images, time_stamp
 
     def _process_audio(self, item_data, data_type, episode_dir):
         audio_item = item_data.get(data_type, {})
