@@ -349,6 +349,13 @@ class MujocoSim(SimBase):
             log.info(f'Successfully cretaed model path fron scene xml file: {model_path}')
             self._model = mujoco.MjModel.from_xml_path(model_path)
             self._data = mujoco.MjData(self._model)
+            
+            # set init actuator position
+            if self.use_custom_key_frame:
+                robot_xml_path = self.parse_relative_path(self._config['robot_xml'])
+                self._init_pose = self.extract_custom_params(robot_xml_path, 'init_pos')
+                log.info(f'init pose: {self._init_pose}')
+                self.set_joint_position(self._init_pose)
 
         # Create render data copy for thread-safe camera access
         self._render_data = mujoco.MjData(self._model)
@@ -518,10 +525,12 @@ class MujocoSim(SimBase):
                     log.info('Resetting robot to keyframe "home" position')
                     mujoco.mj_resetDataKeyframe(self._model, self._data, keyframe_id)
                     return
-        else:
-            commands = joint_commands
-            self.set_joint_position(commands)
-        
+            else:
+                if hasattr(self, "_init_pose"):
+                    commands = self._init_pose
+        else: commands = joint_commands
+        self.set_joint_position(commands)
+        # self.set_joint_command(["position"] * len(self._actuator_mode), commands)
     
 if __name__ == '__main__':
     import yaml

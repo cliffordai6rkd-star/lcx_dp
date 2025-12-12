@@ -26,5 +26,3 @@ enable_hardware: false
 # reset_space: "cartesian"
 reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
 reset_space: "joint"
-
-reset_arm_to_default: true

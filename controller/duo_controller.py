@@ -63,6 +63,7 @@ class DuoController(ControllerBase):
             else:
                 success_right, joint_right, mode_right = controller.compute_controller(
                                                     [cur_target], sliced_joint_states)
+            # log.info(f'succ, left: {success_left} right: {success_right}')
         if not success_left or not success_right:
             return False, None, None
         joint_target = np.hstack((joint_left, joint_right))

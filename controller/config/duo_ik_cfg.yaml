@@ -3,13 +3,13 @@ duo_controller:
     type: "ik"
     damping_weight: 0.3
     # ["gaussian_newtown"， "dls", "lm"]
-    ik_type: "lm"
+    ik_type: "gaussian_newton"
     tolerance: 0.001
     max_iteration: 2000
   right:
     type: "ik"
     damping_weight: 0.3
     # ["gaussian_newtown"， "dls", "lm"]
-    ik_type: "lm"
+    ik_type: "gaussian_newton"
     tolerance: 0.001
     max_iteration: 2000

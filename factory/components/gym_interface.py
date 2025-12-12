@@ -170,9 +170,11 @@ class GymApi(gym.Env):
         self._robot_system._enable_hardware = self._use_hardware
         time.sleep(0.1)
         log.info(f"The robot hardware state is set to {self._use_hardware}!!!!!!")
-        if self._reset_arm_to_default:
+        to_default = options["arm_to_default"] if options and "arm_to_default" in options else False
+        if self._reset_arm_to_default and to_default:
             log.info("Reset the robot arm to default position!!!!!!")
             self._robot_motion.reset_robot_system(tool_command=self._reset_tool_command)
+            time.sleep(1.5)
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)

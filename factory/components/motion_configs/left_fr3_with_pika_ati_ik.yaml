@@ -1,6 +1,6 @@
 # usage platform
 use_hardware: true
-use_simulation: false
+use_simulation: true
 
 robot: "fr3"
 robot_config: !include hardware/fr3/config/left_fr3_cfg.yaml

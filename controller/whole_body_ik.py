@@ -7,8 +7,10 @@ import pinocchio.casadi as cpin
 import pinocchio as pin
 from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix
 from controller.utils.weighted_moving_filter import WeightedMovingFilter
-import copy
 import glog as log
+import numpy as np
+
+DEBUG = False
 
 class WholeBodyIk(ControllerBase):
     def __init__(self, config, robot_model: RobotModel):
@@ -69,9 +71,47 @@ class WholeBodyIk(ControllerBase):
             q_target = self.opti.value(self.var_q)
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
+            
+            if DEBUG:
+                log.error(f"trans_cost: {self.opti.debug.value(self.translation_cost)}")
+                log.error(f"rot_cost:   {self.opti.debug.value(self.rotation_cost)}")
+                log.error(f"smooth:     {self.opti.debug.value(self.smooth_cost)}")
+                log.error(f"reg:        {self.opti.debug.value(self.regularization_cost)}")
+            
             return True, q_target, ["position"]*len(target)
-        except Exception as e:
-            print(f"ERROR in convergence{e}")
+        except RuntimeError as e:
+            # print(f"ERROR in convergence{e}")
+            log.error(f"IK solve failed: {e}")
+
+            # ---- 关键：只用 debug.value / debug.show_infeasibilities ----
+            try:
+                q_dbg = self.opti.debug.value(self.var_q)
+                f_dbg = self.opti.debug.value(self.opti.f)
+                g_dbg = self.opti.debug.value(self.opti.g)
+                log.error(f"q_dbg: {q_dbg.T}")
+                log.error(f"f_dbg: {f_dbg}")
+                log.error(f"g has non-finite: {~np.isfinite(g_dbg).all()}")
+                self.opti.debug.show_infeasibilities()
+                log.error(f"trans_cost: {self.opti.debug.value(self.translation_cost)}")
+                log.error(f"rot_cost:   {self.opti.debug.value(self.rotation_cost)}")
+                log.error(f"smooth:     {self.opti.debug.value(self.smooth_cost)}")
+                log.error(f"reg:        {self.opti.debug.value(self.regularization_cost)}")
+                dq_trans = casadi.jacobian(self.translation_cost, self.var_q)
+                dq_rot   = casadi.jacobian(self.rotation_cost, self.var_q)
+                dq_smooth= casadi.jacobian(self.smooth_cost, self.var_q)
+                dq_reg   = casadi.jacobian(self.regularization_cost, self.var_q)
+
+                gt = self.opti.debug.value(dq_trans)
+                gr = self.opti.debug.value(dq_rot)
+                gs = self.opti.debug.value(dq_smooth)
+                gg = self.opti.debug.value(dq_reg)
+
+                log.error(f"grad trans finite? {np.isfinite(gt).all()}")
+                log.error(f"grad rot   finite? {np.isfinite(gr).all()}")
+                log.error(f"grad smooth finite? {np.isfinite(gs).all()}")
+                log.error(f"grad reg   finite? {np.isfinite(gg).all()}")
+            except Exception as ee:
+                log.error(f"debug dump failed: {ee}")
             return False, None, "position"
     
     
@@ -127,7 +167,7 @@ class WholeBodyIk(ControllerBase):
                 joint_ids.append(joint_id-1)
                 targets.append(nullspace_info["position_target"])
                 scalars.append(nullspace_info["scalar"])
-                print(f'nullspace joint_id: {joint_id} for {joint_name}')
+                log.info(f'nullspace joint_id: {joint_id} for {joint_name}')
             self.null_space_func = casadi.Function(
                 "nullspace_error",
                 [self.variables[0]],
@@ -196,7 +236,12 @@ class WholeBodyIk(ControllerBase):
     
     def _rot_err(self, frame_name, variable, scalar = 1.0):
         frame_id = self._robot_model.frames_name2id[frame_name]
-        return scalar * cpin.log3(variable[:3, :3] @ self.cdata.oMf[frame_id].rotation.T)
+        R_err = variable[:3, :3] @ self.cdata.oMf[frame_id].rotation.T
+        err = scalar * cpin.log3(R_err)
+        # R  = self.cdata.oMf[frame_id].rotation      # 当前 R
+        # Rd = variable[:3, :3]                       # 目标 Rd
+        # err = scalar * casadi.reshape(Rd - R, 9, 1)
+        return err
         
     def _nullspace_err(self, targets:list, variable, joint_ids:list, sclars:list):
         error = 0.0

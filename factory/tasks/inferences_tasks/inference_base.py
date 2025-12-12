@@ -283,7 +283,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 log.info(f'start record infer data traj!!!')
             if self._action_aggregation:
                 self._action_aggregation.reset()
-            self._gym_robot.reset()
+            self._gym_robot.reset(options={"arm_to_default": True})
             self._last_gripper_open = [True, True]
             self.policy_reset()
             self._status_ok = True
@@ -310,8 +310,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     log.info(f'chunk shape: {chunk_shape}')
                     # update chunk anchor
                     if self._chunk_anchor_mode:
+                        time.sleep(2.5)
                         chunk_anchor = self._gym_robot.get_ee_state()
                     if self._use_relative_pose:
+                        self._gym_robot.get_camera_infos()
                         obs_timestamp = self._gym_robot.get_obs_timestamp()
                         action_timestamps = (np.arange(len(pred_action_chunk), dtype=np.float64)
                             ) * infer_dt + obs_timestamp
@@ -346,7 +348,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 need_execution = True if not self._use_relative_pose else execution_index[0] == t
                 if need_execution:
-                    execution_index = execution_index[1:]
+                    if self._use_relative_pose: execution_index = execution_index[1:]
                     convert_start = time.perf_counter()
                     gym_action = self.convert_to_gym_action_single_step(
                         aggregated_action, pred_action_chunk[t%query_frequency], chunk_anchor)

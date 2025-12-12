@@ -1,5 +1,6 @@
-motion_config: !include factory/components/motion_configs/duo_fr3_duo_ik.yaml
+motion_config: !include factory/components/motion_configs/unitree_g1_upper.yaml
 
+# Target sites for left and right arms
 target_site_name: ["targetL_site", "targetR_site"]
 tcp_visualization_site: ["TCPL_site", "TCPR_site"]
 
@@ -10,5 +11,5 @@ inteface_output_mode: "relative"
 # teleoperation used parameter
 # if you are using mujoco simulation target instead of teleoperation device,
 # set use_simulation_target as true
-use_simulation_target: false
-teleoperation_loop_time: 0.01
+use_simulation_target: true
+teleoperation_loop_time: 0.05  # 100Hz teleoperation loop matching control frequency

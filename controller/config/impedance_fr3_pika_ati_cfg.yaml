@@ -1,7 +1,7 @@
 impedance:
   enable_gravity_compensation: false
   # stiffness: [300.0, 300.0, 300.0, 25, 25, 25]
-  stiffness: [2800.0, 2800.0, 2800.0, 650, 950, 350]
+  stiffness: [2800.0, 2800.0, 2800.0, 650, 950, 450]
   # arm_joint_idxes: []
   error_clip:
     min: [-0.5, -0.5, -0.5, -2, -2, -5]

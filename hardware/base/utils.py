@@ -152,6 +152,10 @@ def object_class_check(classes, object_str):
     return True
     
 # math utils
+def normalize_quat(q, eps=1e-12):
+    n = (q**2).sum()**0.5
+    return q / max(n, eps)
+
 def quaternion_error(q1, q2):
     """
         @brief: compute the error between two quaternions
@@ -160,7 +164,6 @@ def quaternion_error(q1, q2):
             q2: the second quaternion
         @return: the quaternion error
     """
-    pass
     quat1 = R.from_quat(q1)
     quat2 = R.from_quat(q2)
     conjugate_quat2 = quat2.inv()
@@ -179,17 +182,19 @@ def compute_pose_diff(pose1, pose2):
     
     quat_error = quaternion_error(pose1[3:], pose2[3:])
     ori_error = np.array([quat_error[0], quat_error[1], quat_error[2]])
-
-    norm = np.linalg.norm(ori_error)
-    if norm < 1e-15:
-        ori_error = np.array([1, 0, 0])
-    else:
-        ori_error = (1 / norm) * ori_error
-    angle = 2 * np.arctan2(norm, quat_error[3])
-    # angle = 2 * np.atan2(norm, quat_error[3])
-    if (angle > np.pi):
-        angle -= 2 * np.pi
-    ori_error = angle * ori_error
+    ori_error = 2.0 * np.sign(quat_error[3]) * ori_error
+    # @TODO: zyx: checking
+    
+    # norm = np.linalg.norm(ori_error)
+    # if norm < 1e-15:
+    #     ori_error = np.array([1, 0, 0])
+    # else:
+    #     ori_error = (1 / norm) * ori_error
+    # angle = 2 * np.arctan2(norm, quat_error[3])
+    # # angle = 2 * np.atan2(norm, quat_error[3])
+    # if (angle > np.pi):
+    #     angle -= 2 * np.pi
+    # ori_error = angle * ori_error
 
     diff[3:] = ori_error
     return diff
@@ -205,6 +210,7 @@ def convert_rot_matrix_to_quat(rot_matrix):
     return quat  # [qx, qy, qz, qw] 
 
 def convert_quat_to_rot_matrix(quat):
+    quat = normalize_quat(quat)
     rot = R.from_quat(quat).as_matrix()
     return rot
 
@@ -229,7 +235,8 @@ def convert_homo_2_7D_pose(homo):
 def convert_7D_2_homo(pose_7d):
     homo = np.eye(4)
     homo[:3, 3] = pose_7d[:3]
-    homo[:3, :3] = R.from_quat(pose_7d[3:]).as_matrix()
+    quat = normalize_quat(pose_7d[3:])
+    homo[:3, :3] = R.from_quat(quat).as_matrix()
     return homo
 
 def matrix_sqrt(matrix: np.ndarray):

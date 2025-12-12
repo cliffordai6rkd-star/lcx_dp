@@ -72,7 +72,7 @@ class ImpedanceController(ControllerBase):
         task_inertial_sqrt = scipy_matrix_sqrt(task_inertial)
         self._damping = task_inertial_sqrt @ kp_sqrt + kp_sqrt @ task_inertial_sqrt
         des_local_wrench = self._stiffness @ pose_error + self._damping @ vel_error
-        des_local_wrench = task_inertial @ spatial_acc - des_local_wrench
+        des_local_wrench = task_inertial_sqrt @ J @ robot_state._accelerations - des_local_wrench
         # des_local_wrench = -des_local_wrench
         
         # compute scale
