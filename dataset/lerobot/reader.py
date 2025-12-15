@@ -111,16 +111,15 @@ class RerunEpisodeReader:
                         log.info(f'Successfully updated the init ee pose for relative pose calculation {list(init_ee_poses.keys())}')
                     else: init_ee_poses[key] = None
             # @TODO: used for latter head tracker
-            head_pose = ee_states.pop('head', None)
+            contain_head = "head" in ee_states
             ee_check = [ObservationType.JOINT_POSITION_END_EFFECTOR, ObservationType.END_EFFECTOR_POSE,
                         ObservationType.DELTA_END_EFFECTOR_POSE] 
             if self._obs_type in ee_check:
                 if ee_states is None or len(ee_states) == 0:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             # update head to cur ee state, 确保head是在最后一个key
-            if head_pose:
-                ee_states.update({"head": head_pose})
-                # log.info(f'ee states contain head pose: {list(ee_states.keys())}')
+            if contain_head:
+                log.info(f'ee states contain head pose: {list(ee_states.keys())}')
             ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
             
             found_obs_keys = []; cur_obs = {}

@@ -125,7 +125,7 @@ class PikaGripper(ToolBase):
         if not success:
             log.warn(f"Failed to move Pika Gripper to {target_distance:.1f}mm")
         else:
-            time.sleep(0.12)
+            time.sleep(0.01)
             current_position = self._pika_gripper.get_gripper_distance()
             is_grasped = current_position > target_distance + 2
             # log.info(f'check : {is_grasped}, current: {current_position}, target: {target_distance} diff: {current_position - target_distance}')
@@ -145,7 +145,7 @@ class PikaGripper(ToolBase):
         """Background thread for updating gripper state"""
         log.info(f"Starting Pika Gripper state update thread for {self._serial_port}")
         
-        last_read_time = time.time()
+        last_read_time = time.perf_counter()
         dt_target = 1.0 / self._update_frequency
         # max_time = 0
         while self._thread_running:
@@ -159,6 +159,7 @@ class PikaGripper(ToolBase):
                     last_position = self._state._position
                 
                 if abs(current_distance - last_position) > 0.5 * (self._max_distance - self._min_distance):
+                    last_read_time = time.perf_counter()
                     # log.warn(f'Detected sudden change of gripper position: {last_position}, {current_distance}')
                     continue
                 start = time.perf_counter()
@@ -181,14 +182,14 @@ class PikaGripper(ToolBase):
                 log.warn(f"Error reading Pika Gripper state: {e}")
             
             # Timing control
-            dt = time.time() - last_read_time
-            last_read_time = time.time()
+            dt = time.perf_counter() - last_read_time
+            last_read_time = time.perf_counter()
             # if dt > max_time: max_time = dt
             # log.info(f'pika gripper read state dt: {1.0 / dt} Hz, max freq: {1.0/max_time} hz')
             # log.info(f'pika gripper read state dt: {1.0 / dt} Hz')
             if dt < dt_target:
                 sleep_time = dt_target - dt
-                time.sleep(sleep_time)
+                time.sleep(0.85*sleep_time)
             # elif dt > 1.2 * dt_target:
             #     log.warn(f"Pika Gripper {self._serial_port} update thread running slow: {1.0 / dt}hz, \
             #         expected: {self._update_frequency}hz, reading time: {1.0/distance_reading_time}hz")

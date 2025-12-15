@@ -6,12 +6,28 @@ use_simulation: true
 # from the project directory
 robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
-# gripper: "duo_tool"
-# gripper_config: !include hardware/config/duo_dex3_hand_cfg.yaml
+gripper: "zmq_pika_gripper"
+gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
 
 control_frequency: 800
 controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
+
+# smoother config?
+
+sensor_dicts:
+  cameras:
+    - name: "head"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
+    - name: "left_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
+    - name: "rightt_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
+
+# head plugin conifg
 
 model_type: "model"
 model_config:

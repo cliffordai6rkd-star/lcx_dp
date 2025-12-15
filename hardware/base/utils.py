@@ -15,11 +15,14 @@ class RobotJointState:
     _torques: np.ndarray
     _time_stamp: float
     def __init__(self):
-        self._positions = np.zeros_like(7)
-        self._velocities = np.zeros_like(7)
-        self._accelerations = np.zeros_like(7)
-        self._torques = np.zeros_like(7)
+        self.set_state_dof(7)
         self._time_stamp = time.perf_counter()
+        
+    def set_state_dof(self, dof):
+        self._positions = np.zeros_like(dof)
+        self._velocities = np.zeros_like(dof)
+        self._accelerations = np.zeros_like(dof)
+        self._torques = np.zeros_like(dof)
     
 def get_joint_slice_value(start, end, joint_state: RobotJointState):
     new_state = RobotJointState()

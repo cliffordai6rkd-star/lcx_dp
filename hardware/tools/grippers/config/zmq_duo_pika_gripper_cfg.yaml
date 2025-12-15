@@ -1,0 +1,9 @@
+zmq_pika_gripper:
+  ip: "192.168.1.99"
+  port: 5555
+  update_frequency: 150
+
+  control_mode: "incremental"
+  step_size: 0.2
+  initial_position: 1.0
+

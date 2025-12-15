@@ -43,7 +43,7 @@ class OpencvCamera(CameraBase):
         self._thread_handler.start()
         
         while self._image_data is None:
-            pass
+            time.sleep(0.001)
         
         log.info(f'Opencv camera with {self._device_id} is ok to retrive data!!!')
         return True

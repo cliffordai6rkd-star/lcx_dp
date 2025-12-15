@@ -13,12 +13,14 @@ from hardware.unitreeG1.unitree_g1 import UnitreeG1
 from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.tools.grippers.pika_gripper import PikaGripper
 from hardware.duo_tool import DuoTool
+from hardware.tools.grippers.zmq_pika import ZmqPika
 from simulation.mujoco.mujoco_sim import MujocoSim
 from hardware.base.camera import CameraBase
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from hardware.sensors.cameras.agibot_cameras import AgibotCamera
 # from hardware.sensors.cameras.ros2_camera import Ros2Camera
+from hardware.sensors.cameras.img_zmq import ZmqImgSubscriber
 from hardware.sensors.ft_sensor.ati_ft import AtiFt
 from hardware.sensors.cameras.network_camera import NetworkCamera
 from hardware.base.tactile_base import TactileBase
@@ -96,6 +98,7 @@ class RobotFactory:
             'duo_tool': DuoTool,
             'dex3_hand': Dex3Hand,
             'pika_gripper': PikaGripper,
+            'zmq_pika_gripper': ZmqPika,
         }
         
         self._camera_classes = {
@@ -104,6 +107,7 @@ class RobotFactory:
             'agibot_camera': AgibotCamera,
             # 'ros2_camera': Ros2Camera,
             'network_camera': NetworkCamera,
+            'zmq_camera': ZmqImgSubscriber,
         }
         
         self._tactile_classes = {

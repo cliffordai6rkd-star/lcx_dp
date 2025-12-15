@@ -71,12 +71,13 @@ class UnitreeG1(ArmBase):
         self._zero_finished = True
         
         # dds related 
+        self.counter = 0
         ChannelFactoryInitialize(0, self._network_interface) # dds channel initialization
         self._msc = MotionSwitcherClient()
         pub_topic = "rt/lowcmd" if self._enable_low_level else "rt/arm_sdk"
         self._lowcmd_publisher = ChannelPublisher(pub_topic, LowCmd_)
         self._lowstate_subscriber = ChannelSubscriber("rt/lowstate", LowState_)
-        self._update_mode_machine_ = False
+        self._update_mode_machine = False
         self._mode_machine = 0 # G1 型號
         self._low_state_updated = False
         self._low_cmd = unitree_hg_msg_dds__LowCmd_()
@@ -105,10 +106,7 @@ class UnitreeG1(ArmBase):
         if self._enable_low_level:
             self._robot_id = self._leg_joints + self._waist_joints + self._robot_id
         total_dof = len(self._robot_id)
-        self._joint_states._positions = np.zeros(total_dof)
-        self._joint_states._velocities = np.zeros(total_dof)
-        self._joint_states._accelerations = np.zeros(total_dof)
-        self._joint_states._torques = np.zeros(total_dof)
+        self._joint_states.set_state_dof(total_dof)
         
         self._kp_high = 300.0
         self._kd_high = 3.0
@@ -143,7 +141,7 @@ class UnitreeG1(ArmBase):
             time.sleep(0.001)
         log.info(f'Get the low state from the unitree g1')
         # update command for not used joints
-        for jid in range(self._arm_joints + self._waist_joints + self._leg_joints):
+        for jid in (self._arm_joints + self._waist_joints + self._leg_joints):
             self._low_cmd.motor_cmd[jid].mode = 1
             if jid in self._arm_joints:
                 if jid in G1_WRIST_MOTORS:
@@ -164,7 +162,7 @@ class UnitreeG1(ArmBase):
         
         self._last_write_time = time.perf_counter()
         self._low_command_writer_thread = RecurrentThread(
-            interval=self._control_frequency, target=self._LowCommandWriter, name="control"
+            interval=1.0/self._control_frequency, target=self._LowCommandWriter, name="control"
         )
         self._low_command_writer_thread.Start()
         
@@ -206,7 +204,7 @@ class UnitreeG1(ArmBase):
     def move_to_start(self):
         self._command_buffer.clear()
         self._control_mode = "position"
-        self._command_buffer.push_data(np.zeros(35), time.perf_counter())
+        self._command_buffer.push_data(np.zeros(30), time.perf_counter())
         self._zero_finished = False
         while not self._zero_finished:
             time.sleep(0.001)
@@ -220,10 +218,10 @@ class UnitreeG1(ArmBase):
             self._mode_machine = self.low_state.mode_machine
             self._update_mode_machine = True
         
-        self.counter_ +=1
-        if (self.counter_ % 500 == 0) :
-            self.counter_ = 0
-            log.info(self.low_state.imu_state.rpy)
+        self.counter +=1
+        if (self.counter % 500 == 0) :
+            self.counter = 0
+            log.info(self._low_state.imu_state.rpy)
     
     def _LowCommandWriter(self):
         control_time_duration = time.perf_counter() - self._last_write_time
