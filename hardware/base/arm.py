@@ -72,7 +72,7 @@ class ArmBase(abc.ABC, metaclass=abc.ABCMeta):
         raise NotImplementedError
     
     @abc.abstractmethod
-    def move_to_start(self):
+    def move_to_start(self, joint_commands = None):
         raise NotImplementedError
     
     def _init_safety_checker(self, config: Dict[str, Any]) -> None:

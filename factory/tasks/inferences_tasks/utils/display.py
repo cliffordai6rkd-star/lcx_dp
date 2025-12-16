@@ -115,7 +115,9 @@ def display_images(images_dict: dict[str, np.ndarray],
     """
     # try:
     grid_image = create_image_grid(images_dict, target_size, attributes)
-    cv2.imshow(display_window_name, grid_image)
+    window_name = display_window_name
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.imshow(window_name, grid_image)
     cv2.waitKey(1)  # Non-blocking update
     return grid_image
 

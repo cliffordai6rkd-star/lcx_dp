@@ -467,6 +467,7 @@ class RobotFactory:
         if self._tool and self._use_hardware:
             if 'single' in cur_tool_command:
                 cur_tool_command = cur_tool_command["single"]
+            # log.info(f"tool: {cur_tool_command}")
             hw_res = self._tool.set_tool_command(cur_tool_command)
         
         res = sim_res if not self._tool else hw_res

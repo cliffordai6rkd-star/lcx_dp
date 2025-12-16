@@ -115,7 +115,7 @@ class RealsenseCamera(CameraBase):
                 time.sleep(sleep_time)
             elif dt > 1.2 / self._fps:
                 log.warn(f'Camera could not reach the {self._fps}hz, '
-                    f'actual freq: {1.0 / dt}hz, img reading freq: {1.0 / reading_total}hz')
+                    f'actual freq: {1.0/dt:.2f}hz, img reading freq: {1.0/reading_total:.2f}hz')
                 time.sleep(0.001)
         
         log.info(f'Realsense {self._serial_number} thread is suceessfully stopped!!')

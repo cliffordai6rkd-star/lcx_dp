@@ -11,5 +11,5 @@ inteface_output_mode: "absolute_delta"
 # teleoperation used parameter
 # if you are using mujoco simulation target instead of teleoperation device,
 # set use_simulation_target as true
-use_simulation_target: true
+use_simulation_target: false
 teleoperation_loop_time: 0.05  # 100Hz teleoperation loop matching control frequency

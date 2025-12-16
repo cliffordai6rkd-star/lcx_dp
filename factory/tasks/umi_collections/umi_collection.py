@@ -114,6 +114,7 @@ class UmiCollection:
         while self._collection_running:
             # images
             cur_colors = {}
+            start = time.perf_counter()
             for cam_name, camera in self._camera_dict.items():
                 cam_obj:CameraBase = camera["object"]
                 cam_data = cam_obj.capture_all_data()
@@ -124,9 +125,12 @@ class UmiCollection:
                     # display_image_dicts[color_name] = image
                 else:
                     raise ValueError(f'{cam_name} do not get color image data')
-                
+            img_read_time = time.perf_counter() - start
             # display
+            start = time.perf_counter()
             display_images(cur_colors, "UMI collection images", attributes="data")
+            img_display_time = time.perf_counter() - start
+            img_total_time = img_display_time + img_read_time
             
             # pika poses
             success, poses, tools = self._pika.parse_data_2_robot_target(self._pika_mode)
@@ -165,13 +169,14 @@ class UmiCollection:
                             ee_states=ee_states, tools=ee_tools)
             
             used_time = time.perf_counter() - start_time
+            start_time = time.perf_counter()
             if used_time < (1.0 / self._record_frequency):
                 sleep_time = (1.0 / self._record_frequency) - used_time
-                time.sleep(sleep_time)
+                time.sleep(0.92*sleep_time)
                 # log.info(f'used time: {used_time}, sleep_time: {sleep_time}')
             elif used_time > 1.3 / self._record_frequency:
-                log.warn(f'collect data is slow, actual: {1.0/used_time}Hz, expected: {self._record_frequency}Hz')
-            start_time = time.perf_counter()
+                #  log.warn(f'collect data is slow, actual: {1.0/used_time:.2f}Hz, expected: {self._record_frequency:.2f}Hz)
+                log.warn(f'collect data is slow, actual: {1.0/used_time:.2f}Hz, expected: {self._record_frequency:.2f}Hz, img read time: {1.0/img_read_time:.2f}HZ, img display time {1.0/img_display_time:.2f}Hz img read time: {1.0/img_read_time:.2f}HZ, img total time {1.0/img_total_time:.2f}Hz')
     
     
 if __name__ == "__main__":

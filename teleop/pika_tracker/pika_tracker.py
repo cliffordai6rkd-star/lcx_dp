@@ -60,6 +60,7 @@ class PikaTracker(TeleoperationDeviceBase):
             self._index = {"single": 1}
         elif not self._output_right:
             self._index = {"single": 0}
+        self._position_scale = config.get("position_scale", 1.0)
         
         # Initialize offset pose for relative positioning
         self._init_pose = config.get('init_pose', None)
@@ -317,6 +318,7 @@ class PikaTracker(TeleoperationDeviceBase):
             
             if mode == "absolute_delta" and self._device_enabled:
                 cur_pose = self._get_diff_trans(cur_pose, self._index[key])
+                cur_pose[:3] *= self._position_scale
             pose_target[key] = cur_pose
             # skip the tool target for hear
             if "head" in key:

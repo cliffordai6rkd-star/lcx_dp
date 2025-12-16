@@ -26,7 +26,7 @@ class ZmqPika(ToolBase):
         self._thread_running = False
         self._update_thread = None
         
-        super().__init__()
+        super().__init__(config)
         
         self._state = {"left": ToolState(), "right": ToolState()}
         

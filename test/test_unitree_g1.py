@@ -199,7 +199,7 @@ def test_sim_ctrl_to_hw(
 
             k += 1
             if k % int(max(rate_hz, 1.0)) == 0:
-                log.info(f"[SIM->HW] sent frames={k}, cmd[0:3]={hw_cmd[:3]}")
+                log.info(f"[SIM->HW] mode {hw_mode} sent frames={k}, cmd[0:3]={hw_cmd[:3]}")
 
             time.sleep(dt)
 
