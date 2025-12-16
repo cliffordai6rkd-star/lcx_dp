@@ -1,7 +1,8 @@
-import time
+import time, threading, copy
 import numpy as np
 import glog as log
 from collections import deque
+from scipy.interpolate import interp1d
 from hardware.base.utils import Buffer
 from hardware.base.arm import ArmBase
 from hardware.unitreeG1.consts import G1_JOINTS_KP, G1_JOINTS_KD, Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS
@@ -58,17 +59,38 @@ except (ImportError, ModuleNotFoundError):
 
 DEBUG = False
 
+def make_minjerk(q0: np.ndarray, qT: np.ndarray, T: float):
+    q0 = np.asarray(q0, dtype=float).reshape(-1)
+    qT = np.asarray(qT, dtype=float).reshape(-1)
+    if q0.shape != qT.shape:
+        raise ValueError("q0 and qT must have same shape")
+    if T <= 0:
+        raise ValueError("T must be > 0")
+
+    dq = (qT - q0)
+
+    def _u(t):
+        t = np.asarray(t, dtype=float)
+        return np.clip(t / T, 0.0, 1.0)
+
+    def q(t):
+        u = _u(t)
+        s = 10*u**3 - 15*u**4 + 6*u**5
+        return q0 + dq * s[..., None] if np.ndim(u) else q0 + dq * s
+
+    return q
+
 class UnitreeG1(ArmBase):
     def __init__(self, config):
         self._network_interface = config["network_interface"]
         self._enable_low_level = config.get(f'enable_low_level', False)
         self._control_frequency = config.get("control_frequency", 500)
-        self._update_frequency = config.get("update_frequency", 800)
         self._ankle_mode = config.get('ankle_mode', "pr")
         if self._ankle_mode == "pr":
             self._ankle_mode = Mode.PR
         else: self._ankle_mode = Mode.AB
         self._control_mode = config.get("control_mode", "position")
+        self._move_to_start_time = config.get("reset_time", 1.5)
         self._command_buffer = Buffer(20, 30)
         self._zero_finished = True
         
@@ -87,6 +109,7 @@ class UnitreeG1(ArmBase):
         self._low_cmd.mode_pr = self._ankle_mode
         self._low_state = unitree_hg_msg_dds__LowState_()
         self._crc = CRC()
+        self._thread_running = True
         
         self._arm_joints = [
           G1JointIndex.LeftShoulderPitch,  G1JointIndex.LeftShoulderRoll,
@@ -171,12 +194,16 @@ class UnitreeG1(ArmBase):
             self._low_cmd.motor_cmd[jid].q = self._low_state.motor_state[jid].q
         log.info(f'Unitree G1 low command initialized to current state!!')
         
-        self._last_write_time = time.perf_counter()
-        self._low_command_writer_thread = RecurrentThread(
-            interval=0.1/self._control_frequency, target=self._LowCommandWriter, name="control"
-        )
-        self._low_command_writer_thread.Start()
-        
+        self._last_write_time = None
+        # self._low_command_writer_thread = RecurrentThread(
+        #     interval=0.1/self._control_frequency, target=self._LowCommandWriter, name="control"
+        # )
+        # self._low_command_writer_thread.Start()
+        self._publish_thread = threading.Thread(target=self._ctrl_motor_state, daemon=True)
+        self._publish_thread.start()
+        while not self._last_write_time is None:
+            time.sleep(0.001)
+                
         self.move_to_start()
         time.sleep(1.0)
 
@@ -214,16 +241,36 @@ class UnitreeG1(ArmBase):
         self._command_buffer.push_data(g1_command, time.perf_counter())
     
     def close(self):
+        self._thread_running = False
+        if hasattr(self, "_publish_thread"):
+            if self._publish_thread.is_alive():
+                self._publish_thread.join()
+                
         self._lowcmd_publisher.Close()
         self._lowstate_subscriber.Close()
     
     def move_to_start(self, joint_commands = None):
         self._command_buffer.clear()
         self._control_mode = "position"
+        with self._lock:
+            current_joint_positions = copy.deepcopy(self._joint_states._positions)
         if joint_commands:
-            self.set_joint_command("position", joint_commands)
+           target_command = joint_commands
         else:
-            self._command_buffer.push_data(np.zeros(30), time.perf_counter())
+            target_command = np.zeros_like(current_joint_positions)
+        
+        # smoothing to the target
+        q_func = make_minjerk(current_joint_positions, target_command, self._move_to_start_time)
+        t = 0.0; stop = False
+        while not stop:
+            t += 1.2 / self._control_frequency
+            smoothed_q = q_func(t)
+            if t >= self._move_to_start_time:
+                smoothed_q = target_command
+                stop = True
+            self.set_joint_command(self._control_mode, smoothed_q)
+            time.sleep(0.001)
+        
         self._zero_finished = False
         while not self._zero_finished:
             time.sleep(0.001)
@@ -247,48 +294,50 @@ class UnitreeG1(ArmBase):
         except Exception:
             log.exception("LowState handler error (prevent thread crash)")
     
-    def _LowCommandWriter(self):
-        self._write_time = 0.001
-        control_time_duration = time.perf_counter() - self._last_write_time
-        self._last_write_time = time.perf_counter()
+    def _ctrl_motor_state(self):
+        log.info(f'Started unitree g1 ctrl loop!!!!')
         
-        start = time.perf_counter()
-        sucess = False
-        if self._command_buffer.size() > 0:
-            sucess = True; command =  self._command_buffer._data[0]
-        # sucess, command, _ = self._command_buffer.pop_data()
-        
-        if sucess:
-            self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1.0 # 1:Enable arm_sdk, 0:Disable arm_sdk
-            for i, joint in enumerate(self._robot_id):
-                self._low_cmd.motor_cmd[joint].mode = 1 # 1 for enable 0 for disable
-                self._low_cmd.motor_cmd[joint].tau = 0. 
-                self._low_cmd.motor_cmd[joint].q = 0
-                self._low_cmd.motor_cmd[joint].dq = 0. 
-                # self._low_cmd.motor_cmd[joint].kp = self._kp 
-                # self._low_cmd.motor_cmd[joint].kd = self._kd
-                if self._control_mode == "position":
-                    self._low_cmd.motor_cmd[joint].q = command[joint]
-                elif self._control_mode == "torque":
-                    self._low_cmd.motor_cmd[joint].tau = command[joint]
-                else:
-                    raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
-            _, command, _ = self._command_buffer.pop_data()
-        other_operation = time.perf_counter() - start
-
-        if control_time_duration > 1.35 / self._control_frequency:
-            pass
-            # log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/control_time_duration:.2f} write {1.0/self._write_time:.2f}Hz others {1.0/other_operation:.2f}Hz')
-        elif control_time_duration > 10 / self._update_frequency:
-            # release the control and quit, @TODO:
-            log.warn(f'Too slow control freq for unitree g1')
-            return 
-        
-        start = time.perf_counter()
-        self._low_cmd.crc = self._crc.Crc(self._low_cmd)
-        self._lowcmd_publisher.Write(self._low_cmd)
-        self._write_time = time.perf_counter() - start
-        # log.info(f'write the command: {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}')
-        if not self._zero_finished:
-            self._zero_finished = True
+        target_dt = 1.0 / self._control_frequency    
+        while self._thread_running:
+            if self._last_write_time: self._last_write_time = time.perf_counter()
             
+            sucess = False
+            if self._command_buffer.size() > 0:
+                sucess = True; command =  self._command_buffer._data[0]
+            
+            if sucess:
+                self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1.0 # 1:Enable arm_sdk, 0:Disable arm_sdk
+                for i, joint in enumerate(self._robot_id):
+                    self._low_cmd.motor_cmd[joint].mode = 1 # 1 for enable 0 for disable
+                    self._low_cmd.motor_cmd[joint].tau = 0. 
+                    self._low_cmd.motor_cmd[joint].q = 0
+                    self._low_cmd.motor_cmd[joint].dq = 0. 
+                    # self._low_cmd.motor_cmd[joint].kp = self._kp 
+                    # self._low_cmd.motor_cmd[joint].kd = self._kd
+                    if self._control_mode == "position":
+                        self._low_cmd.motor_cmd[joint].q = command[joint]
+                    elif self._control_mode == "torque":
+                        self._low_cmd.motor_cmd[joint].tau = command[joint]
+                    else:
+                        raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
+                _, command, _ = self._command_buffer.pop_data()
+            
+            start = time.perf_counter()
+            self._low_cmd.crc = self._crc.Crc(self._low_cmd)
+            self._lowcmd_publisher.Write(self._low_cmd)
+            write_time = time.perf_counter() - start
+            
+            if not self._zero_finished:
+                self._zero_finished = True
+            
+            dt = time.perf_counter() - self._last_write_time
+            self._last_write_time = time.perf_counter()
+            if dt < target_dt:
+                slee_time = target_dt - dt
+                time.sleep(0.95*slee_time)
+            elif dt > 1.35*target_dt:
+                log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/dt:.2f} write {1.0/write_time:.2f}Hz')
+            elif dt > 10*target_dt:
+                # release the control and quit, @TODO:
+                log.warn(f'Too slow control freq for unitree g1')
+                return 
