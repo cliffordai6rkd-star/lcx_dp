@@ -19,10 +19,10 @@ class RobotJointState:
         self._time_stamp = time.perf_counter()
         
     def set_state_dof(self, dof):
-        self._positions = np.zeros_like(dof)
-        self._velocities = np.zeros_like(dof)
-        self._accelerations = np.zeros_like(dof)
-        self._torques = np.zeros_like(dof)
+        self._positions = np.zeros(dof)
+        self._velocities = np.zeros(dof)
+        self._accelerations = np.zeros(dof)
+        self._torques = np.zeros(dof)
     
 def get_joint_slice_value(start, end, joint_state: RobotJointState):
     new_state = RobotJointState()

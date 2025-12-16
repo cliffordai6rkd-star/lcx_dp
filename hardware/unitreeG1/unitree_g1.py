@@ -97,11 +97,17 @@ class UnitreeG1(ArmBase):
           G1JointIndex.RightWristYaw,]
         self._waist_joints = [G1JointIndex.WaistYaw, G1JointIndex.WaistRoll,
                         G1JointIndex.WaistPitch]
+        if self._ankle_mode == Mode.PR:
+            left_ankle = [G1JointIndex.LeftAnklePitch, G1JointIndex.LeftAnkleRoll]
+            right_ankle = [G1JointIndex.RightAnklePitch, G1JointIndex.RightAnkleRoll]
+        else: 
+            left_ankle = [G1JointIndex.LeftAnkleA, G1JointIndex.LeftAnkleB]
+            right_ankle = [G1JointIndex.RightAnkleA, G1JointIndex.RightAnkleB]
         self._leg_joints = [
             G1JointIndex.LeftHipPitch, G1JointIndex.LeftHipRoll, G1JointIndex.LeftHipYaw,
-            G1JointIndex.LeftKnee, G1JointIndex.LeftAnklePitch, G1JointIndex.LeftAnkleRoll,
+            G1JointIndex.LeftKnee, left_ankle[0], left_ankle[1],
             G1JointIndex.RightHipPitch, G1JointIndex.RightHipRoll, G1JointIndex.RightHipYaw,
-            G1JointIndex.RightKnee, G1JointIndex.RightAnklePitch, G1JointIndex.RightAnkleRoll,
+            G1JointIndex.RightKnee, right_ankle[0], right_ankle[1],
         ]
         
         self._robot_id = self._arm_joints
@@ -178,6 +184,7 @@ class UnitreeG1(ArmBase):
             
         with self._lock:
             for id, joint_id in enumerate(self._robot_id):
+                # log.info(f'{self._joint_states._positions} {id}: joint id: {joint_id}, {self._low_state.motor_state[joint_id]}')
                 self._joint_states._positions[id] = self._low_state.motor_state[joint_id].q
                 self._joint_states._velocities[id] = self._low_state.motor_state[joint_id].dq
                 self._joint_states._accelerations[id] = self._low_state.motor_state[joint_id].ddq
@@ -237,11 +244,12 @@ class UnitreeG1(ArmBase):
         
         sucess, command, _ = self._command_buffer.pop_data()
         if not sucess:
+            # log.warn(f'Could not get the command from buffer')
             return 
         
         if control_time_duration < 1.0 / self._control_frequency:
             self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1 # 1:Enable arm_sdk, 0:Disable arm_sdk
-            for i,joint in enumerate(self._robot_id):
+            for i, joint in enumerate(self._robot_id):
                 self._low_cmd.motor_cmd[joint].mode = 1 # 1 for enable 0 for disable
                 self._low_cmd.motor_cmd[joint].tau = 0. 
                 self._low_cmd.motor_cmd[joint].q = 0
@@ -254,7 +262,7 @@ class UnitreeG1(ArmBase):
                     self._low_cmd.motor_cmd[joint].tau = command[joint]
                 else:
                     raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
-        elif control_time_duration < 1.5 / self._control_frequency:
+        elif control_time_duration > 1.35 / self._control_frequency:
             log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0 / control_time_duration}')
         elif control_time_duration > 10 / self._update_frequency:
             # release the control and quit, @TODO:
@@ -262,6 +270,9 @@ class UnitreeG1(ArmBase):
         
         self._low_cmd.crc = self._crc.Crc(self._low_cmd)
         self._lowcmd_publisher.Write(self._low_cmd)
+        log.info(f'write the command: {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}')
+        # log.info(f'write the command kp : {[self._low_cmd.motor_cmd[id].kp for id in self._robot_id]}')
+        log.info(f'write the command tau : {[self._low_cmd.motor_cmd[id].tau for id in self._robot_id]}')
         if not self._zero_finished:
             self._zero_finished = True
             

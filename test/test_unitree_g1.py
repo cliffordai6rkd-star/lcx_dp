@@ -82,8 +82,8 @@ def test_hw_state_to_sim(
         k = 0
         
         log.info(f"[HW->SIM] start: duration={duration_s}s, rate={rate_hz}Hz, sim_dof={sim_dof}")
-
-        while (time.perf_counter() - t0) < duration_s:
+        # (time.perf_counter() - t0) < duration_s
+        while True:
             # 读硬件关节角
             js = g1.get_joint_states()  # ArmBase 通常提供
             hw_pos = np.asarray(js._positions, dtype=np.float64)
@@ -93,7 +93,7 @@ def test_hw_state_to_sim(
             # sim_pos = _apply_index_map(hw_pos, index_map_hw_to_sim, sim_dof)
 
             # 尽量用 step_lock 避免和 mj_step 数据竞争（如果 MujocoSim 有这个锁）
-            log.info(f'hw position: {hw_pos}')
+            # log.info(f'hw position: {hw_pos}')
             step_lock = getattr(sim, "_step_lock", None)
             if step_lock is None:
                 sim.set_joint_command(["position"]*(sim_dof), sim_pos)
@@ -134,7 +134,7 @@ def test_sim_ctrl_to_hw(
     """
     cur_path = os.path.dirname(__file__)
     mujoco_cfg_path = os.path.join(cur_path, '..', mujoco_cfg_path)
-    g1_cfg_path = os.path.join(cur_path, '..', g1_cfg)
+    g1_cfg_path = os.path.join(cur_path, '..', g1_cfg_path)
     mujoco_cfg = _load_subcfg(mujoco_cfg_path, ["mujoco"])
     g1_cfg = _load_subcfg(g1_cfg_path, ["unitree_g1", "unitreeG1", "g1"])
 
@@ -171,27 +171,30 @@ def test_sim_ctrl_to_hw(
 
         log.info(f"[SIM->HW] start: duration={duration_s}s, rate={rate_hz}Hz, hw_dof={hw_dof}, mode={hw_mode}")
 
-        while (time.perf_counter() - t0) < duration_s:
+        # (time.perf_counter() - t0) < duration_s
+        while True:
             # 线程安全读取 ctrl：优先从 render_data + render_lock（因为仿真线程会把 ctrl copy 过去）
-            render_lock = getattr(sim, "_render_lock", None)
-            if render_lock is None or getattr(sim, "_render_data", None) is None:
-                # fallback：直接读 data.ctrl（可能有轻微竞争，但一般能用）
-                step_lock = getattr(sim, "_step_lock", None)
-                if step_lock is None:
-                    sim_ctrl = np.asarray(sim._data.ctrl, dtype=np.float64).copy()
-                else:
-                    with step_lock:
-                        sim_ctrl = np.asarray(sim._data.ctrl, dtype=np.float64).copy()
-            else:
-                with render_lock:
-                    sim_ctrl = np.asarray(sim._render_data.ctrl, dtype=np.float64).copy()
-            log.info(f'Sim ctrl value: {sim_ctrl}')
+            # render_lock = getattr(sim, "_render_lock", None)
+            # if render_lock is None or getattr(sim, "_render_data", None) is None:
+            #     # fallback：直接读 data.ctrl（可能有轻微竞争，但一般能用）
+            #     step_lock = getattr(sim, "_step_lock", None)
+            #     if step_lock is None:
+            #         sim_ctrl = np.asarray(sim._data.ctrl, dtype=np.float64).copy()
+            #     else:
+            #         with step_lock:
+            #             sim_ctrl = np.asarray(sim._data.ctrl, dtype=np.float64).copy()
+            # else:
+            #     with render_lock:
+            #         sim_ctrl = np.asarray(sim._render_data.ctrl, dtype=np.float64).copy()
+            sim_ctrl = sim.get_joint_states()._positions
+            assert len(sim_ctrl) == 14, f"sim len {len(sim_ctrl)} != 14"
             
             # 映射到硬件关节维度（只取需要的 dof）
             hw_cmd = sim_ctrl
             # hw_cmd = _apply_index_map(sim_ctrl, index_map_sim_to_hw, hw_dof)
 
             # 下发给硬件
+            # log.info(f'{hw_mode} -> Sim ctrl value: {sim_ctrl}')
             g1.set_joint_command(hw_mode, hw_cmd)
 
             k += 1
