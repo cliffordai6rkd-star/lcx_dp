@@ -76,7 +76,8 @@ class UnitreeG1(ArmBase):
         self.counter = 0
         ChannelFactoryInitialize(0, self._network_interface) # dds channel initialization
         self._msc = MotionSwitcherClient()
-        pub_topic = "rt/lowcmd" if self._enable_low_level else "rt/arm_sdk"
+        # pub_topic = "rt/lowcmd" if self._enable_low_level else "rt/arm_sdk"
+        pub_topic = "rt/lowcmd" 
         self._lowcmd_publisher = ChannelPublisher(pub_topic, LowCmd_)
         self._lowstate_subscriber = ChannelSubscriber("rt/lowstate", LowState_)
         self._update_mode_machine = False
@@ -252,24 +253,24 @@ class UnitreeG1(ArmBase):
             # log.warn(f'Could not get the command from buffer')
             return 
         
-        if control_time_duration < 1.0 / self._control_frequency:
-            self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1 # 1:Enable arm_sdk, 0:Disable arm_sdk
-            for i, joint in enumerate(self._robot_id):
-                self._low_cmd.motor_cmd[joint].mode = 1 # 1 for enable 0 for disable
-                self._low_cmd.motor_cmd[joint].tau = 0. 
-                self._low_cmd.motor_cmd[joint].q = 0
-                self._low_cmd.motor_cmd[joint].dq = 0. 
-                # self._low_cmd.motor_cmd[joint].kp = self._kp 
-                # self._low_cmd.motor_cmd[joint].kd = self._kd
-                if self._control_mode == "position":
-                    self._low_cmd.motor_cmd[joint].q = command[joint]
-                elif self._control_mode == "torque":
-                    self._low_cmd.motor_cmd[joint].tau = command[joint]
-                else:
-                    raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
-            _, command = self._command_buffer.pop_data()
-            log.info(f'Updated command writer with command {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}!!!')
-        elif control_time_duration > 1.35 / self._control_frequency:
+        self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1.0 # 1:Enable arm_sdk, 0:Disable arm_sdk
+        for i, joint in enumerate(self._robot_id):
+            self._low_cmd.motor_cmd[joint].mode = 1 # 1 for enable 0 for disable
+            self._low_cmd.motor_cmd[joint].tau = 0. 
+            self._low_cmd.motor_cmd[joint].q = 0
+            self._low_cmd.motor_cmd[joint].dq = 0. 
+            # self._low_cmd.motor_cmd[joint].kp = self._kp 
+            # self._low_cmd.motor_cmd[joint].kd = self._kd
+            if self._control_mode == "position":
+                self._low_cmd.motor_cmd[joint].q = command[joint]
+            elif self._control_mode == "torque":
+                self._low_cmd.motor_cmd[joint].tau = command[joint]
+            else:
+                raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
+        _, command = self._command_buffer.pop_data()
+        log.info(f'Updated command writer with command {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}!!!')
+        
+        if control_time_duration > 1.35 / self._control_frequency:
             log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0 / control_time_duration}')
         elif control_time_duration > 10 / self._update_frequency:
             # release the control and quit, @TODO:
