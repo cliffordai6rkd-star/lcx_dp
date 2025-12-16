@@ -83,6 +83,7 @@ class UnitreeG1(ArmBase):
         self._mode_machine = 0 # G1 型號
         self._low_state_updated = False
         self._low_cmd = unitree_hg_msg_dds__LowCmd_()
+        self._low_cmd.mode_pr = self._ankle_mode
         self._low_state = unitree_hg_msg_dds__LowState_()
         self._crc = CRC()
         
@@ -147,7 +148,8 @@ class UnitreeG1(ArmBase):
         self._low_state_updated = False
         while not self._low_state_updated:
             time.sleep(0.001)
-        log.info(f'Get the low state from the unitree g1')
+        self._low_cmd.mode_machine = self._mode_machine
+        log.info(f'Get the low state from the unitree g1 with the version {self._mode_machine}')
         # update command for not used joints
         for jid in (self._arm_joints + self._waist_joints + self._leg_joints):
             self._low_cmd.motor_cmd[jid].mode = 1
@@ -242,7 +244,10 @@ class UnitreeG1(ArmBase):
         control_time_duration = time.perf_counter() - self._last_write_time
         self._last_write_time = time.perf_counter()
         
-        sucess, command, _ = self._command_buffer.pop_data()
+        sucess = False
+        if self._command_buffer.size() > 0:
+            sucess = True; command =  self._command_buffer._data[0]
+        # sucess, command, _ = self._command_buffer.pop_data()
         if not sucess:
             # log.warn(f'Could not get the command from buffer')
             return 
@@ -262,17 +267,19 @@ class UnitreeG1(ArmBase):
                     self._low_cmd.motor_cmd[joint].tau = command[joint]
                 else:
                     raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
+            _, command = self._command_buffer.pop_data()
+            log.info(f'Updated command writer with command {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}!!!')
         elif control_time_duration > 1.35 / self._control_frequency:
             log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0 / control_time_duration}')
         elif control_time_duration > 10 / self._update_frequency:
             # release the control and quit, @TODO:
-            pass
+            return 
         
         self._low_cmd.crc = self._crc.Crc(self._low_cmd)
         self._lowcmd_publisher.Write(self._low_cmd)
         log.info(f'write the command: {[self._low_cmd.motor_cmd[id].q for id in self._robot_id]}')
         # log.info(f'write the command kp : {[self._low_cmd.motor_cmd[id].kp for id in self._robot_id]}')
-        log.info(f'write the command tau : {[self._low_cmd.motor_cmd[id].tau for id in self._robot_id]}')
+        # log.info(f'write the command tau : {[self._low_cmd.motor_cmd[id].tau for id in self._robot_id]}')
         if not self._zero_finished:
             self._zero_finished = True
             
