@@ -242,6 +242,14 @@ def convert_7D_2_homo(pose_7d):
     homo[:3, :3] = R.from_quat(quat).as_matrix()
     return homo
 
+def pose6d_to_mat(d6):
+    pos = d6[:3]
+    rot = R.from_euler('xyz', d6[3:]).as_matrix()
+    mat = np.eye(4)
+    mat[:3, :3] = rot
+    mat[:3, 3] = pos
+    return mat
+
 def matrix_sqrt(matrix: np.ndarray):
     eig_val, eig_vec = np.linalg.eig(matrix)
     sqrt_eigenvalue = np.sqrt(eig_val)
