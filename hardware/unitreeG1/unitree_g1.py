@@ -277,7 +277,8 @@ class UnitreeG1(ArmBase):
         other_operation = time.perf_counter() - start
 
         if control_time_duration > 1.35 / self._control_frequency:
-            log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/control_time_duration:.2f} write {1.0/self._write_time:.2f}Hz others {1.0/other_operation:.2f}Hz')
+            pass
+            # log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/control_time_duration:.2f} write {1.0/self._write_time:.2f}Hz others {1.0/other_operation:.2f}Hz')
         elif control_time_duration > 10 / self._update_frequency:
             # release the control and quit, @TODO:
             log.warn(f'Too slow control freq for unitree g1')

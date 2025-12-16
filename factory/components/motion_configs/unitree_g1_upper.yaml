@@ -1,13 +1,13 @@
 # usage platform
-use_hardware: false
+use_hardware: true
 use_simulation: true
 
 # Notice: the config file path should contain ../ to locate the file
 # from the project directory
 robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
-# gripper: "zmq_pika_gripper"
-# gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
+gripper: "zmq_pika_gripper"
+gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
 
 control_frequency: 800
 controller_type: "whole_body_ik"

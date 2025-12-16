@@ -103,6 +103,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
                 self._tool_idle = True
             elif self._control_mode == ToolControlMode.INCREMENTAL:
                 success = self._handle_gripper_incremental_command(target)
+                success = True
             else:
                 raise ValueError(f"Unsupported control mode: {self._control_mode}")
             return success
@@ -127,7 +128,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
     def _apply_binary_threshold(self, value: float) -> float:
         return 1.0 if value >= self._binary_threshold else 0.0
     
-    def _handle_gripper_incremental_command(self, target: float, is_wait: bool = False):
+    def _handle_gripper_incremental_command(self, target: float, is_wait: bool = False, cur_value: float = None, func = None):
         """
         Handle gripper incremental command with smooth position transitions in a separate thread.
         
@@ -137,12 +138,12 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
         """
         self._tool_idle = False
         
-        def incremental_execution():
+        def incremental_execution(current_position, set_hardware_command):
             """
             Execute incremental movement in a while loop until target is reached.
             """
             while True:
-                position_diff = target - self._current_position_scaled
+                position_diff = target - current_position
                 if abs(position_diff) < 1e-3:
                     break
                 
@@ -150,16 +151,16 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
                 if abs(position_diff) > self._step_size:
                     # Move by step_size in the direction of target
                     step = self._step_size if position_diff > 0 else -self._step_size
-                    new_position = self._current_position_scaled + step
+                    new_position = current_position + step
                 else:
                     # Close enough, move directly to target
                     new_position = target
                 
                 # Update internal position state
-                self._current_position_scaled = new_position
+                current_position = new_position
                 
                 # Execute hardware command
-                self.set_hardware_command(new_position)
+                set_hardware_command(new_position)
                 
                 # Wait for next move based on frequency
                 time.sleep(0.001)
@@ -167,10 +168,13 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             self._tool_idle = True
         
         # Start thread for incremental execution
-        thread = threading.Thread(target=incremental_execution)
+        cur_value = cur_value if cur_value else self._current_position_scaled
+        func = func if func else self.set_hardware_command
+        thread = threading.Thread(target=incremental_execution, 
+                                        args=(cur_value, func))
         thread.start()
         
         # Wait for thread completion if requested
         if is_wait:
             thread.join()
-        return True
+        return thread

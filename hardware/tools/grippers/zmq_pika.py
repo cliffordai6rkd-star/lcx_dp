@@ -1,9 +1,10 @@
 from hardware.communication.servo_pika_img_interface import G1UmiClient
-from hardware.base.tool_base import ToolBase
+from hardware.base.tool_base import ToolBase, ToolControlMode
 from hardware.base.utils import ToolState, ToolType
 import numpy as np
 import glog as log
 import copy, threading, time
+from functools import partial
 
 """
     duo tool: left and right pika in one class
@@ -22,13 +23,12 @@ class ZmqPika(ToolBase):
         time.sleep(1.0)
         
         self._gripper_state_updated = False
+        self._zmq_lock = threading.Lock()
         self._lock = threading.Lock()
         self._thread_running = False
         self._update_thread = None
         
         super().__init__(config)
-        
-        self._state = {"left": ToolState(), "right": ToolState()}
         
     def initialize(self):
         if self._is_initialized:
@@ -43,6 +43,9 @@ class ZmqPika(ToolBase):
             log.info(f'ZMQ Pika gripper trying to connect with current positions: {cur_position}')
             
         # thread starting
+        self._state = {"left": ToolState(), "right": ToolState()}
+        self._gripper_ok = {"left": None, "right": None}
+        self._thread_running = True
         self._update_thread = threading.Thread(target=self.update_loop, daemon=True)
         self._update_thread.start()
         while not self._gripper_state_updated:
@@ -61,11 +64,12 @@ class ZmqPika(ToolBase):
         expected_dt = 1.0 / self._update_frequency
         last_read_time = time.perf_counter()
         while self._thread_running:
-            current_position = self._zmq_interface.get_all_gripper_positions()
+            with self._zmq_lock:
+                current_position = self._zmq_interface.get_all_gripper_positions()
             with self._lock:
                 self._state["left"]._position = current_position[0]
                 self._state["left"]._time_stamp = time.perf_counter()
-                self._state["right"]._position = current_position[0]
+                self._state["right"]._position = current_position[1]
                 self._state["right"]._time_stamp = time.perf_counter()
             if not self._gripper_state_updated: self._gripper_state_updated = True
             
@@ -74,23 +78,53 @@ class ZmqPika(ToolBase):
             if dt < expected_dt:
                 sleep_time = expected_dt - dt
                 time.sleep(0.92*sleep_time)
-            elif dt > 1.3* expected_dt:
-                log.warn(f'ZMQ PIKA gripper update slow, real: {1.0/dt:.2f}, expected: {self._update_frequency}')
+            # elif dt > 1.3* expected_dt:
+            #     log.warn(f'ZMQ PIKA gripper update slow, real: {1.0/dt:.2f}, expected: {self._update_frequency}')
                 
         log.info(f'ZMQ Pika gripper update thread stopped!!!')
     
     def set_hardware_command(self, command):
+        pass
+
+    def set_single_command(self, command, key):
         if not self._is_initialized:
             return 
+
+        command = command * self._max_distance
+        with self._zmq_lock:
+            self._zmq_interface.set_gripper_command(command, key)
         
-        assert len(command) == 2, "ZMQ Pika gripper need to have two targets"
-        if isinstance(command, dict):
-            new_command = [command["left"], command["right"]]
-        else: new_command = command
+    def set_tool_command(self, target):
+        assert len(target) == 2, "ZMQ Pika gripper need to have two targets"
+        if isinstance(target, dict):
+            new_command = [target["left"], target["right"]]
+        else: new_command = target
         
-        self._zmq_interface.set_all_gripper_commands(
-            new_command[0]*self._max_distance, new_command[1]*self._max_distance) 
-                
+        keys = ["left", "right"]
+        for i, command in enumerate(new_command):
+            gripper_ok = self._gripper_ok[keys[i]]
+            if gripper_ok is None or not gripper_ok.is_alive():
+                gripper_ok = True
+            else: gripper_ok = False
+            if not gripper_ok:
+                log.debug(f"ZMQ gripper {keys[i]} is currently working on other command, please wait for some time to set new command") 
+                continue
+
+            new_command[i] = np.clip(command, 0, 1)
+            cur_value = self._state[keys[i]]._position / self._max_distance
+            if self._control_mode == ToolControlMode.BINARY:
+                # Binary mode: extract value -> threshold judgment -> 0.0 or 1.0
+                target = self._apply_binary_threshold(new_command[i])
+                self._gripper_ok[keys[i]] = False
+                success = self.set_single_command(target, keys[i])
+                self._gripper_ok[keys[i]] = True
+            elif self._control_mode == ToolControlMode.INCREMENTAL:
+                thread = self._handle_gripper_incremental_command(new_command[i], 
+                    cur_value=cur_value, func=partial(self.set_single_command, key=keys[i]))
+                self._gripper_ok[keys[i]] = thread
+            else:
+                raise ValueError(f"Unsupported control mode: {self._control_mode}")
+
     def get_tool_state(self) -> ToolState:
         """Get current tool state in thread-safe manner"""
         if not self._gripper_state_updated:

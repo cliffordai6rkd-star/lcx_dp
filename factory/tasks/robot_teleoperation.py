@@ -243,7 +243,7 @@ class TeleoperationFactory:
                         if whether_to_quit:
                             self.close()
                     
-                    
+                    log.info(f'tele tool target: {tool_target}')
                     tool_type_dict = self._robot_system.get_tool_type_dict()
                     if self._enable_recording and tool_type_dict is not None:
                         with self._tool_action_lock:
