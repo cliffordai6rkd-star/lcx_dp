@@ -1,5 +1,6 @@
 unitree_g1:
-  network_interface: "eth0"
+  dof: [7, 7]  # Dual arm DOF configuration
+  network_interface: "enp5s0"
   enable_low_level: false
   control_frequency: 500
   update_frequency: 800

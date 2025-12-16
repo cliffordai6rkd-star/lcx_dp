@@ -56,6 +56,8 @@ except (ImportError, ModuleNotFoundError):
             pass
     MotionSwitcherClient = MockMotionSwitcherClient
 
+DEBUG = True
+
 class UnitreeG1(ArmBase):
     def __init__(self, config):
         self._network_interface = config["network_interface"]
@@ -105,8 +107,6 @@ class UnitreeG1(ArmBase):
         self._robot_id = self._arm_joints
         if self._enable_low_level:
             self._robot_id = self._leg_joints + self._waist_joints + self._robot_id
-        total_dof = len(self._robot_id)
-        self._joint_states.set_state_dof(total_dof)
         
         self._kp_high = 300.0
         self._kd_high = 3.0
@@ -130,6 +130,8 @@ class UnitreeG1(ArmBase):
             status, result = self._msc.CheckMode()
             time.sleep(1)
         log.info(f'Passed the check mode of motion service client for unitree G1')
+        total_dof = len(self._robot_id)
+        self._joint_states.set_state_dof(total_dof)
         
         # dds sub and pub
         self._lowcmd_publisher.Init()
@@ -170,8 +172,9 @@ class UnitreeG1(ArmBase):
         return True
     
     def update_arm_states(self):
-        if not self._is_initialized:
-            log.warn(f'Unitree g1 is still not initialized for update joint state')
+        if not self._low_state_updated:
+            log.warn(f'Unitree g1 low state is still not updated with {self._low_state_updated}')
+            return 
             
         with self._lock:
             for id, joint_id in enumerate(self._robot_id):
@@ -210,18 +213,23 @@ class UnitreeG1(ArmBase):
             time.sleep(0.001)
     
     def _LowStateHandler(self, msg: LowState_):
-        self._low_state = msg
-        self._low_state_updated = True
-        self.update_arm_states()
+        try:
+            self._low_state = msg
+            self._low_state_updated = True
+            self.update_arm_states()
 
-        if self._update_mode_machine == False:
-            self._mode_machine = self.low_state.mode_machine
-            self._update_mode_machine = True
+            if self._update_mode_machine == False:
+                self._mode_machine = self._low_state.mode_machine
+                self._update_mode_machine = True
+            
+            self.counter +=1
+            if (self.counter % 500 == 0) :
+                self.counter = 0
+                if DEBUG:
+                    log.info(self._low_state.imu_state.rpy)
         
-        self.counter +=1
-        if (self.counter % 500 == 0) :
-            self.counter = 0
-            log.info(self._low_state.imu_state.rpy)
+        except Exception:
+            log.exception("LowState handler error (prevent thread crash)")
     
     def _LowCommandWriter(self):
         control_time_duration = time.perf_counter() - self._last_write_time

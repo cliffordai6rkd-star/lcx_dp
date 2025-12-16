@@ -61,7 +61,7 @@ def test_hw_state_to_sim(
     """
     cur_path = os.path.dirname(__file__)
     mujoco_cfg_path = os.path.join(cur_path, '..', mujoco_cfg_path)
-    g1_cfg_path = os.path.join(cur_path, '..', g1_cfg)
+    g1_cfg_path = os.path.join(cur_path, '..', g1_cfg_path)
     mujoco_cfg = _load_subcfg(mujoco_cfg_path, ["mujoco"])
     g1_cfg = _load_subcfg(g1_cfg_path, ["unitree_g1", "unitreeG1", "g1"])
 
@@ -75,11 +75,12 @@ def test_hw_state_to_sim(
         sim_dof = len(getattr(sim, "_joint_names", [])) or len(getattr(sim, "_actuator_mode", []))
         if sim_dof <= 0:
             raise RuntimeError("Cannot infer MujocoSim DoF (no _joint_names/_actuator_mode).")
+        time.sleep(1.5)
 
         dt = 1.0 / max(rate_hz, 1e-6)
         t0 = time.perf_counter()
         k = 0
-
+        
         log.info(f"[HW->SIM] start: duration={duration_s}s, rate={rate_hz}Hz, sim_dof={sim_dof}")
 
         while (time.perf_counter() - t0) < duration_s:
@@ -92,12 +93,13 @@ def test_hw_state_to_sim(
             # sim_pos = _apply_index_map(hw_pos, index_map_hw_to_sim, sim_dof)
 
             # 尽量用 step_lock 避免和 mj_step 数据竞争（如果 MujocoSim 有这个锁）
+            log.info(f'hw position: {hw_pos}')
             step_lock = getattr(sim, "_step_lock", None)
             if step_lock is None:
-                sim.set_joint_command(["position"]*len(sim_dof), sim_pos)
+                sim.set_joint_command(["position"]*(sim_dof), sim_pos)
             else:
                 with step_lock:
-                    sim.set_joint_command(["position"]*len(sim_dof), sim_pos)
+                    sim.set_joint_command(["position"]*(sim_dof), sim_pos)
 
             k += 1
             if k % int(max(rate_hz, 1.0)) == 0:
