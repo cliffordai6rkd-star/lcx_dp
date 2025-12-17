@@ -63,7 +63,7 @@ def test_zmq_images():
             if succ:
                 camera_data[cam_name] = img
             else: print(f'Failed to get image from {cam_name}')
-        display_images(camera_data)
+        display_images(camera_data, "testing zmq images")
         key = cv2.waitKey(1)
         if key == "q":
             print(f'quit zmq camera testing!!!!')
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     # test_pika_gripper_apis()
     # test_pika_class_apis()
     # test_pika_tracker()
-    pikasense2gripper()
-    # test_zmq_images()
+    # pikasense2gripper()
+    test_zmq_images()
     # test_pika_gripper_time()
     

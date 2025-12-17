@@ -85,6 +85,7 @@ class UnitreeG1(ArmBase):
         self._network_interface = config["network_interface"]
         self._enable_low_level = config.get(f'enable_low_level', False)
         self._control_frequency = config.get("control_frequency", 500)
+        self._update_frequency = config.get("update_frequency", 500)
         self._ankle_mode = config.get('ankle_mode', "pr")
         if self._ankle_mode == "pr":
             self._ankle_mode = Mode.PR
@@ -165,10 +166,14 @@ class UnitreeG1(ArmBase):
         self._joint_states.set_state_dof(total_dof)
         
         # dds sub and pub
+        self._last_read_time = time.perf_counter()
         self._lowcmd_publisher.Init()
-        self._lowstate_subscriber.Init(self._LowStateHandler, 10)
-        
-        # low command writer thread
+        # self._lowstate_subscriber.Init(self._LowStateHandler, 10)
+        self._lowstate_subscriber.Init()
+
+        # low state read thread
+        self._subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
+        self._subscribe_thread.start()
         self._low_state_updated = False
         while not self._low_state_updated:
             time.sleep(0.001)
@@ -194,6 +199,7 @@ class UnitreeG1(ArmBase):
             self._low_cmd.motor_cmd[jid].q = self._low_state.motor_state[jid].q
         log.info(f'Unitree G1 low command initialized to current state!!')
         
+        # low command writer thread
         self._last_write_time = None
         # self._low_command_writer_thread = RecurrentThread(
         #     interval=0.1/self._control_frequency, target=self._LowCommandWriter, name="control"
@@ -201,9 +207,10 @@ class UnitreeG1(ArmBase):
         # self._low_command_writer_thread.Start()
         self._publish_thread = threading.Thread(target=self._ctrl_motor_state, daemon=True)
         self._publish_thread.start()
-        while not self._last_write_time is None:
+        while self._last_write_time is None:
             time.sleep(0.001)
-                
+
+        self._is_initialized = True
         self.move_to_start()
         time.sleep(1.0)
 
@@ -242,6 +249,10 @@ class UnitreeG1(ArmBase):
     
     def close(self):
         self._thread_running = False
+        if hasattr(self, "_subscribe_thread"):
+            if self._subscribe_thread.is_alive():
+                self._subscribe_thread.join()
+
         if hasattr(self, "_publish_thread"):
             if self._publish_thread.is_alive():
                 self._publish_thread.join()
@@ -275,32 +286,45 @@ class UnitreeG1(ArmBase):
         while not self._zero_finished:
             time.sleep(0.001)
     
-    def _LowStateHandler(self, msg: LowState_):
-        try:
-            self._low_state = msg
+    def _subscribe_motor_state(self):
+        log.info(f'Started unitree g1 state update loop with!!!!')
+        
+        self._last_read_time = time.perf_counter()
+        target_dt = 1.0 / self._update_frequency
+        counter = 0
+        while self._thread_running:
+            start = time.perf_counter()
+            self._low_state = self._lowstate_subscriber.Read()
+            read_time = time.perf_counter() - start
             self._low_state_updated = True
             self.update_arm_states()
 
             if self._update_mode_machine == False:
                 self._mode_machine = self._low_state.mode_machine
                 self._update_mode_machine = True
-            
-            self.counter +=1
-            if (self.counter % 500 == 0) :
-                self.counter = 0
-                if DEBUG:
-                    log.info(f"imu info: {self._low_state.imu_state.rpy}")
-        
-        except Exception:
-            log.exception("LowState handler error (prevent thread crash)")
-    
+
+            used_time = time.perf_counter() - self._last_read_time
+            self._last_read_time = time.perf_counter()
+            if used_time < target_dt:
+                sleep_time = target_dt - used_time
+                # log.info(f'sleep time: {sleep_time*1000:.1f}ms')
+                time.sleep(sleep_time)
+            elif used_time > 1.3 * target_dt:
+                counter += 1
+                if counter %1000 == 0:
+                    log.info(f'Unitree G1 state update slow, expected: {target_dt*1000:.1f}ms actual: {used_time*1000:.1f}ms read: {read_time*1000:.1f}ms')
+                    counter = 0        
+        log.info(f'Stopped unitree g1 state update loop!!!')
+
     def _ctrl_motor_state(self):
         log.info(f'Started unitree g1 ctrl loop!!!!')
         
         target_dt = 1.0 / self._control_frequency    
+        counter = 0
         while self._thread_running:
-            if self._last_write_time: self._last_write_time = time.perf_counter()
+            if self._last_write_time is None: self._last_write_time = time.perf_counter()
             
+            # start = time.perf_counter()
             sucess = False
             if self._command_buffer.size() > 0:
                 sucess = True; command =  self._command_buffer._data[0]
@@ -321,7 +345,8 @@ class UnitreeG1(ArmBase):
                     else:
                         raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
                 _, command, _ = self._command_buffer.pop_data()
-            
+            # other_time = time.perf_counter() - start
+
             start = time.perf_counter()
             self._low_cmd.crc = self._crc.Crc(self._low_cmd)
             self._lowcmd_publisher.Write(self._low_cmd)
@@ -333,11 +358,16 @@ class UnitreeG1(ArmBase):
             dt = time.perf_counter() - self._last_write_time
             self._last_write_time = time.perf_counter()
             if dt < target_dt:
-                slee_time = target_dt - dt
-                time.sleep(0.95*slee_time)
+                sleep_time = target_dt - dt
+                time.sleep(0.95*sleep_time)
             elif dt > 1.35*target_dt:
-                log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/dt:.2f} write {1.0/write_time:.2f}Hz')
+                counter += 1
+                if counter %1000 == 0:
+                    log.warn(f'control frequency is slow for unitree g1 writing, expected: {self._control_frequency}, actual: {1.0/dt:.2f} write {1.0/write_time:.2f}Hz')
+                    counter = 0
             elif dt > 10*target_dt:
                 # release the control and quit, @TODO:
                 log.warn(f'Too slow control freq for unitree g1')
                 return 
+            
+        log.info(f'Stopped unitree g1 ctrl loop!!!!')

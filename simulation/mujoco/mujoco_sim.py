@@ -19,6 +19,8 @@ class MujocoSim(SimBase):
         super().__init__(config)
         self._quat_sequence = config.get('quat_sequence', 'xyzw')
         self._dt = config['dt']
+        self._viewer_dt = config.get('viewer_dt', 0.02)
+        self._last_viewer_time = None
         self._model = None
         self._data = None
         self._actuator_names = config["actuator_names"]
@@ -76,40 +78,57 @@ class MujocoSim(SimBase):
                 self._add_geometry(viewer, [0,0,0], i)
             viewer.user_scn.ngeom = self._traj_max_len
             viewer.sync()
+            self._last_viewer_time = time.perf_counter()
+            counter = 0
             while viewer.is_running() and self._theread_running:
-                step_start = time.time()
+                step_start = time.perf_counter()
 
                 # Step 1: Physics step (protected by step_lock)
                 with self._step_lock:
                     mujoco.mj_step(self._model, self._data)
-
-                # Step 2: Copy data for rendering (protected by render_lock)
-                with self._render_lock:
-                    # Copy essential MjData fields for rendering
-                    self._render_data.time = self._data.time
-                    self._render_data.qpos[:] = self._data.qpos
-                    self._render_data.qvel[:] = self._data.qvel
-                    self._render_data.ctrl[:] = self._data.ctrl
-                    # Forward kinematics to update visual state
-                    mujoco.mj_forward(self._model, self._render_data)
-
-                    if self._extra_render:
-                        self.render(viewer)
-
-                viewer.sync()
+                step_time = time.perf_counter() - step_start
                 if not self._sim_started: self._sim_started = True
+                
+                need_render = False
+                if time.perf_counter() - self._last_viewer_time > self._viewer_dt:
+                    # Step 2: Copy data for rendering (protected by render_lock)
+                    start = time.perf_counter()
+                    with self._render_lock:
+                        # Copy essential MjData fields for rendering
+                        self._render_data.time = self._data.time
+                        self._render_data.qpos[:] = self._data.qpos
+                        self._render_data.qvel[:] = self._data.qvel
+                        self._render_data.ctrl[:] = self._data.ctrl
+                        forward_time = time.perf_counter() - start
+                        # Forward kinematics to update visual state
+                        mujoco.mj_forward(self._model, self._render_data)
+
+                        if self._extra_render:
+                            self.render(viewer)
+                        render_time = time.perf_counter() - start
+                    
+                    start = time.perf_counter()
+                    viewer.sync()
+                    sync_time = time.perf_counter() - start
+                    self._last_viewer_time = time.perf_counter()
+                    need_render = True
+                else: sync_time = 0; render_time = 0; forward_time = 0
 
                 # Step 2: State update with lock (separate from render_lock to avoid deadlock)
                 with self.lock:
                     self.update_simulation_states()
 
-                used_time = time.time() - step_start
+                used_time = time.perf_counter() - step_start
                 time_until_next_step = self._dt - used_time
+                real_time_until_next_step = time_until_next_step + self._viewer_dt if need_render else time_until_next_step
                 if time_until_next_step > 0:
-                    time.sleep(0.2*time_until_next_step)
-                elif time_until_next_step > 1.2 * self._dt:
-                    log.warn(f"Mujoco node frequency is not enough, "
-                                  f"actual: {used_time}, expected: {self._dt}")
+                    time.sleep(time_until_next_step)
+                elif real_time_until_next_step < -0.3 * self._dt:
+                    counter += 1
+                    if counter % 1000 == 0:
+                        log.warn(f"Mujoco node frequency is not enough, "
+                            f"expected: {self._dt*1000}ms actual: {used_time*1000:.1f}ms, step: {step_time*1000:.1f}ms forward: {forward_time*1000:.1f}ms render: {render_time*1000:.1f}ms sync: {sync_time*1000:.1f}ms")
+                        counter = 0
             viewer.close()
             log.info(f'The mujoco simulation thread successfully stopped!')
 

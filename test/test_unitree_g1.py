@@ -61,6 +61,7 @@ def test_hw_state_to_sim(
     """
     cur_path = os.path.dirname(__file__)
     mujoco_cfg_path = os.path.join(cur_path, '..', mujoco_cfg_path)
+    # mujoco_cfg_path = os.path.join(cur_path, '..', "simulation/config/mujoco_fr3_pika_ati_torque.yaml")
     g1_cfg_path = os.path.join(cur_path, '..', g1_cfg_path)
     mujoco_cfg = _load_subcfg(mujoco_cfg_path, ["mujoco"])
     g1_cfg = _load_subcfg(g1_cfg_path, ["unitree_g1", "unitreeG1", "g1"])
@@ -94,26 +95,31 @@ def test_hw_state_to_sim(
 
             # 尽量用 step_lock 避免和 mj_step 数据竞争（如果 MujocoSim 有这个锁）
             # log.info(f'hw position: {hw_pos}')
-            step_lock = getattr(sim, "_step_lock", None)
-            if step_lock is None:
-                sim.set_joint_command(["position"]*(sim_dof), sim_pos)
-            else:
-                with step_lock:
-                    sim.set_joint_command(["position"]*(sim_dof), sim_pos)
+            sim.set_joint_command(["position"]*(sim_dof), sim_pos)
+            # step_lock = getattr(sim, "_step_lock", None)
+            # if step_lock is None:
+            #     sim.set_joint_command(["position"]*(sim_dof), sim_pos)
+            # else:
+            #     with step_lock:
+            #         sim.set_joint_command(["position"]*(sim_dof), sim_pos)
 
             k += 1
             if k % int(max(rate_hz, 1.0)) == 0:
-                log.info(f"[HW->SIM] synced frames={k}, hw_pos[0:3]={hw_pos[:3]}")
+                pass
+                # log.info(f"[HW->SIM] synced frames={k}, hw_pos[0:3]={hw_pos[:3]}")
 
             time.sleep(dt)
+            # print(f'sleep for {dt}')
 
     finally:
         try:
-            sim.close()
+            # sim.close()
+            pass
         except Exception as e:
             log.warn(f"sim.close() failed: {e}")
         try:
-            g1.close()
+            # g1.close()
+            pass
         except Exception as e:
             log.warn(f"g1.close() failed: {e}")
 

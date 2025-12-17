@@ -22,8 +22,8 @@ class G1UmiClient:
         self.ctrl_endpoint = f"tcp://{server_ip}:{ctrl_endpoint}"
         self.img_endpoint = f"tcp://{server_ip}:{img_endpoint}" if img_endpoint else None
 
+        self._ctx = zmq.Context.instance()
         if require_control:
-            self._ctx = zmq.Context.instance()
             # 控制 socket
             self._ctrl_socket = self._ctx.socket(zmq.REQ)
             self._ctrl_socket.connect(self.ctrl_endpoint)
