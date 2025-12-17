@@ -204,7 +204,7 @@ if __name__ == "__main__":
     # test_pika_gripper_apis()
     # test_pika_class_apis()
     # test_pika_tracker()
-    # pikasense2gripper()
-    test_zmq_images()
+    pikasense2gripper()
+    # test_zmq_images()
     # test_pika_gripper_time()
     

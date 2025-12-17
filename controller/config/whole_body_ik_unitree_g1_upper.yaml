@@ -17,5 +17,5 @@ whole_body_ik:
   rot_weight: 5
   smooth_weight: 0.1
   regularization_weight: 0.02
-  target_threshold: 8e-3
+  target_threshold: 0.001
   

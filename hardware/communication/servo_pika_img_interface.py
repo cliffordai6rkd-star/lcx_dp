@@ -125,7 +125,8 @@ class G1UmiClient:
         sub_socket.close()
 
     def close(self):
-        self._ctrl_socket.close()
+        if self.requre_control:
+            self._ctrl_socket.close()
 
 # ================= 测试逻辑 =================
 

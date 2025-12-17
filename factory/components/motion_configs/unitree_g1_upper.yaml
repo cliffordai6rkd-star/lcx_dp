@@ -1,15 +1,15 @@
 # usage platform
-use_hardware: false
+use_hardware: true
 use_simulation: true
 
 # Notice: the config file path should contain ../ to locate the file
 # from the project directory
 robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
-gripper: "zmq_pika_gripper"
-gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
-head: "zmq_servo_head"
-head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
+# gripper: "zmq_pika_gripper"
+# gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
+# head: "zmq_servo_head"
+# head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
 control_frequency: 800
 controller_type: "whole_body_ik"
@@ -18,18 +18,16 @@ controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yam
 # smoother config?
 
 sensor_dicts:
-  # cameras:
-  #   - name: "head"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
-  #   - name: "left_fisheye"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
-  #   - name: "rightt_fisheye"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
-
-# head plugin conifg
+  cameras:
+    - name: "head"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
+    - name: "left_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
+    - name: "rightt_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
 
 model_type: "model"
 model_config:

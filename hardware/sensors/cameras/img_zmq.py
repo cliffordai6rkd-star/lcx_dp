@@ -44,7 +44,7 @@ class ZmqImgSubscriber(CameraBase):
         self._thread_handler.start()
         
         while self._image_data is None:
-            log.info(f'Stucking here for the zmq image sub for {self._cam_name}')
+            # log.info(f'Stucking here for the zmq image sub for {self._cam_name}')
             time.sleep(0.001)
         
         log.info(f'ZMQ camera subscriber with {self._cam_name} is ok to retrive data!!!')
