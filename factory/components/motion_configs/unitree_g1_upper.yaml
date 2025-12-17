@@ -8,6 +8,8 @@ robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
 gripper: "zmq_pika_gripper"
 gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
+head: "zmq_servo_head"
+head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
 control_frequency: 800
 controller_type: "whole_body_ik"

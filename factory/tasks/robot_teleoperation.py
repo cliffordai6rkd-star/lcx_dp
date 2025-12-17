@@ -245,24 +245,29 @@ class TeleoperationFactory:
                     
                     log.info(f'tele tool target: {tool_target}')
                     tool_type_dict = self._robot_system.get_tool_type_dict()
-                    if self._enable_recording and tool_type_dict is not None:
+                    if self._enable_recording:
                         with self._tool_action_lock:
-                            for key, tool_command in tool_target.items():
-                                tool_command = np.array(tool_command[:-1])
-                                if tool_type_dict[key] == ToolType.GRIPPER or \
-                                   tool_type_dict[key] == ToolType.SUCTION:
-                                    if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
-                                        tool_command = tool_command[0].astype(np.float32)
-                                tool_target[key] = tool_command
-                                # make sure the action is list/float for writing json
-                                if not isinstance(tool_command, np.ndarray):
-                                    tool_command = float(tool_command)
-                                else: tool_command = tool_command.tolist()
-                                self._tool_action[key] = dict(tool=dict(
-                                    position=tool_command, time_stamp=time.perf_counter()))
-                    # log.info(f'tool target: {tool_target}')
-                    # tool_target = dict(single=np.array([0,0]))
-                    self._robot_motion_system.set_tool_command(tool_target)
+                            if tool_type_dict is not None:
+                                for key, tool_command in tool_target.items():
+                                    tool_command = np.array(tool_command[:-1])
+                                    if tool_type_dict[key] == ToolType.GRIPPER or \
+                                    tool_type_dict[key] == ToolType.SUCTION:
+                                        if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
+                                            tool_command = tool_command[0].astype(np.float32)
+                                    tool_target[key] = tool_command
+                                    # make sure the action is list/float for writing json
+                                    if not isinstance(tool_command, np.ndarray):
+                                        tool_command = float(tool_command)
+                                    else: tool_command = tool_command.tolist()
+                                    self._tool_action[key] = dict(tool=dict(
+                                        position=tool_command, time_stamp=time.perf_counter()))
+                                # log.info(f'tool target: {tool_target}')
+                                # tool_target = dict(single=np.array([0,0]))
+                                self._robot_motion_system.set_tool_command(tool_target)
+                            if hasattr(self._robot_system, "_head") and "head" in ee_target:
+                                head_rotation = R.from_quat(ee_target["head"][3:7]).as_euler("xyz")
+                                self._robot_system.set_head_position(head_rotation)
+                                self._tool_action["head"] = head_rotation.tolist()
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
@@ -279,11 +284,12 @@ class TeleoperationFactory:
                 slow_loop_count += 1
 
                 # 每100次慢循环警告一次，避免日志刷屏
-                if slow_loop_count % 100 == 1:
+                if slow_loop_count % 300 == 1:
                     expected_freq = 1.0 / target_period
                     actual_freq = 1.0 / actual_time
                     log.warning(f"Teleoperation frequency slow: expected {expected_freq:.1f}Hz, "
                                 f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
+                    slow_loop_count = 0
 
                 # 重置时间基准，避免更大的延迟
                 next_run_time = current_time
@@ -366,6 +372,11 @@ class TeleoperationFactory:
                         gripper_state[key]['position'] = tool_state_dict[key]._position
                         gripper_state[key]["time_stamp"] = tool_state_dict[key]._time_stamp
 
+                # head state
+                head_positions = self._robot_system.get_head_position()
+                if head_positions is not None:
+                    ee_states["head"] = head_positions
+                
                 # get sensor readings
                 colors = None; depths = None; imus = None
                 if len(cur_colors):

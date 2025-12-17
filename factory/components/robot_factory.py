@@ -14,6 +14,7 @@ from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.tools.grippers.pika_gripper import PikaGripper
 from hardware.duo_tool import DuoTool
 from hardware.tools.grippers.zmq_pika import ZmqPika
+from hardware.head.servo_head_zmq import ZmqDynamixelHead
 from simulation.mujoco.mujoco_sim import MujocoSim
 from hardware.base.camera import CameraBase
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
@@ -57,6 +58,7 @@ class RobotFactory:
         self._use_simulation = config['use_simulation']
         self._robot_type = config['robot']
         self._gripper_type = config.get('gripper', None)
+        self._head_type = config.get('head', None)
         self._simulation_type = config["simulation"]
         self._sensor_dicts = config.get("sensor_dicts", None)
         self._sensors = {}
@@ -101,6 +103,10 @@ class RobotFactory:
             'zmq_pika_gripper': ZmqPika,
         }
         
+        self._head_classes = {
+            'zmq_servo_head': ZmqDynamixelHead,
+        }
+        
         self._camera_classes = {
             'realsense_camera': RealsenseCamera,
             'opencv_camera': OpencvCamera,
@@ -120,13 +126,13 @@ class RobotFactory:
         }
         
         self._simulation_classes = {
-            'mujoco': MujocoSim
+            'mujoco': MujocoSim,
         }
         
         self._smoother_classes = {
             'critical_damped': CriticalDampedSmoother,
             'adaptive_critical_damped': AdaptiveCriticalDampedSmoother,
-            'ruckig': RuckigSmoother
+            'ruckig': RuckigSmoother,
         }
     
     def create_robot_system(self):
@@ -140,6 +146,10 @@ class RobotFactory:
             if self._gripper_type is not None:
                 if object_class_check(self._gripper_classes, self._gripper_type):
                     self._tool = self._gripper_classes[self._gripper_type](self._config["gripper_config"][self._gripper_type])
+            
+            if self._head_type is not None:
+                if object_class_check(self._head_classes, self._head_type):
+                    self._head = self._head_classes[self._head_type](self._config["head_config"][self._head_type])
             
             # sensors
             possible_sensor_name_mapping = {
@@ -212,7 +222,7 @@ class RobotFactory:
         if self._use_smoother:
             log.info('Creating smoother!!!!')
             self._create_smoother(total_dof)
-            print("use smoother",self._use_smoother)
+            log.info("use smoother",self._use_smoother)
         
         # initialize all objects
         self._is_initialize = self._initialize()
@@ -248,18 +258,13 @@ class RobotFactory:
             if not self._robot.initialize():
                 raise ValueError(f"robot hardware {self._robot_type} failed intialization")
                     
-            if hasattr(self, '_grippers'):
-                for side, gripper in self._grippers.items():
-                    if gripper.initialize():
-                        log.info(f"{side} gripper initialized successfully")
-                    else:
-                        log.error(f"{side} gripper initialization failed")
-                        # Note: Not raising error to allow partial system operation
-                        
             # Initialize sensors
             if self._tool is not None:
                 if not self._tool.initialize():
                     raise ValueError(f"tool hardware {self._gripper_type} failed intialization")
+            if hasattr(self, "_head"):
+                if not self._head.initialize():
+                    raise ValueError(f"heda hardware {self._head_type} failed intialization")
             if len(self._sensors) != 0:
                 possible_sensor_types = ['camera', 'FT_sensor', 'tactile', 'imu']
                 for sensor_type in possible_sensor_types:
@@ -484,6 +489,19 @@ class RobotFactory:
             
         tool_type_dict = hw_tool_type_dict if hw_tool_type_dict is not None else sim_tool_type_dict
         return tool_type_dict
+    
+    def set_head_position(self, head_positions):
+        if not self._use_hardware or not hasattr(self, "_head"):
+            return 
+        
+        self._head.set_head_command(head_positions)
+
+    def get_head_position(self):
+        if not self._use_hardware or not hasattr(self, "_head"):
+            return None
+        
+        cur_positions = self._head.get_head_positions()
+        return cur_positions
 
     def close(self):
         # Stop async control first if enabled
@@ -506,6 +524,9 @@ class RobotFactory:
             if self._tool is not None:
                 self._tool.stop_tool()
                 log.info(f'All tools are successfully closed!!!')
+            if hasattr(self, "_head"):
+                self._head.close()
+                log.info(f'Robot head is successfully closed!!!')
             if len(self._sensors):
                 # @TODO: gradually add the sensors
                 possible_sensors = ['camera', 'FT_sensor', 'tactile', 'imu']
