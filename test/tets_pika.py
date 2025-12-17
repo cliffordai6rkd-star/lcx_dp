@@ -3,12 +3,15 @@ from pika.camera import RealSenseCamera, FisheyeCamera
 from pika.sense import Sense
 
 from hardware.tools.grippers.pika_gripper import PikaGripper
+from hardware.tools.grippers.zmq_pika import ZmqPika
+from hardware.sensors.cameras.img_zmq import ZmqImgSubscriber
 from hardware.sensors.cameras.pika_cameras import PikaCameras
 from teleop.pika_tracker.pika_tracker import PikaTracker
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
 from simulation.mujoco.mujoco_sim import MujocoSim
 from hardware.base.utils import transform_pose
+from factory.tasks.inferences_tasks.utils.display import display_images
 
 import time, cv2
 import numpy as np
@@ -22,19 +25,50 @@ setup_unified_logging(enable_python_logging=False)
 # setup_unified_logging(level="INFO", enable_glog=True, enable_python_logging=False, disable_duplicate_handlers=True)
 
 def pikasense2gripper():
-    tracker_cfg = "teleop/pika_tracker/config/right_tracker_fr3_cfg.yaml"
+    tracker_cfg = "teleop/pika_tracker/config/pika_tracker_unitree_upper.yaml"
     tracker_cfg = get_cfg(tracker_cfg)["pika_tracker"]
     tracker = PikaTracker(tracker_cfg)
     
-    gripper_cfg = "hardware/tools/grippers/config/right_pika_gripper_cfg.yaml"
-    gripper_cfg = get_cfg(gripper_cfg)["pika_gripper"]
-    gripper = PikaGripper(gripper_cfg)
+    gripper_cfg = "hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml"
+    # gripper_cfg = get_cfg(gripper_cfg)["pika_gripper"]
+    # gripper = PikaGripper(gripper_cfg)
+    gripper_cfg = get_cfg(gripper_cfg)["zmq_pika_gripper"]
+    gripper = ZmqPika(gripper_cfg)
     
     while True:
         true, pose, gripper_data = tracker.parse_data_2_robot_target("absolute")
         print(f'gripper data from sense: {gripper_data}')
-        gripper.set_tool_command(gripper_data["single"][0])
+        command = {"left": gripper_data["left"][0], "right": gripper_data["right"][0]}
+        print(f'gripper command set to gripper: {command}')
+        gripper.set_tool_command(command)
         time.sleep(0.006)
+        
+def test_zmq_images():
+    camera_names = ["left_fisheye", "right_fisheye", "head"]
+    cameras = {}
+    for cam_name in camera_names:
+        cfg = "hardware/sensors/cameras/config/zmq_" + cam_name + "_cfg.yaml"
+        cfg = get_cfg(cfg)["zmq_camera"]
+        cam_obj = ZmqImgSubscriber(cfg)
+        if not cam_obj.initialize():
+            raise ValueError(f'Could not initialize cam obj for {cam_name}')
+        cameras[cam_name] = cam_obj
+    print(f'Finished initialized all cameras for {camera_names}')
+    
+    camera_data = {}
+    while True:
+        for cam_name, cam_obj in cameras.items():
+            cam_obj: ZmqImgSubscriber
+            succ, img, ts = cam_obj.read_image()
+            if succ:
+                camera_data[cam_name] = img
+            else: print(f'Failed to get image from {cam_name}')
+        display_images(camera_data)
+        key = cv2.waitKey(1)
+        if key == "q":
+            print(f'quit zmq camera testing!!!!')
+            break
+        time.sleep(0.002)
 
 def test_pika_gripper_apis():
     gripper = Gripper()
@@ -169,7 +203,8 @@ if __name__ == "__main__":
     print(f"{'==1'*20}test pika gripper apis {'==2'*20}")
     # test_pika_gripper_apis()
     # test_pika_class_apis()
-    test_pika_tracker()
-    # pikasense2gripper()
+    # test_pika_tracker()
+    pikasense2gripper()
+    # test_zmq_images()
     # test_pika_gripper_time()
     

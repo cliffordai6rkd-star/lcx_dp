@@ -474,7 +474,8 @@ class TeleoperationFactory:
         self._teleop_thread_running = False
         self._data_recording_thread.join()
         self._robot_motion_system.close()
-        self._interface.close()
+        if self._interface is not None:
+            self._interface.close()
         if self.data_recorder is not None:
             self.data_recorder.close()
         if self._img_visualization:

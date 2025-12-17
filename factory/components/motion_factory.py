@@ -196,9 +196,11 @@ class MotionFactory:
                     # log.info(f'Current joint state: pos {curr_joint_state._positions}, vel {curr_joint_state._velocities}')
                 
                 with timer("controller_computation", "motion_factory_"):
-                    # success, joint_target, joint_mode = self._controller.compute_controller(
-                    #                                     target, robot_state=curr_joint_state)
-                    success = False; joint_target = None; joint_mode = None
+                    # start = time.perf_counter()
+                    success, joint_target, joint_mode = self._controller.compute_controller(
+                                                        target, robot_state=curr_joint_state)
+                    # log.info(f'controller time: {(time.perf_counter() - start)*1000:.1f}ms')
+                    # success = False; joint_target = None; joint_mode = None
                 
                 with timer("hardware_execution", "motion_factory_"):
                     if success:

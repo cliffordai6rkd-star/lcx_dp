@@ -13,8 +13,9 @@ whole_body_ik:
     require_rot: true
     rot_scalar: 1.0
   show_debug: false
-  trans_weight: 8.5
-  rot_weight: 4.5
-  smooth_weight: 1
-  regularization_weight: 0.0006
+  trans_weight: 50
+  rot_weight: 5
+  smooth_weight: 0.1
+  regularization_weight: 0.02
+  target_threshold: 8e-3
   

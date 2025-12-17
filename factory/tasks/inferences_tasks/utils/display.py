@@ -109,7 +109,8 @@ def display_images(images_dict: dict[str, np.ndarray],
     Args:
         images_dict: Dictionary of camera names to image arrays
         display_window_name: Name of the display window
-
+        attributes: whether you need to take image from image dict with attributes,
+            if has attributes, images_dict should be dict[str, dict[str, np.ndarray]]
     Returns:
         Combined grid image if successful, None if failed
     """

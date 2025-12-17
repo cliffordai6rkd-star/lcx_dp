@@ -5,10 +5,11 @@ from controller.controller_base import ControllerBase
 import casadi
 import pinocchio.casadi as cpin
 import pinocchio as pin
-from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix
+from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix, convert_homo_2_7D_pose
 from controller.utils.weighted_moving_filter import WeightedMovingFilter
 import glog as log
 import numpy as np
+import time
 
 DEBUG = False
 
@@ -16,6 +17,7 @@ class WholeBodyIk(ControllerBase):
     def __init__(self, config, robot_model: RobotModel):
         super().__init__(config, robot_model)
         self.tracking_frames = config["tracking_frames"]
+        self.target_threshold = config.get("target_threshold", 8e-3)
         self._nullspace_tracking = config.get('nullspace_tracking', None)
         self.show_debug = config.get("show_debug", False)
         self.translation_weight = config["trans_weight"]
@@ -27,6 +29,10 @@ class WholeBodyIk(ControllerBase):
         
         # init of casadi opti problem
         self._init_casadi_problem()
+        
+        # cache for reducing solution time
+        self.previous_robot_position = None
+        self.previous_solution = None
         
     def compute_controller(self, target, robot_state: RobotJointState | None = None):
         """
@@ -40,13 +46,19 @@ class WholeBodyIk(ControllerBase):
         init_q = robot_state._positions
         self.opti.set_initial(self.var_q, init_q)
         
-        pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
-        pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
-                                                robot_state._velocities, 
-                                                robot_state._accelerations)
+        if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
+            # log.info(f'Updated the kinematics!!!!')
+            pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
+            pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
+                                                    robot_state._velocities, 
+                                                    robot_state._accelerations)
+            self.previous_robot_position = init_q  
+            
         # set parameter values
         self.opti.set_value(self.parameters[0], init_q)
 
+        target_updated = False
+        target_values = []
         for i in range(len(target)):
             target_dict = target[i]
             frame_name = list(target_dict.keys())[0]
@@ -54,21 +66,45 @@ class WholeBodyIk(ControllerBase):
             if self.tracking_frames[i]["name"] != frame_name:
                 raise ValueError("target frame name is not matching: "
                                     f"expected: {self.tracking_frames[i]['name']}, actual: {frame_name}")
+            
+            tracking_frame_name = self.tracking_frames[i]["name"]
+            cur_state = self._robot_model.get_frame_pose(tracking_frame_name, init_q, False, "single")
+            cur_state = convert_homo_2_7D_pose(cur_state)
             if self.tracking_frames[i]["require_trans"] and self.tracking_frames[i]["require_rot"]:
-                target_homo = convert_7D_2_homo(value)
-                self.opti.set_value(self.parameters[i+1], target_homo)
-            # @TODO: support obly trans or only rot
+                raw_value = value 
+                target_value = convert_7D_2_homo(raw_value)
+            # @TODO: support only trans or only rot
             elif self.tracking_frames[i]["require_trans"]:
-                self.opti.set_value(self.parameters[i+1], value[:3])
+                raw_value = value[:3]; cur_state = cur_state[:3]
+                target_value = raw_value
             elif self.tracking_frames[i]["require_rot"]:
-                rot = convert_quat_to_rot_matrix(value[:4])
-                self.opti.set_value(self.parameters[i+1], rot)
+                raw_value = value[:4]; cur_state = cur_state[3:]
+                target_value = convert_quat_to_rot_matrix(raw_value)
+            target_values.append(target_value)
+            
+            if self.previous_solution is not None:
+                # {self.parameters[i + 1].shape}
+                diff = np.linalg.norm(cur_state - raw_value)
+                if diff > self.target_threshold:
+                    target_updated = True
+                # log.info(f'Target updated {target_updated} for {i}th target with diff {diff}')
         
+        # update target to the optimization problem
+        if target_updated or self.previous_solution is None:
+            for i, cur_target in enumerate(target_values):
+                self.opti.set_value(self.parameters[i+1], cur_target)
+            
         # solve optimization
         try:
-            soln = self.opti.solve()
+            if target_updated or self.previous_solution is None:
+                start = time.perf_counter()
+                soln = self.opti.solve()
+                solve_time = time.perf_counter() - start
+                # log.info(f'solve time: {solve_time*1000:.1f}ms')
+                q_target = self.opti.value(self.var_q)
+                self.previous_solution = q_target
+            else: q_target = self.previous_solution
             
-            q_target = self.opti.value(self.var_q)
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
             
@@ -215,14 +251,14 @@ class WholeBodyIk(ControllerBase):
         opts = {
             'ipopt':{
                 'print_level':0,
-                'max_iter':100, # 增加最大迭代次数
-                'tol':1e-8,     # 更严格的收敛条件
+                'max_iter':50, # 增加最大迭代次数
+                'tol':1e-5,     # 更严格的收敛条件
                 # 以下参数可以删除
-                'acceptable_tol':1e-6, # 可接受的容差
-                'mu_strategy':'adaptive', # 自适应障碍参数
-                'hessian_approximation':'limited-memory', # 使用L-BFGS近似
-                'linear_solver':'mumps', # 更稳定的线性求解器
-                'nlp_scaling_method':'gradient-based' # 基于梯度的缩放
+                # 'acceptable_tol':1e-5, # 可接受的容差
+                # 'mu_strategy':'adaptive', # 自适应障碍参数
+                # 'hessian_approximation':'limited-memory', # 使用L-BFGS近似
+                # 'linear_solver':'mumps', # 更稳定的线性求解器， ma57 mumps
+                # 'nlp_scaling_method':'gradient-based' # 基于梯度的缩放
             },
             'print_time':self.show_debug,# print or not
             'calc_lam_p':False
