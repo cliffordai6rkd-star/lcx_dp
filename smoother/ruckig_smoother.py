@@ -6,7 +6,7 @@ Provides jerk-limited smooth trajectories using Ruckig library
 import numpy as np
 import threading
 import time
-import logging
+import glog as log
 from typing import Dict, Any, Tuple, Optional
 
 try:
@@ -15,9 +15,6 @@ except ImportError:
     raise ImportError("Ruckig library not found. Install with: pip install ruckig")
 
 from .smoother_base import SmootherBase
-
-logger = logging.getLogger(__name__)
-
 
 class RuckigSmoother(SmootherBase):
     """
@@ -91,7 +88,7 @@ class RuckigSmoother(SmootherBase):
         # Apply initial configuration
         self._apply_limits()
         
-        logger.info(f"RuckigSmoother initialized: "
+        log.info(f"RuckigSmoother initialized: "
                    f"DOF={dof}, "
                    f"freq={self._control_freq}Hz, "
                    f"sync={'on' if self._synchronization else 'off'}, "
@@ -122,12 +119,12 @@ class RuckigSmoother(SmootherBase):
             actual_sync = "Phase"
         else:
             # Default to phase synchronization
-            logger.warning(f"Unknown sync_mode '{self._sync_mode}', using Phase synchronization")
+            log.warn(f"Unknown sync_mode '{self._sync_mode}', using Phase synchronization")
             self._input.synchronization = Synchronization.Phase
             actual_sync = "Phase (default)"
         
         # Log the actual synchronization mode set
-        logger.info(f"Ruckig synchronization set to: {actual_sync} (value={self._input.synchronization})")
+        log.info(f"Ruckig synchronization set to: {actual_sync} (value={self._input.synchronization})")
     
     def start(self, initial_positions: np.ndarray) -> None:
         """
@@ -172,7 +169,7 @@ class RuckigSmoother(SmootherBase):
             name="RuckigSmootherLoop"
         )
         self._thread.start()
-        logger.info(f"Ruckig smoother thread started at {self._control_freq}Hz")
+        log.info(f"Ruckig smoother thread started at {self._control_freq}Hz")
     
     def stop(self) -> None:
         """Stop smoother thread"""
@@ -180,8 +177,8 @@ class RuckigSmoother(SmootherBase):
         if self._thread:
             self._thread.join(timeout=1.0)
             if self._thread.is_alive():
-                logger.warning("Ruckig smoother thread did not stop cleanly")
-        logger.info("Ruckig smoother stopped")
+                log.warn("Ruckig smoother thread did not stop cleanly")
+        log.info("Ruckig smoother stopped")
     
     def update_target(self, joint_target: np.ndarray, immediate: bool = False) -> None:
         """
@@ -209,7 +206,7 @@ class RuckigSmoother(SmootherBase):
                 self._input.current_acceleration = [0.0] * self._dof
                 self._input.target_position = self._target_position.tolist()
                 
-                logger.debug("Immediate jump to target")
+                log.debug("Immediate jump to target")
             else:
                 # Normal update - just set new target
                 self._input.target_position = self._target_position.tolist()
@@ -229,7 +226,7 @@ class RuckigSmoother(SmootherBase):
         """Pause smoother (maintains current output)"""
         with self._lock:
             self._pause_flag = True
-        logger.debug("Ruckig smoother paused")
+        log.debug("Ruckig smoother paused")
     
     def resume(self, sync_to_current: bool = True) -> None:
         """
@@ -245,7 +242,7 @@ class RuckigSmoother(SmootherBase):
                 self._input.target_position = self._target_position.tolist()
                 # Keep current velocities and accelerations
             self._pause_flag = False
-        logger.debug("Ruckig smoother resumed")
+        log.debug("Ruckig smoother resumed")
     
     def set_velocity_limits(self, max_velocity: np.ndarray) -> None:
         """
@@ -260,7 +257,7 @@ class RuckigSmoother(SmootherBase):
         with self._lock:
             self._max_velocity = np.clip(max_velocity, 0.1, 10.0)
             self._input.max_velocity = self._max_velocity.tolist()
-        logger.info(f"Velocity limits updated: {self._max_velocity}")
+        log.info(f"Velocity limits updated: {self._max_velocity}")
     
     def set_acceleration_limits(self, max_acceleration: np.ndarray) -> None:
         """
@@ -275,7 +272,7 @@ class RuckigSmoother(SmootherBase):
         with self._lock:
             self._max_acceleration = np.clip(max_acceleration, 0.5, 50.0)
             self._input.max_acceleration = self._max_acceleration.tolist()
-        logger.info(f"Acceleration limits updated: {self._max_acceleration}")
+        log.info(f"Acceleration limits updated: {self._max_acceleration}")
     
     def set_jerk_limits(self, max_jerk: np.ndarray) -> None:
         """
@@ -290,7 +287,7 @@ class RuckigSmoother(SmootherBase):
         with self._lock:
             self._max_jerk = np.clip(max_jerk, 1.0, 500.0)
             self._input.max_jerk = self._max_jerk.tolist()
-        logger.info(f"Jerk limits updated: {self._max_jerk}")
+        log.info(f"Jerk limits updated: {self._max_jerk}")
     
     def get_motion_state(self) -> Dict[str, np.ndarray]:
         """
@@ -370,11 +367,11 @@ class RuckigSmoother(SmootherBase):
                     
                     # Log trajectory completion
                     if result == Result.Finished and self._target_updated:
-                        logger.debug(f"Trajectory finished in {self._output.trajectory.duration:.3f}s")
+                        log.debug(f"Trajectory finished in {self._output.trajectory.duration:.3f}s")
                         self._target_updated = False
                         
             except Exception as e:
-                logger.error(f"Ruckig update failed: {e}")
+                log.error(f"Ruckig update failed: {e}")
                 # Keep current state on error
             
             # Timing management
@@ -386,8 +383,8 @@ class RuckigSmoother(SmootherBase):
             else:
                 # Performance warning
                 self._slow_loop_count += 1
-                if self._slow_loop_count % 1000 == 1:
+                if self._slow_loop_count % 1000 == 0:
                     actual_dt = time.perf_counter() - loop_start
-                    logger.warning(f"Ruckig loop slow: {actual_dt*1000:.1f}ms "
+                    log.warn(f"Ruckig loop slow: {actual_dt*1000:.1f}ms "
                                  f"(target: {self._dt*1000:.1f}ms)")
                 next_time = time.perf_counter()

@@ -267,7 +267,8 @@ def negate_transform(trans):
     """
         negate the transformation in homogenous format
     """
-    result = copy.deepcopy(trans)
+    # result = copy.deepcopy(trans)
+    result = trans.copy()
     rot = result[:3, :3]
     rot = R.from_matrix(rot)
     posi = result[:3, 3]
@@ -283,7 +284,8 @@ def negate_pose(pose):
     """
         negate the 7D pose, format: [x,y,z,qx,qy,qz,qw]
     """
-    result = copy.deepcopy(pose)
+    # result = copy.deepcopy(pose)
+    result = pose.copy()
     pos = result[:3]
     quat = result[3:]
     

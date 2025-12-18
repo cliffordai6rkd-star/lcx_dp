@@ -18,7 +18,7 @@ adaptive_critical_damped:
   # Base parameters
   omega_n: 25.0           # Default natural frequency
   zeta: 1.0              # Critical damping
-  control_frequency: 800  # Internal frequency (Hz)
+  control_frequency: 500  # Internal frequency (Hz)
   
   # Adaptive parameters
   omega_n_min: 15.0      # Minimum omega_n (soft mode for small errors)

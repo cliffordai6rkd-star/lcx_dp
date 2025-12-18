@@ -234,7 +234,7 @@ class RobotFactory:
             self._smoother_config = self._config.get('smoother_config', {})[smoother_type]
             
             if not object_class_check(self._smoother_classes, smoother_type):
-                log.warning(f"Unknown smoother type: {smoother_type}, smoother disabled")
+                log.warn(f"Unknown smoother type: {smoother_type}, smoother disabled")
                 self._use_smoother = False
                 return
             
@@ -264,7 +264,7 @@ class RobotFactory:
                     raise ValueError(f"tool hardware {self._gripper_type} failed intialization")
             if hasattr(self, "_head"):
                 if not self._head.initialize():
-                    raise ValueError(f"heda hardware {self._head_type} failed intialization")
+                    raise ValueError(f"head hardware {self._head_type} failed intialization")
             if len(self._sensors) != 0:
                 possible_sensor_types = ['camera', 'FT_sensor', 'tactile', 'imu']
                 for sensor_type in possible_sensor_types:
@@ -284,7 +284,7 @@ class RobotFactory:
                     self._smoother.start(initial_positions)
                     log.info("Smoother initialized and started")
                 else:
-                    log.warning("Could not get initial joint positions for smoother")
+                    log.warn("Could not get initial joint positions for smoother")
                     self._use_smoother = False
             except Exception as e:
                 log.error(f"Failed to initialize smoother: {e}")
@@ -296,7 +296,7 @@ class RobotFactory:
             if self.enable_async_control():
                 log.info("Async control auto-enabled based on configuration")
             else:
-                log.warning("Failed to auto-enable async control")
+                log.warn("Failed to auto-enable async control")
         else:
             log.info(f'Configured not to enable async control!!!!')
         return True
@@ -395,16 +395,20 @@ class RobotFactory:
         
         if self._use_simulation:
             # mode assignment
+            total_dof = self.get_total_dofs()
             sim_mode = [mode[0]] * arm_dofs[0]
             if len(arm_dofs) > 1:
                 sim_mode_r = [mode[1]] * arm_dofs[1]
                 sim_mode = np.hstack((sim_mode, sim_mode_r))
             # handle dof other than arms 
             if len(dofs) > 2:
-                total_dof = self.get_total_dofs()
                 rest_dof = total_dof - len(sim_mode)
                 sim_mode = [mode[0]] * total_dof
-            self._simulation.set_joint_command(sim_mode, joint_command)
+            # @TODO: zyx: hack for tau eff
+            if len(joint_command) == 2*total_dof:
+                sim_command = joint_command[:total_dof]
+            else: sim_command = joint_command
+            self._simulation.set_joint_command(sim_mode, sim_command)
         
         if self._use_hardware and execute_hardware: 
             if len(mode) == 1:
@@ -514,7 +518,7 @@ class RobotFactory:
                 self._smoother.stop()
                 log.info('Smoother stopped successfully')
             except Exception as e:
-                log.warning(f'Error stopping smoother: {e}')
+                log.warn(f'Error stopping smoother: {e}')
         
         if self._use_simulation:
             self._simulation.close()
@@ -620,7 +624,7 @@ class RobotFactory:
                         'shape': data.shape
                     }
                 else:
-                    log.warning(f"Failed to read data from tactile sensor: {sensor_name}")
+                    log.warn(f"Failed to read data from tactile sensor: {sensor_name}")
         return tactile_data
             
     def move_to_start(self, joint_commands = None, mode = None):
@@ -701,7 +705,7 @@ class RobotFactory:
             return False
         
         if self._async_mode:
-            log.warning("Async control already enabled")
+            log.warn("Async control already enabled")
             return True
         
         # Start async command thread
@@ -728,7 +732,7 @@ class RobotFactory:
         if self._async_thread and self._async_thread.is_alive():
             self._async_thread.join(timeout=1.0)
             if self._async_thread.is_alive():
-                log.warning("Async control thread did not stop cleanly")
+                log.warn("Async control thread did not stop cleanly")
         
         self._async_mode = False
         self._async_thread = None
@@ -740,23 +744,19 @@ class RobotFactory:
         This runs in a separate thread at high frequency (e.g., 800Hz)
         """
         dt = 1.0 / self._async_frequency
-        next_time = time.perf_counter()
         slow_loop_count = 0
         
         log.info(f"Starting async command loop at {self._async_frequency}Hz")
         
         dofs = self.get_robot_dofs()
-        last_set = time.perf_counter()
-        start_time = time.perf_counter()
+        # last_set = time.perf_counter()
+        last_time = time.perf_counter()
         while self._async_running:
             loop_start = time.perf_counter()
             if not self._async_mode: self._async_mode = True
             
             # Get smoothed command from smoother
             with timer("async_smoother", "robot_factory"):
-                loop_time = time.perf_counter() - start_time
-                start_time = time.perf_counter()
-                # log.info(f'loop time freq: {1.0/loop_time}Hz')
                 if self._smoother is not None:
                     smoothed_command, is_active = self._smoother.get_command()
                     # log.info(f"smoother is active: {is_active}" )
@@ -767,23 +767,21 @@ class RobotFactory:
                         self.set_robot_joint_command(smoothed_command, mode,
                                             execute_hardware=self._enable_hardware,
                                             update_action=self._update_action)
-                        # log.info(f'smoother update freq: {1.0/(time.perf_counter() - last_set)}Hz')
-                        last_set = time.perf_counter()
 
             # Timing management
-            next_time += dt
-            sleep_time = next_time - time.perf_counter()
-            
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            else:
+            used_time = time.perf_counter() - last_time
+            last_time = time.perf_counter()            
+            if used_time < dt:
+                sleep_time = dt - used_time
+                time.sleep(0.8*sleep_time)
+            elif used_time > 1.25 * dt:
                 # Performance warning
                 slow_loop_count += 1
-                if slow_loop_count % 1000 == 1:
+                if slow_loop_count % 1000 == 0:
                     actual_dt = time.perf_counter() - loop_start
-                    log.warning(f"Async control loop running slow: {actual_dt*1000:.1f}ms "
+                    log.warn(f"Async control loop running slow: {actual_dt*1000:.1f}ms "
                               f"(target: {dt*1000:.1f}ms)")
-                next_time = time.perf_counter()
+                    slow_loop_count  = 0
         
         log.info("Async command loop stopped")
     

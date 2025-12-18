@@ -1,5 +1,5 @@
 from hardware.communication.servo_pika_img_interface import G1UmiClient
-import warnings, threading, time, copy
+import threading, time, copy
 import numpy as np
 import glog as log
 
@@ -19,6 +19,7 @@ class ZmqDynamixelHead:
         self._thread_handler = threading.Thread(target=self._update_loop, daemon=True)
         self._head_angles = np.zeros(3)
         
+        self._is_initialized = False
         self._is_initialized = self.initialize()
         log.info(f'Started ZMQ dynamixel head update loop!')
         
@@ -30,9 +31,10 @@ class ZmqDynamixelHead:
             self._thread_handler.start()
             while not self._state_updated:
                 time.sleep(0.001)
-                
-        log.info("ZMQ dynamixel head is successfully initialized!!!!")
         
+        log.info("ZMQ dynamixel head is successfully initialized!!!!")
+        return True
+
     def set_head_command(self, command):
         if not self._is_initialized:
             log.warn("ZMQ dynamixel head not initialized for setting!")
@@ -56,6 +58,7 @@ class ZmqDynamixelHead:
         
         expected_dt = 1.0 / self._update_frequency
         last_read_time = time.perf_counter()
+        counter = 0
         while self._thread_running:
             rpy = self._zmq_interface.get_neck_positions()
             with self._lock:
@@ -69,8 +72,11 @@ class ZmqDynamixelHead:
                 sleep_time = expected_dt - dt
                 time.sleep(0.95*sleep_time)
             elif dt > 1.2*expected_dt:
-                warnings.warn(f'ZMQ dynamixel head could not reach the {self._update_frequency}hz, actual freq: {1.0/dt:.2f}hz')
-            
+                counter += 1
+                if counter % 500 == 0: 
+                    log.warn(f'ZMQ dynamixel head could not reach the {self._update_frequency}hz, actual freq: {1.0/dt:.2f}hz')
+                    counter = 0
+                    
         log.info("Started ZMQ dynamixel head update loop!")
         
     def close(self):

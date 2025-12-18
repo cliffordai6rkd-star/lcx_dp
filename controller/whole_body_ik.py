@@ -46,13 +46,13 @@ class WholeBodyIk(ControllerBase):
         init_q = robot_state._positions
         self.opti.set_initial(self.var_q, init_q)
         
-        if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
-            # log.info(f'Updated the kinematics!!!!')
-            pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
-            pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
-                                                    robot_state._velocities, 
-                                                    robot_state._accelerations)
-            self.previous_robot_position = init_q  
+        # if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
+        # log.info(f'Updated the kinematics!!!!')
+        pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
+        pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
+                                                robot_state._velocities, 
+                                                robot_state._accelerations)
+        self.previous_robot_position = init_q  
             
         # set parameter values
         self.opti.set_value(self.parameters[0], init_q)
@@ -107,6 +107,8 @@ class WholeBodyIk(ControllerBase):
             
             self.filter.add_data(q_target)
             q_target = self.filter.filtered_data
+            # tau_eff = self._robot_model.id(q_target, robot_state._velocities, np.zeros_like(q_target))
+            # q_target = np.hstack((q_target, tau_eff))
             
             if DEBUG:
                 log.error(f"trans_cost: {self.opti.debug.value(self.translation_cost)}")

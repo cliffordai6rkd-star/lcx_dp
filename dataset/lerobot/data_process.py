@@ -309,6 +309,8 @@ class EpisodeWriter():
             if not any([isinstance(data, cur_type) for cur_type in single_number_type]):
                 if isinstance(data, np.ndarray) and data.ndim:
                     data = data.tolist()
+                if hasattr(data, "ndim") and data.ndim == 0:
+                    data = float(data)
         return data
     
 class EpisodeLoader():

@@ -204,7 +204,7 @@ class RerunLogger:
         for action_key, action_val in actions.items():
             if action_val is not None:
                 logger_mp.info(f'Logging action {action_key} with shape: {action_val.shape if hasattr(action_val, "shape") else type(action_val)}')
-                rr.log(f"{self.prefix}{action_key}/actions/action", rr.Scalars(action_val))
+                rr.log(f"{self.prefix}{action_key}/actions/action", rr.Scalars(action_val[-1]))
             else:
                 logger_mp.warning(f'Could not find {action_key} for action_key')
                 
@@ -400,15 +400,15 @@ if __name__ == "__main__":
     # # TEST DATA OF data_dir
     # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
     # /workspace/dataset/data/peg_in_hole
-    data_dir = "dataset/data/1207_duo_unitree_pick_n_place_194ep"
+    data_dir = "/workspace/dataset/data/insert_tube"
     # data_dir = "/home/hanyu/Data_Collection/1018_block_stacking_fr3_3Dmosue_110eps"
-    episode_data_number = 185
+    episode_data_number = 6
     fps = 100
     skip_step_nums = 1
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
-    contain_ft = False
+    contain_ft = False; data_type = "real_robot"
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
         # camera_keys=["right_hand_color", "right_hand_fisheye_color"],
@@ -416,10 +416,11 @@ if __name__ == "__main__":
         episode_reader = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
                                              action_prediction_step=1, action_ori_type=action_ori_type,
                                              observation_type=ObservationType.END_EFFECTOR_POSE,
-                                             rotation_transform=umi_rotation_transform,
+                                             rotation_transform=None,
                                              contain_ft=contain_ft,
-                                             camera_keys=["right_hand_color", "right_hand_fisheye_color"],
-                                             state_keys=["right"]
+                                            #  camera_keys=["right_hand_color", "right_hand_fisheye_color"],
+                                            #  state_keys=["right"]
+                                             data_type=data_type,
                                             )
         episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
         logger_mp.info(f'Successfully load the episode data')

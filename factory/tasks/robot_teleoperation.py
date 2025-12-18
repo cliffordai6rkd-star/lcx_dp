@@ -154,12 +154,13 @@ class TeleoperationFactory:
         # teleoperation loop
         log.info(f'teleoperation loop started!!')
         target_period = self._teleoperation_loop_time
-        next_run_time = time.perf_counter()
+        last_run_time = time.perf_counter()
         slow_loop_count = 0
         while self._teleop_thread_running:
             loop_start_time = time.perf_counter()
             
             # get interface target
+            start = time.perf_counter()
             interface_output_mode = self._interface_output_mode
             with timer("get_interface_target", "robot_teleoperation_"):
                 if self._interface:
@@ -167,7 +168,8 @@ class TeleoperationFactory:
                         self._interface.parse_data_2_robot_target(interface_output_mode)
                     # log.info(f'tool target: {tool_target}')
                 else: success_get_target=False; ee_target=None; tool_target=None
-                            
+            tele_get_time = time.perf_counter() - start
+
             # only for mujoco 
             if self._use_simulation_target and not mocap_target_site is None and self._robot_system._use_simulation:
                 ee_target = {}
@@ -181,16 +183,20 @@ class TeleoperationFactory:
                 interface_output_mode = 'absolute'
             
             # get curr tcp
+            start = time.perf_counter()
             cur_tcp_pose = {}
             for i, cur_ee_link in enumerate(self.ee_link):
                 key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
+                # log.info(f"{i}th robot key {key}, ee key: {self._ee_index[i]}, link {cur_ee_link}")
                 cur_tcp_pose[self._ee_index[i]] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
                 # log.info(f'tcp pose {cur_tcp_pose[self._ee_index[i]]} for {self._ee_index[i]}')
             self._robot_motion_system.sim_visualize_tcp(cur_tcp_pose)
-            
+            tcp_time = time.perf_counter() - start
+
             # parse the teleoperation target to robot
+            start = time.perf_counter(); head_target = None
             if (success_get_target or (self._robot_system._use_simulation and self._use_simulation_target)) and self._update_high_level_state:
-                high_level_command = np.array([])
+                high_level_command = np.array([]); head_target = ee_target.pop("head", None)
                 with timer("parse_target", "robot_teleoperation_"):
                     for i, (key, cur_ee_target) in enumerate(ee_target.items()):
                         # Incremental target on the ee pose
@@ -243,56 +249,56 @@ class TeleoperationFactory:
                         if whether_to_quit:
                             self.close()
                     
-                    log.info(f'tele tool target: {tool_target}')
+                    # log.info(f'tele tool target: {tool_target}')
                     tool_type_dict = self._robot_system.get_tool_type_dict()
+                    if tool_type_dict is not None:
+                        for key, tool_command in tool_target.items():
+                            tool_command = np.array(tool_command[:-1])
+                            if tool_type_dict[key] == ToolType.GRIPPER or \
+                            tool_type_dict[key] == ToolType.SUCTION:
+                                if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
+                                    tool_command = tool_command[0].astype(np.float32)
+                            tool_target[key] = tool_command
+                        # log.info(f'tool target: {tool_target}')
+                        # tool_target = dict(single=np.array([0,0]))
+                        self._robot_motion_system.set_tool_command(tool_target)
+                    if hasattr(self._robot_system, "_head") and head_target is not None:
+                        head_rotation = R.from_quat(head_target[3:7]).as_euler("xyz")
+                        self._robot_system.set_head_position(head_rotation)
+                    # data recording for action command
                     if self._enable_recording:
                         with self._tool_action_lock:
                             if tool_type_dict is not None:
                                 for key, tool_command in tool_target.items():
-                                    tool_command = np.array(tool_command[:-1])
-                                    if tool_type_dict[key] == ToolType.GRIPPER or \
-                                    tool_type_dict[key] == ToolType.SUCTION:
-                                        if isinstance(tool_command, np.ndarray) and tool_command.ndim != 0:
-                                            tool_command = tool_command[0].astype(np.float32)
-                                    tool_target[key] = tool_command
                                     # make sure the action is list/float for writing json
                                     if not isinstance(tool_command, np.ndarray):
                                         tool_command = float(tool_command)
                                     else: tool_command = tool_command.tolist()
                                     self._tool_action[key] = dict(tool=dict(
                                         position=tool_command, time_stamp=time.perf_counter()))
-                                # log.info(f'tool target: {tool_target}')
-                                # tool_target = dict(single=np.array([0,0]))
-                                self._robot_motion_system.set_tool_command(tool_target)
-                            if hasattr(self._robot_system, "_head") and "head" in ee_target:
-                                head_rotation = R.from_quat(ee_target["head"][3:7]).as_euler("xyz")
-                                self._robot_system.set_head_position(head_rotation)
+                            if hasattr(self._robot_system, "_head") and head_target is not None:
                                 self._tool_action["head"] = head_rotation.tolist()
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
+            target_time = time.perf_counter() - start
 
-            next_run_time += target_period
-            current_time = time.perf_counter()
-            sleep_time = next_run_time - current_time
-
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            else:
-                # 处理时间超过目标周期
-                actual_time = current_time - loop_start_time
+            total_time = time.perf_counter() - loop_start_time
+            used_time = time.perf_counter() - last_run_time
+            last_run_time = time.perf_counter()
+            if used_time < target_period:
+                sleep_time = target_period - used_time
+                time.sleep(0.9*sleep_time)
+            elif used_time > 1.2*target_period:
                 slow_loop_count += 1
 
-                # 每100次慢循环警告一次，避免日志刷屏
-                if slow_loop_count % 300 == 1:
+                # 每500次慢循环警告一次，避免日志刷屏
+                if slow_loop_count % 500 == 0:
                     expected_freq = 1.0 / target_period
-                    actual_freq = 1.0 / actual_time
-                    log.warning(f"Teleoperation frequency slow: expected {expected_freq:.1f}Hz, "
-                                f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
+                    log.warn(f"Teleoperation frequency slow: expected {expected_freq:.1f}Hz, "
+                                f"actual {(1.0/total_time):.1f}Hz tele: {1.0/tele_get_time:.2f}Hz ({tele_get_time/total_time*100:.2f}%) target: {1.0/target_time:.2f}Hz ({target_time/total_time*100:.2f}%) tcp: {1.0/tcp_time:.2f}Hz ({tcp_time/total_time*100:.2f}%)")
                     slow_loop_count = 0
 
-                # 重置时间基准，避免更大的延迟
-                next_run_time = current_time
         log.info(f'Teleoperation thread for reading is stopped!')
     
     def add_teleoperation_data(self):

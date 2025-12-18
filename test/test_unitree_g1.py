@@ -67,6 +67,7 @@ def test_hw_state_to_sim(
     g1_cfg = _load_subcfg(g1_cfg_path, ["unitree_g1", "unitreeG1", "g1"])
 
     sim = MujocoSim(mujoco_cfg)
+    g1_cfg["actuate_motors"] = True
     g1 = UnitreeG1(g1_cfg)
 
     try:
@@ -88,6 +89,7 @@ def test_hw_state_to_sim(
             # 读硬件关节角
             js = g1.get_joint_states()  # ArmBase 通常提供
             hw_pos = np.asarray(js._positions, dtype=np.float64)
+            log.info(f'hw position: {hw_pos}')
 
             # 映射到仿真关节顺序并写入仿真
             sim_pos = hw_pos

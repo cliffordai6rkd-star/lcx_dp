@@ -148,11 +148,10 @@ class MotionFactory:
         iteration_count = 0
 
         ctrl_period = 1.0 / self._control_frequency
-        next_run_time = time.perf_counter()
+        last_control_time = time.perf_counter()
         slow_loop_count = 0
         while self._controller_thread_running:
             loop_start_time = time.perf_counter()
-            next_run_time = loop_start_time
             if not self._threads_flags[0]: 
                 self._threads_flags[0] = True
             
@@ -238,22 +237,21 @@ class MotionFactory:
                             self._robot_system.set_joint_commands(curr_joint_state._positions, joint_mode, False)
                         log.warning(f"Controller failed to compute valid joint commands for target: {target}")
             
-            next_run_time += ctrl_period
-            current_time = time.perf_counter()
-            sleep_time = next_run_time - current_time
-
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+            used_time = time.perf_counter() - last_control_time
+            last_control_time = time.perf_counter()
+            if used_time < ctrl_period:
+                sleep_time = ctrl_period - used_time
+                time.sleep(0.9*sleep_time)
             else:
                 # 处理超时情况
-                actual_time = current_time - loop_start_time
+                actual_time = time.perf_counter() - loop_start_time
                 slow_loop_count += 1
 
                 # 控制警告频率：每1000次慢循环警告一次
-                if slow_loop_count % 1000 == 1:
+                if slow_loop_count % 1000 == 0:
                     expected_freq = self._control_frequency
                     actual_freq = 1.0 / actual_time
-                    log.warning(f"Controller frequency slow: expected {expected_freq:.1f}Hz, "
+                    log.warn(f"Controller frequency slow: expected {expected_freq:.1f}Hz, "
                                 f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
                     
             # 性能统计（降低频率，减少日志量）
@@ -529,6 +527,7 @@ class MotionFactory:
         
         for i in range(len(cur_tcp)):
             key = self._ee_index[i]
+            # log.info(f'vis {i}th tcp with key {key} for {cur_tcp}')
             tcp = cur_tcp[key]
             cur_world2base = self._sim_world2base[0] if len(self._sim_world2base) == 1 else self._sim_world2base[i]
             tcp = transform_pose(cur_world2base, tcp)
@@ -542,6 +541,7 @@ class MotionFactory:
         
         for i, (key, cur_target) in enumerate(targets.items()):
             cur_mocap_target_site = self._mocap_target_site[i]
+            # log.info(f'{i}th ee key {key} for mocap sit {cur_mocap_target_site}')
             mocap_name = cur_mocap_target_site.split('_')[0]
             cur_world2base = self._sim_world2base[0] if len(self._sim_world2base) == 1 else self._sim_world2base[i]
             target_tcp = transform_pose(cur_world2base, cur_target)

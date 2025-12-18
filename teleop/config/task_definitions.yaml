@@ -81,3 +81,14 @@ tasks:
     step1: left arm picks up the spoon; right arm picks up the ampoule.
     step2: scoop powder from the ampoule with the spoon.
     step3: transfer the powder to another container.
+
+- id: 7
+  name: "Bread picking"
+  save_path_prefix: "Bread_picking"
+  task_description: "place the bread into the designated position inside the box"
+  task_description_goal: "locate the bread and box , place the bread into the designated position inside the box"
+  task_description_step: |
+    step1: left hand opens the cover and puts it aside
+    step2: left hand resets
+    step3: right hand picks up the bread and puts it into the box
+    step4: right hand resets

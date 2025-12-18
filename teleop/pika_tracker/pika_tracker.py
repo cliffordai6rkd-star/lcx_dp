@@ -173,7 +173,10 @@ class PikaTracker(TeleoperationDeviceBase):
         
         # Wait for tracker data to stabilize
         time.sleep(1.0)
-        
+        self._tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+        self._tracker_head_trans = convert_homo_2_7D_pose(self.T_TRACKER_HEAD)
+        self._robot_tracker_trans = negate_pose(self._tracker_robot_trans)
+        self._head_tracker_trans = negate_pose(self._tracker_head_trans)
         log.info(f"PikaTracker initialized successfully with device: {self._serial_port} and device name: {self._device_id}")
         return True
     
@@ -222,7 +225,7 @@ class PikaTracker(TeleoperationDeviceBase):
             command = sense.get_command_state()
             tool_data[key] = np.array([normalized_value, command])
         tool_time = time.perf_counter() - start
-        log.info(f'pose time: {pose_time*1000:.1f}ms tool time: {tool_time*1000:.1f}ms')
+        # log.info(f'pose time: {pose_time*1000:.1f}ms tool time: {tool_time*1000:.1f}ms')
             
         if not self._output_left:
             pose_quat = dict(single=pose_quat["right"])
@@ -243,7 +246,7 @@ class PikaTracker(TeleoperationDeviceBase):
     def _press_i(self):
         pose, _ = self.read_data()
         if pose is None:
-            log.warning("Failed to read pose data for update init pose!!!")
+            log.warn("Failed to read pose data for update init pose!!!")
             return
         for i, (key, cur_pose) in enumerate(pose.items()):
             cur_pose = self._process_raw_pose(cur_pose, key)
@@ -269,15 +272,23 @@ class PikaTracker(TeleoperationDeviceBase):
               pass
           
     def _process_raw_pose(self, pose, key):
-        res_pose = np.zeros(7)
+        start = time.perf_counter()
+        # res_pose = np.zeros(7)
+        res_pose = pose
         if key != "head":
-            tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+            # tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_ROBOT)
+            tracker_robot_trans = self._tracker_robot_trans
+            robot_tracker_trans = self._robot_tracker_trans
         else:
-            tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_HEAD)
+            # tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_HEAD)
+            tracker_robot_trans = self._tracker_head_trans
+            robot_tracker_trans = self._head_tracker_trans
         # basis change
-        robot_tracker_trans = negate_pose(tracker_robot_trans)
+        # robot_tracker_trans = negate_pose(tracker_robot_trans)
         res_pose = transform_pose(transform_pose(robot_tracker_trans, pose), tracker_robot_trans)
+        basis_change_time = time.perf_counter() - start
         
+        start1 = time.perf_counter()
         if key != "head":
             # read pose init sync to x forward y left z up 
             static_rot_offset = np.array([0, 0, 1, 0])
@@ -287,20 +298,26 @@ class PikaTracker(TeleoperationDeviceBase):
         else:
             res_pose = self.apply_rotation_offset(res_pose, np.array([0, 0, 0, 1]))
             # no need to apply for robot sync    
+        rot_offset_time = time.perf_counter() - start1
+        total_time = time.perf_counter()-start
+        # log.info(f'{key} pose porcess time: {(total_time)*1000.0:.2f}ms {basis_change_time/total_time*100:.2f}% {rot_offset_time/total_time*100:.2f}%')
         return res_pose
 
     def parse_data_2_robot_target(self, mode: str) -> Tuple[bool, Optional[Dict], Optional[Dict]]:
         """Parse Vive Tracker pose data to robot target format."""
+        start = time.perf_counter()
         if 'absolute' not in mode:
             log.warn('The pika tracker only supports absolute pose related teleoperation')
             raise ValueError(f'{mode} mode is not supported for pika tracker')
         
         if not self._is_initialized:
-            log.warning("Device not initialized")
+            log.warn("Device not initialized")
             return False, None, None
         
         # Get pose data from Vive Tracker, all dict
         pose_quat, tool_data = self.read_data()
+        read_time = time.perf_counter() - start
+        # log.info(f'raw read time {read_time*1000:.1f}ms')
         if pose_quat is None:
             log.warn(f"No pose data available for device: {self._serial_port}")
             return False, None, None
@@ -308,10 +325,12 @@ class PikaTracker(TeleoperationDeviceBase):
         # Prepare robot target dict
         pose_target = {} 
         tool_target = {}
-        
+        start0 = time.perf_counter(); sub_process = 0
         for key, value in pose_quat.items():
             # basis change
+            start1 = time.perf_counter()
             cur_pose = self._process_raw_pose(value, key)
+            sub_process += time.perf_counter() - start1
             
             # @TODO: zyx, select rotation
             # for i in range(3):
@@ -329,12 +348,17 @@ class PikaTracker(TeleoperationDeviceBase):
             if "head" in key:
                 continue
             tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
+        process_time = time.perf_counter() - start0
         
         if self._key_pressed :
             if self._reset_pose_counter > 15:
                 self._key_pressed = False
                 self._reset_pose_counter = 0
             else: self._reset_pose_counter += 1
+
+        total_time = time.perf_counter() - start
+        # log.info(f'total data parse: {total_time*1000:.2f}ms read {read_time*1000:.2f}ms process {process_time*1000:.2f}ms sub process: {sub_process*1000:.2f}ms')
+        # log.info(f'total data parse: {total_time*1000:.2f}ms read {read_time/total_time*100:.2f}% process {process_time/total_time*100:.2f}% sub process: {sub_process/total_time*100:.2f}%')
         if mode == "absolute" or (mode == "absolute_delta" and self._device_enabled):
             return True, pose_target, tool_target
         else: return False, None, None
@@ -359,10 +383,10 @@ class PikaTracker(TeleoperationDeviceBase):
         return True
     
     def apply_rotation_offset(self, pose, rot_offset):
-        new_pose = copy.deepcopy(pose)
+        # new_pose = copy.deepcopy(pose)
         # apply rotation offset
-        new_pose[3:] = transform_quat(pose[3:], rot_offset)
-        return new_pose
+        pose[3:] = transform_quat(pose[3:], rot_offset)
+        return pose
     
     def apply_init_offset(self, pose, id):
         new_pose = pose

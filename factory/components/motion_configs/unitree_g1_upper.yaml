@@ -6,16 +6,20 @@ use_simulation: true
 # from the project directory
 robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
-# gripper: "zmq_pika_gripper"
-# gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
+gripper: "zmq_pika_gripper"
+gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
 # head: "zmq_servo_head"
 # head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
-control_frequency: 800
+use_smoother: true
+smoother_type: "ruckig" #critical_damped
+smoother_config: !include smoother/config/smoother_unitree_g1_upper_cfg.yaml
+async_control_frequency: 500.0     # Async thread sends commands at this rate (Hz)
+auto_enable_async_control: true    # Auto-enable async mode on initialization (new!)
+
+control_frequency: 300
 controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
-
-# smoother config?
 
 sensor_dicts:
   cameras:
@@ -25,7 +29,7 @@ sensor_dicts:
     - name: "left_fisheye"
       type: "zmq_camera"
       cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
-    - name: "rightt_fisheye"
+    - name: "right_fisheye"
       type: "zmq_camera"
       cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
 

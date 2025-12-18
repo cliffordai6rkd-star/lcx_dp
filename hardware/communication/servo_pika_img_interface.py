@@ -30,7 +30,7 @@ class G1UmiClient:
 
     # ============ 控制接口 ============
 
-    def _call(self, method, params=None, timeout_ms=300):
+    def _call(self, method, params=None, timeout_ms=600):
         if not self.requre_control:
             log.warn(f'This interface does not enable the control demands!!!')
             return 
@@ -43,7 +43,7 @@ class G1UmiClient:
         poller.register(self._ctrl_socket, zmq.POLLIN)
         socks = dict(poller.poll(timeout_ms))
         if self._ctrl_socket not in socks:
-            raise TimeoutError(f"Request {method} timeout")
+            raise TimeoutError(f"Request {method} timeout {timeout_ms}")
 
         msg = self._ctrl_socket.recv_string()
         resp = json.loads(msg)
