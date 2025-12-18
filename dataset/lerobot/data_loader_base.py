@@ -21,13 +21,14 @@ class DataLoaderBase(abc.ABC, metaclass=abc.ABCMeta):
     """
         parse for single episode given task dir and episode dir
     """
-    def load_episode(self, task_dir, episode_dir, skip_steps_nums):
+    def load_episode(self, task_dir, episode_dir, skip_steps_nums, rotation_transform=None, data_type="real_robot"):
         self._episode_reader = RerunEpisodeReader(task_dir=task_dir,
                 json_file=self._json_file, action_type=self._action_type,
                 action_prediction_step=self._action_prediction_step,
                 action_ori_type=self._action_ori_type, observation_type=self._obs_type,
-                rotation_transform=self._rotation_transform, contain_ft=self._contain_ft,
-                camera_keys=self._cam_keys, state_keys=self._state_keys)
+                rotation_transform=rotation_transform, contain_ft=self._contain_ft,
+                camera_keys=self._cam_keys, state_keys=self._state_keys,
+                data_type=data_type)
         
         if 'episode' in episode_dir:
             episode_number = int(episode_dir.lstrip("episode_"))

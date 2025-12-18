@@ -39,7 +39,7 @@ class RerunEpisodeReader:
                  action_prediction_step = 2, action_ori_type = "euler", 
                  observation_type = ObservationType.JOINT_POSITION_ONLY,
                  rotation_transform = None, contain_ft=False,
-                 camera_keys=None, state_keys=None):
+                 camera_keys=None, state_keys=None, data_type="real_robot"):
         self.task_dir = task_dir
         self.json_file = json_file
         self.action_type = action_type
@@ -50,6 +50,7 @@ class RerunEpisodeReader:
         # None or dict[str, np.ndarray]
         self._rotation_transform = rotation_transform
         self._camera_keys = camera_keys; self._state_keys = state_keys
+        self._data_type = data_type
 
     def return_episode_data(self, episode_idx, skip_steps_nums=1):
         # Load episode data on-demand
@@ -72,7 +73,7 @@ class RerunEpisodeReader:
         episode_data = []
 
         # Loop over the data entries and process each one
-        counter = 0
+        counter = 0; data_type_validated = False
         skip_steps_nums = int(skip_steps_nums)
         if skip_steps_nums > self._action_prediction_step:
             self._action_prediction_step = skip_steps_nums
@@ -93,6 +94,10 @@ class RerunEpisodeReader:
             
             # Append the observation state data in the item_data list
             joint_states = item_data.get("joint_states", {})
+            if "robot" in self._data_type and not data_type_validated:
+                if joint_states is None or len(joint_states) == 0:
+                    raise ValueError(f'{self.task_dir} contains robot data but could not get joint states from dataset')
+                else: data_type_validated = True
             joint_check = [ObservationType.JOINT_POSITION_ONLY, ObservationType.JOINT_POSITION_END_EFFECTOR]
             if self._obs_type in joint_check:
                 if joint_states is None or len(joint_states) == 0:
@@ -136,20 +141,25 @@ class RerunEpisodeReader:
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
                 elif self._obs_type in ee_check:
-                    # get cur rotated relative pose
-                    ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
-                                                        init_data=init_ee_poses[key])
-                    if self._obs_type == ObservationType.END_EFFECTOR_POSE:
-                        cur_obs[key] = np.array(ee_pose)
+                    if "head" in key and "robot" in self._data_type:
+                        cur_obs[key] = ee_states[key]
                     else:
-                        last_id = i - 1
-                        last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
-                        last_pose = last_ee_states[key]["pose"]
-                        # if has rotation offset, calculate the rotated relative pose 
-                        last_pose = self.apply_rotation_offset(last_pose, key,
-                                                init_data=init_ee_poses[key])
-                        # delta: the diff between two relative pose if has rot offset
-                        cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
+                        # get cur rotated relative pose
+                        ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
+                                                            init_data=init_ee_poses[key])
+                        if self._obs_type == ObservationType.END_EFFECTOR_POSE:
+                            cur_obs[key] = np.array(ee_pose)
+                        else:
+                            last_id = i - 1
+                            last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
+                            last_pose = last_ee_states[key]["pose"]
+                            # if has rotation offset, calculate the rotated relative pose 
+                            last_pose = self.apply_rotation_offset(last_pose, key,
+                                                    init_data=init_ee_poses[key])
+                            # delta: the diff between two relative pose if has rot offset
+                            cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
+                        if "head" in key:
+                            cur_obs[key] = R.from_quat(cur_obs[3:7]).as_euler("xyz")
                 elif self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
                     if async_save_ft:
                         assert len(async_ft_files) == len(list(ee_states.keys())), f'len async save ft files {len(async_ft_files)} != len ee {len(list(ee_states.keys()))}'

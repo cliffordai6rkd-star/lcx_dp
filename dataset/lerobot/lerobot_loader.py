@@ -24,15 +24,26 @@ class LerobotLoader(DataLoaderBase):
         self._load_fps = config.get("fps", 10)
         self._num_writer_thread = config.get(f'num_writer_thread', 1)
         self._num_writer_process = config.get(f'num_writer_process', 1)
+        self._data_type = []
         # 一种是只给一个task的文件夹
         if self._task_list is None:
             self._task_list = [self._task_dir]
+            self._rotation_transform = [self._rotation_transform]
         else: # 另一种是个所有task的文件夹并给每个task的名字在list里
+            if self._rotation_transform is None:
+                log.info(f'Take all task lists {self._task_list} as real robot data')
+                self._rotation_transform = [None] * len(self._task_list)
+            assert len(self._task_list) == len(self._rotation_transform)
             for i, task in enumerate(self._task_list):
                 cur_task_dir = os.path.join(self._task_dir, task)
                 if not os.path.exists(cur_task_dir):
                     raise ValueError(f'{cur_task_dir} did not exist, please check the value of task dir and task list')
                 self._task_list[i] = cur_task_dir
+        # data type assignment
+        for i, task_dir in enumerate(self._task_list):
+            data_type = "real_robot" if self._rotation_transform[i] is None else "human_hand"
+            self._data_type.append(data_type)
+            log.info(f'{task_dir} contains data collected by {data_type}')
         if self._custom_prompt:
             assert len(self._custom_prompt) == len(self._task_list), \
             f'custom prompt dimension mismatch, prompt len: {len(self._custom_prompt)} task len: {len(self._task_list)}'
@@ -100,7 +111,8 @@ class LerobotLoader(DataLoaderBase):
             dirs = os.listdir(task_dir)
             # 同一个task下的每一个episode
             for cur_episode_dir in tqdm(dirs, desc=f"processing episodes", unit="episode"):
-                episode_data, text_info = self.load_episode(task_dir, cur_episode_dir, skip_nums_steps)
+                episode_data, text_info = self.load_episode(task_dir, cur_episode_dir, 
+                    skip_nums_steps, self._rotation_transform[task_id], self._data_type[task_id])
                 if episode_data is None:
                     continue
                 state_wrong_nums = 0; action_wrong_nums = 0 

@@ -183,7 +183,9 @@ class PikaTracker(TeleoperationDeviceBase):
         pose[key][3:] = tracker_pose_data.rotation  # [qx, qy, qz, qw]
     
     def read_data(self):
+        start = time.perf_counter()
         tracker_pose = self._tracker.get_pose()
+        pose_time = time.perf_counter() - start
         if not tracker_pose:
             return None, None
             
@@ -207,6 +209,7 @@ class PikaTracker(TeleoperationDeviceBase):
         if not all(list(all_pose_flag.values())):
             return None, None
         
+        start = time.perf_counter()
         tool_data = {}
         for key, sense in self._sense.items():
             if not sense:
@@ -218,6 +221,8 @@ class PikaTracker(TeleoperationDeviceBase):
             normalized_value = np.clip(normalized_value, 0.0, 1.0)
             command = sense.get_command_state()
             tool_data[key] = np.array([normalized_value, command])
+        tool_time = time.perf_counter() - start
+        log.info(f'pose time: {pose_time*1000:.1f}ms tool time: {tool_time*1000:.1f}ms')
             
         if not self._output_left:
             pose_quat = dict(single=pose_quat["right"])

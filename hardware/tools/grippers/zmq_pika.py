@@ -45,6 +45,7 @@ class ZmqPika(ToolBase):
         # thread starting
         self._state = {"left": ToolState(), "right": ToolState()}
         self._gripper_ok = {"left": None, "right": None}
+        self._gripper_check_lock = threading.Lock()
         self._thread_running = True
         self._update_thread = threading.Thread(target=self.update_loop, daemon=True)
         self._update_thread.start()
@@ -63,6 +64,7 @@ class ZmqPika(ToolBase):
         
         expected_dt = 1.0 / self._update_frequency
         last_read_time = time.perf_counter()
+        counter = 0
         while self._thread_running:
             with self._zmq_lock:
                 current_position = self._zmq_interface.get_all_gripper_positions()
@@ -78,8 +80,11 @@ class ZmqPika(ToolBase):
             if dt < expected_dt:
                 sleep_time = expected_dt - dt
                 time.sleep(0.92*sleep_time)
-            # elif dt > 1.3* expected_dt:
-            #     log.warn(f'ZMQ PIKA gripper update slow, real: {1.0/dt:.2f}, expected: {self._update_frequency}')
+            elif dt > 1.3* expected_dt:
+                counter += 1
+                if counter % 600 == 0:
+                    log.warn(f'ZMQ PIKA gripper update slow, real: {1.0/dt:.2f}, expected: {self._update_frequency}')
+                    counter = 0
                 
         log.info(f'ZMQ Pika gripper update thread stopped!!!')
     
@@ -102,10 +107,9 @@ class ZmqPika(ToolBase):
         
         keys = ["left", "right"]
         for i, command in enumerate(new_command):
-            gripper_ok = self._gripper_ok[keys[i]]
-            if gripper_ok is None or not gripper_ok.is_alive():
-                gripper_ok = True
-            else: gripper_ok = False
+            with self._gripper_check_lock:
+                gripper_ok = self._gripper_ok[keys[i]]
+                gripper_ok = True if gripper_ok is None or not gripper_ok.is_alive() else False
             if not gripper_ok:
                 log.debug(f"ZMQ gripper {keys[i]} is currently working on other command, please wait for some time to set new command") 
                 continue
@@ -121,7 +125,8 @@ class ZmqPika(ToolBase):
             elif self._control_mode == ToolControlMode.INCREMENTAL:
                 thread = self._handle_gripper_incremental_command(new_command[i], 
                     cur_value=cur_value, func=partial(self.set_single_command, key=keys[i]))
-                self._gripper_ok[keys[i]] = thread
+                with self._gripper_check_lock:
+                    self._gripper_ok[keys[i]] = thread
             else:
                 raise ValueError(f"Unsupported control mode: {self._control_mode}")
 
