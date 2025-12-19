@@ -4,6 +4,6 @@ zmq_pika_gripper:
   update_frequency: 150
 
   control_mode: "incremental"
-  step_size: 0.2
+  step_size: 0.4
   initial_position: 1.0
 

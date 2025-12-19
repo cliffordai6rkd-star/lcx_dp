@@ -158,20 +158,20 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 # Update internal position state
                 current_position = new_position
+                self._current_position_scaled = new_position
                 
                 # Execute hardware command
                 set_hardware_command(new_position)
                 
                 # Wait for next move based on frequency
-                time.sleep(0.001)
+                time.sleep(0.01)
                 
             self._tool_idle = True
         
         # Start thread for incremental execution
-        cur_value = cur_value if cur_value else self._current_position_scaled
-        func = func if func else self.set_hardware_command
-        thread = threading.Thread(target=incremental_execution, 
-                                        args=(cur_value, func))
+        cur_value = self._current_position_scaled if cur_value is None else cur_value
+        func = self.set_hardware_command if func is None else func
+        thread = threading.Thread(target=incremental_execution, args=(cur_value, func))
         thread.start()
         
         # Wait for thread completion if requested

@@ -14,6 +14,7 @@ class ZmqDynamixelHead:
             self._ctrl_port, img_endpoint=None, require_control=True)
         self._curr_positions = None; self._time_stamp = None
         self._lock = threading.Lock()
+        self._zmq_lock = threading.Lock()
         self._state_updated = False
         self._thread_running = True
         self._thread_handler = threading.Thread(target=self._update_loop, daemon=True)
@@ -41,7 +42,8 @@ class ZmqDynamixelHead:
             return 
         
         assert len(command) == 3, f"ZMQ dynamixel hand only contains three values!"
-        self._zmq_interface.set_neck_positions(command)
+        with self._zmq_lock:
+            self._zmq_interface.set_neck_positions(command)
     
     def get_head_positions(self):
         if not self._is_initialized:
@@ -60,7 +62,8 @@ class ZmqDynamixelHead:
         last_read_time = time.perf_counter()
         counter = 0
         while self._thread_running:
-            rpy = self._zmq_interface.get_neck_positions()
+            with self._zmq_lock:
+                rpy = self._zmq_interface.get_neck_positions()
             with self._lock:
                 self._curr_positions = copy.deepcopy(rpy)
                 self._time_stamp = time.perf_counter()

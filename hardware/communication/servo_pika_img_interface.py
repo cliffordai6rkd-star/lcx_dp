@@ -2,7 +2,7 @@ import json
 import time
 import zmq
 import numpy as np
-import cv2
+import cv2, threading
 import glog as log
 
 class G1UmiClient:
@@ -17,39 +17,82 @@ class G1UmiClient:
         ctrl_endpoint: int = 5555,
         img_endpoint: int = 5556,
         require_control=True,
+        immediate_ack=False
     ):
+        self.immediate_ack = immediate_ack
         self.requre_control = False if ctrl_endpoint is None else require_control
         self.ctrl_endpoint = f"tcp://{server_ip}:{ctrl_endpoint}"
         self.img_endpoint = f"tcp://{server_ip}:{img_endpoint}" if img_endpoint else None
 
         self._ctx = zmq.Context.instance()
-        if require_control:
-            # 控制 socket
-            self._ctrl_socket = self._ctx.socket(zmq.REQ)
-            self._ctrl_socket.connect(self.ctrl_endpoint)
+        self._ctrl_lock = threading.Lock()   # 关键：保证 REQ 的 send/recv 成对且串行
+
+        self._ctrl_socket = None
+        if self.requre_control:
+            self._ctrl_socket = self._make_ctrl_socket()
+            
+    def _make_ctrl_socket(self):
+        s = self._ctx.socket(zmq.REQ)
+        s.setsockopt(zmq.LINGER, 0)
+        # s.setsockopt(zmq.IMMEDIATE, 1)
+        s.connect(self.ctrl_endpoint)
+        return s
+
+    def _reset_ctrl_socket(self, reason=""):
+        """close&rebuild REQ socket(Context 不动)"""
+        with self._ctrl_lock:
+            try:
+                if self._ctrl_socket is not None:
+                    try:
+                        self._ctrl_socket.close(0)  # 0 表示不等待未发送完消息
+                    except TypeError:
+                        self._ctrl_socket.close()
+            finally:
+                self._ctrl_socket = self._make_ctrl_socket()
+        log.warn(f"[G1UmiClient] REQ socket reset. reason={reason}")
 
     # ============ 控制接口 ============
 
-    def _call(self, method, params=None, timeout_ms=600):
+    def _call(self, method, params=None, timeout_ms=600, retry_once=True):
         if not self.requre_control:
             log.warn(f'This interface does not enable the control demands!!!')
             return 
         
         params = params or {}
         req = {"method": method, "params": params, "id": int(time.time() * 1000)}
-        self._ctrl_socket.send_string(json.dumps(req))
+        
+        # REQ 必须严格：send -> recv；且不能并发
+        with self._ctrl_lock:
+            try:
+                self._ctrl_socket.send_string(json.dumps(req))
 
-        poller = zmq.Poller()
-        poller.register(self._ctrl_socket, zmq.POLLIN)
-        socks = dict(poller.poll(timeout_ms))
-        if self._ctrl_socket not in socks:
-            raise TimeoutError(f"Request {method} timeout {timeout_ms}")
+                poller = zmq.Poller()
+                poller.register(self._ctrl_socket, zmq.POLLIN)
+                socks = dict(poller.poll(timeout_ms))
+                if self._ctrl_socket not in socks:
+                    raise TimeoutError(f"Request {method} timeout {timeout_ms}ms")
 
-        msg = self._ctrl_socket.recv_string()
-        resp = json.loads(msg)
-        if resp.get("status") != "ok":
-            raise RuntimeError(f"RPC error: {resp.get('error')}")
-        return resp.get("result")
+                msg = self._ctrl_socket.recv_string()
+                resp = json.loads(msg)
+                if resp.get("status") != "ok":
+                    raise RuntimeError(f"RPC error: {resp.get('error')}")
+                return resp.get("result")
+
+            except TimeoutError as e:
+                # 超时后 REQ 很可能已经坏了（因为你没有 recv 到对应 reply）
+                self._reset_ctrl_socket(reason=f"timeout on {method}")
+                if retry_once:
+                    # 重试一次（可选）
+                    return self._call(method, params=params, timeout_ms=timeout_ms, retry_once=False)
+                raise
+
+            except zmq.ZMQError as e:
+                # EFSM = Operation cannot be accomplished in current state
+                if getattr(e, "errno", None) == zmq.EFSM:
+                    self._reset_ctrl_socket(reason=f"EFSM on {method}")
+                    if retry_once:
+                        return self._call(method, params=params, timeout_ms=timeout_ms, retry_once=False)
+                raise
 
     def ping(self):
         return self._call("ping")
@@ -125,9 +168,11 @@ class G1UmiClient:
         sub_socket.close()
 
     def close(self):
-        if self.requre_control:
-            self._ctrl_socket.close()
-
+        if self.requre_control and self._ctrl_socket is not None:
+            try:
+                self._ctrl_socket.close(0)
+            except TypeError:
+                self._ctrl_socket.close()
 # ================= 测试逻辑 =================
 
 def test_neck(client: G1UmiClient):
