@@ -9,6 +9,23 @@ class ZmqImgSubscriber(CameraBase):
         self._server_ip = config['ip']
         self._cam_name = config["cam_name"]
         self._img_port = config.get("port", 5556)
+        fps = config.get("fps")
+        self._rcv_timeout_ms = config.get("rcv_timeout_ms")
+        if self._rcv_timeout_ms is None:
+            if fps:
+                self._rcv_timeout_ms = int(max(2000, 3 * 1000 / fps))
+            else:
+                self._rcv_timeout_ms = 2000
+        self._stall_timeout_s = config.get("stall_timeout_s")
+        if self._stall_timeout_s is None:
+            if fps:
+                self._stall_timeout_s = max(2.0, 5.0 / fps)
+            else:
+                self._stall_timeout_s = 2.0
+        self._reconnect_interval_s = config.get("reconnect_interval_s", 0.5)
+        self._init_timeout_s = config.get("init_timeout_s", 5.0)
+        self._conflate = config.get("conflate", False)
+        self._rcv_hwm = config.get("rcv_hwm")
         
         self._zmq_interface = G1UmiClient(self._server_ip,
             ctrl_endpoint=None, img_endpoint=self._img_port, require_control=False)
@@ -24,8 +41,20 @@ class ZmqImgSubscriber(CameraBase):
         if self._contain_depth or self._contain_imu:
             raise ValueError("Zmq Image subscriber")
         
-        test_num = 0; succ_get_img = False; get_cam_name = None        
-        for cam_name, img, meta in self._zmq_interface.subscribe_images([self._cam_name]):
+        test_num = 0
+        succ_get_img = False
+        get_cam_name = None
+        start_wait = time.perf_counter()
+        for cam_name, img, meta in self._zmq_interface.subscribe_images(
+            [self._cam_name],
+            rcv_timeout_ms=self._rcv_timeout_ms,
+            conflate=self._conflate,
+            rcv_hwm=self._rcv_hwm,
+        ):
+            if cam_name is None:
+                if time.perf_counter() - start_wait > self._init_timeout_s:
+                    break
+                continue
             if img is not None: 
                 succ_get_img = True
                 get_cam_name = cam_name
@@ -51,30 +80,53 @@ class ZmqImgSubscriber(CameraBase):
         return True
         
     def update_camera_thread(self):
-        print(f'ZMQ camera thread started!!!')
+        log.info(f'ZMQ camera thread started for {self._cam_name}!')
         
+        target_dt = None if not self._fps else (1.0 / self._fps)
         last_read_time = time.perf_counter()
+        last_frame_time = last_read_time
         counter = 0
-        for cam_name, img, meta in self._zmq_interface.subscribe_images([self._cam_name]):
+        while self._thread_running:
+            for cam_name, img, meta in self._zmq_interface.subscribe_images(
+                [self._cam_name],
+                rcv_timeout_ms=self._rcv_timeout_ms,
+                conflate=self._conflate,
+                rcv_hwm=self._rcv_hwm,
+            ):
+                if not self._thread_running:
+                    break
+
+                if cam_name is None:
+                    if self._stall_timeout_s and (time.perf_counter() - last_frame_time) > self._stall_timeout_s:
+                        log.warn(f'ZMQ camera {self._cam_name} stalled for '
+                                 f'{time.perf_counter() - last_frame_time:.2f}s, reconnecting...')
+                        break
+                    continue
+                
+                if img is not None:
+                    with self._lock:
+                        self._image_data = copy.deepcopy(img)
+                        self._time_stamp = time.perf_counter()
+                    last_frame_time = time.perf_counter()
+
+                dt = time.perf_counter() - last_read_time
+                last_read_time = time.perf_counter()
+                if target_dt is not None:
+                    if dt < target_dt:
+                        sleep_time = target_dt - dt
+                        time.sleep(0.95 * sleep_time)
+                    elif dt > 1.35 * target_dt:
+                        counter += 1
+                        if counter % 1000 == 0:
+                            log.warn(f'Camera could not reach the {self._fps}hz, '
+                                     f'actual freq: {1.0/dt:.2f}hz')
+                            counter = 0
             if not self._thread_running:
                 break
-            
-            if img is not None:
-                with self._lock:
-                    self._image_data = copy.deepcopy(img)
-                    self._time_stamp = time.perf_counter()
-
-            dt = time.perf_counter() - last_read_time
             last_read_time = time.perf_counter()
-            if dt < (1.0 / self._fps):
-                sleep_time = (1.0 / self._fps) - dt
-                time.sleep(0.95*sleep_time)
-            elif dt > 1.35 / self._fps:
-                counter += 1
-                if counter % 1000 == 0:
-                    log.warn(f'Camera could not reach the {self._fps}hz, '
-                                f'actual freq: {1.0/dt:.2f}hz')
-                    counter = 0
+            last_frame_time = last_read_time
+            time.sleep(self._reconnect_interval_s)
+
         log.info(f'ZMQ camera {self._cam_name} thread is successfully stopped!')
             
     def close(self):

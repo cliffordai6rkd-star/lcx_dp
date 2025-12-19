@@ -133,7 +133,7 @@ class G1UmiClient:
 
     # ============ 图像订阅 ============
 
-    def subscribe_images(self, cam_names):
+    def subscribe_images(self, cam_names, rcv_timeout_ms=None, conflate=False, rcv_hwm=None):
         """
         返回一个 generator，不停 yield (cam_name, img, meta)
         cam_names: list[str]，比如 ["head"] 或 ["head", "left_fisheye"]
@@ -143,6 +143,12 @@ class G1UmiClient:
         
         sub_socket = self._ctx.socket(zmq.SUB)
         sub_socket.connect(self.img_endpoint)
+        if rcv_hwm is not None:
+            sub_socket.setsockopt(zmq.RCVHWM, int(rcv_hwm))
+        if conflate:
+            sub_socket.setsockopt(zmq.CONFLATE, 1)
+        if rcv_timeout_ms is not None:
+            sub_socket.setsockopt(zmq.RCVTIMEO, int(rcv_timeout_ms))
 
         # 设置订阅 topic
         if not cam_names:  # 订阅全部
@@ -154,7 +160,11 @@ class G1UmiClient:
         while True:
             try:
                 topic, meta_bytes, jpg_bytes = sub_socket.recv_multipart()
-            except Exception:
+            except zmq.Again:
+                yield None, None, {"timeout": True}
+                continue
+            except Exception as e:
+                log.warn(f"ZMQ image subscribe error: {e}")
                 break
 
             cam_name = topic.decode("utf-8")

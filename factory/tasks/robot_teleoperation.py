@@ -379,6 +379,8 @@ class TeleoperationFactory:
                             tool_state_dict[key]._position = tool_state_dict[key]._position.tolist()
                         gripper_state[key]['position'] = tool_state_dict[key]._position
                         gripper_state[key]["time_stamp"] = tool_state_dict[key]._time_stamp
+               
+                # head_positions = self._robot_system.get_head_position()
                 
                 # get sensor readings
                 colors = None; depths = None; imus = None
@@ -398,11 +400,11 @@ class TeleoperationFactory:
                     with self._tool_action_lock:
                         actions = copy.deepcopy(self._tool_action)
                     for key in list(actions.keys()):
+                        if "head" in key:
+                            ee_states["head"] = dict(pose=actions["head"])
+                            continue
                         actions[key]["joint"] = motion_action[key]["joint"]
                         actions[key]["ee"] = motion_action[key]["ee"]
-                    # head_positions = self._robot_system.get_head_position()
-                    if "head" in actions:
-                        ee_states["head"] = actions["head"]
                     # log.info(f'action: {actions}, type:{type(actions["single"]["tool"]["position"])}')
                     # log.info(f'update data, ee states: {ee_states["single"]["ft"]}, {type(ee_states["single"]["ft"])}')
                     self.data_recorder.add_item(colors=colors, depths=depths, tools=gripper_state,

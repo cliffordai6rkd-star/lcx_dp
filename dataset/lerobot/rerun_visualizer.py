@@ -400,11 +400,11 @@ if __name__ == "__main__":
     # # TEST DATA OF data_dir
     # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
     # /workspace/dataset/data/peg_in_hole
-    data_dir = "dataset/data/Bread_picking"
+    data_dir = "dataset/data/bread_picking"
     # data_dir = "/home/hanyu/Data_Collection/1018_block_stacking_fr3_3Dmosue_110eps"
     episode_data_number = 1
     fps = 100
-    skip_step_nums = 1
+    skip_step_nums = 4
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}

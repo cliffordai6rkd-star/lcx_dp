@@ -142,7 +142,7 @@ class RerunEpisodeReader:
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
                 elif self._obs_type in ee_check:
                     if "head" in key and "robot" in self._data_type:
-                        cur_obs[key] = ee_states[key]
+                        cur_obs[key] = np.array(ee_states[key]["pose"])
                     else:
                         # get cur rotated relative pose
                         ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
