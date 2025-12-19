@@ -189,7 +189,6 @@ class TeleoperationFactory:
                 key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
                 # log.info(f"{i}th robot key {key}, ee key: {self._ee_index[i]}, link {cur_ee_link}")
                 cur_tcp_pose[self._ee_index[i]] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
-                # log.info(f'tcp pose {cur_tcp_pose[self._ee_index[i]]} for {self._ee_index[i]}')
             self._robot_motion_system.sim_visualize_tcp(cur_tcp_pose)
             tcp_time = time.perf_counter() - start
 
@@ -198,7 +197,8 @@ class TeleoperationFactory:
             if (success_get_target or (self._robot_system._use_simulation and self._use_simulation_target)) and self._update_high_level_state:
                 high_level_command = np.array([]); head_target = ee_target.pop("head", None)
                 with timer("parse_target", "robot_teleoperation_"):
-                    for i, (key, cur_ee_target) in enumerate(ee_target.items()):
+                    for i, key in enumerate(self._ee_index):
+                        cur_ee_target = ee_target[key]
                         # Incremental target on the ee pose
                         if interface_output_mode == 'relative':
                             if len(self._init_pose) != len(ee_target):
@@ -233,6 +233,8 @@ class TeleoperationFactory:
                         # visualize targets in sim (Not using simulation for target tracking)
                         if not self._use_simulation_target:
                             self._robot_motion_system.sim_visualize_targets(ee_target)
+                            if head_target is not None and self._robot_system._use_simulation and "head_site" in self._robot_motion_system._mocap_target_site:
+                                self._robot_system._simulation.set_target_mocap_pose("head", head_target)
                 
                 if success_get_target:
                     # coupling with vr
@@ -277,7 +279,7 @@ class TeleoperationFactory:
                                     self._tool_action[key] = dict(tool=dict(
                                         position=tool_command, time_stamp=time.perf_counter()))
                             if hasattr(self._robot_system, "_head") and head_target is not None:
-                                self._tool_action["head"] = head_rotation.tolist()
+                                self._tool_action["head"] = head_target.tolist()
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
@@ -377,11 +379,6 @@ class TeleoperationFactory:
                             tool_state_dict[key]._position = tool_state_dict[key]._position.tolist()
                         gripper_state[key]['position'] = tool_state_dict[key]._position
                         gripper_state[key]["time_stamp"] = tool_state_dict[key]._time_stamp
-
-                # head state
-                head_positions = self._robot_system.get_head_position()
-                if head_positions is not None:
-                    ee_states["head"] = head_positions
                 
                 # get sensor readings
                 colors = None; depths = None; imus = None
@@ -403,6 +400,9 @@ class TeleoperationFactory:
                     for key in list(actions.keys()):
                         actions[key]["joint"] = motion_action[key]["joint"]
                         actions[key]["ee"] = motion_action[key]["ee"]
+                    # head_positions = self._robot_system.get_head_position()
+                    if "head" in actions:
+                        ee_states["head"] = actions["head"]
                     # log.info(f'action: {actions}, type:{type(actions["single"]["tool"]["position"])}')
                     # log.info(f'update data, ee states: {ee_states["single"]["ft"]}, {type(ee_states["single"]["ft"])}')
                     self.data_recorder.add_item(colors=colors, depths=depths, tools=gripper_state,

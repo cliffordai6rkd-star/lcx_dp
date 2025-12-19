@@ -1,7 +1,7 @@
 motion_config: !include factory/components/motion_configs/unitree_g1_upper.yaml
 
 # Target sites for left and right arms
-target_site_name: ["targetL_site", "targetR_site"]
+target_site_name: ["targetL_site", "targetR_site", "head_site"]
 tcp_visualization_site: ["TCPL_site", "TCPR_site"]
 
 teleop_interface: "pika_tracker"

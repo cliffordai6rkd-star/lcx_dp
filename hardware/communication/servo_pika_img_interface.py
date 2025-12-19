@@ -17,9 +17,7 @@ class G1UmiClient:
         ctrl_endpoint: int = 5555,
         img_endpoint: int = 5556,
         require_control=True,
-        immediate_ack=False
     ):
-        self.immediate_ack = immediate_ack
         self.requre_control = False if ctrl_endpoint is None else require_control
         self.ctrl_endpoint = f"tcp://{server_ip}:{ctrl_endpoint}"
         self.img_endpoint = f"tcp://{server_ip}:{img_endpoint}" if img_endpoint else None
@@ -101,6 +99,7 @@ class G1UmiClient:
         """
         rpy: [roll, pitch, yaw]
         """
+        rpy = np.asarray(rpy, dtype=float).reshape(-1).tolist()
         return self._call("set_neck_positions", {"positions": rpy, "wait": wait})
 
     def get_neck_positions(self):
@@ -443,7 +442,7 @@ if __name__ == "__main__":
     #   img_endpoint="tcp://0.0.0.0:5556"
     #
     # 那客户端就写成：
-    SERVER_IP = "127.0.0.1"  # 或 192.168.x.x 等
+    SERVER_IP = "192.168.1.99"  # 或 192.168.x.x 等
     CTRL_PORT = 5555
     IMG_PORT = 5556
 

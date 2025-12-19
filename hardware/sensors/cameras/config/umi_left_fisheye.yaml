@@ -1,5 +1,5 @@
 opencv_camera:
-  device_id: 71
+  device_id: "/dev/video71"
   image_shape: [480, 640]
   fps: 30
   contain_depth: false

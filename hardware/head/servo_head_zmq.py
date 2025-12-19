@@ -51,7 +51,7 @@ class ZmqDynamixelHead:
             return None, None
         
         with self._lock:
-            cur_positions = copy.deepcopy(self._zmq_interface.get_neck_positions())
+            cur_positions = copy.deepcopy(self._curr_positions)
             time_stamp = copy.deepcopy(self._time_stamp)
         return cur_positions, time_stamp
     

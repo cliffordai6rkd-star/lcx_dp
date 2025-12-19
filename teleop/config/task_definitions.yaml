@@ -84,7 +84,7 @@ tasks:
 
 - id: 7
   name: "Bread picking"
-  save_path_prefix: "Bread_picking"
+  save_path_prefix: "bread_picking"
   task_description: "place the bread into the designated position inside the box"
   task_description_goal: "locate the bread and box , place the bread into the designated position inside the box"
   task_description_step: |
