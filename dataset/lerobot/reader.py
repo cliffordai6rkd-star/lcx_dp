@@ -39,7 +39,9 @@ class RerunEpisodeReader:
                  action_prediction_step = 2, action_ori_type = "euler", 
                  observation_type = ObservationType.JOINT_POSITION_ONLY,
                  rotation_transform = None, contain_ft=False,
-                 camera_keys=None, state_keys=None, data_type="real_robot"):
+                 camera_keys=None, camera_keys_transformation=None,
+                 state_keys=None, data_type="real_robot",
+                 real_robot_tool_sacle=1.0,):
         self.task_dir = task_dir
         self.json_file = json_file
         self.action_type = action_type
@@ -50,7 +52,9 @@ class RerunEpisodeReader:
         # None or dict[str, np.ndarray]
         self._rotation_transform = rotation_transform
         self._camera_keys = camera_keys; self._state_keys = state_keys
+        self._camera_keys_transformation = camera_keys_transformation
         self._data_type = data_type
+        self._tool_scale = real_robot_tool_sacle
 
     def return_episode_data(self, episode_idx, skip_steps_nums=1):
         # Load episode data on-demand
@@ -82,6 +86,12 @@ class RerunEpisodeReader:
         init_ee_poses = {}
         # @TODO: maybe pose-process for time synchronization
         for i, item_data in enumerate(json_file['data']):
+            # skip
+            if counter % skip_steps_nums != 0:
+                counter += 1
+                continue
+            else: counter += 1
+            
             # Process images and other data
             colors, colors_time_stamp = self._process_images(item_data, 'colors', episode_dir)
             if colors is None or len(colors) == 0:
@@ -94,10 +104,15 @@ class RerunEpisodeReader:
             
             # Append the observation state data in the item_data list
             joint_states = item_data.get("joint_states", {})
-            if "robot" in self._data_type and not data_type_validated:
+            if not data_type_validated:
                 if joint_states is None or len(joint_states) == 0:
-                    raise ValueError(f'{self.task_dir} contains robot data but could not get joint states from dataset')
-                else: data_type_validated = True
+                    if "robot" in self._data_type:
+                        log.info(f'data type: {self._data_type}')
+                        raise ValueError(f'{self.task_dir} contains robot data but could not get joint states from dataset')
+                else:
+                    if "human" in self._data_type:
+                        raise ValueError(f'{self.task_dir} contains human data but get joint states from dataset which is not matching!')
+                data_type_validated = True
             joint_check = [ObservationType.JOINT_POSITION_ONLY, ObservationType.JOINT_POSITION_END_EFFECTOR]
             if self._obs_type in joint_check:
                 if joint_states is None or len(joint_states) == 0:
@@ -124,7 +139,7 @@ class RerunEpisodeReader:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             # update head to cur ee state, 确保head是在最后一个key
             if contain_head:
-                log.info(f'ee states contain head pose: {list(ee_states.keys())}')
+                log.debug(f'ee states contain head pose: {list(ee_states.keys())}')
             ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
             
             found_obs_keys = []; cur_obs = {}
@@ -141,25 +156,20 @@ class RerunEpisodeReader:
                                                             init_data=init_ee_poses[key])
                         cur_obs[key] = np.hstack((cur_obs[key], ee_pose))
                 elif self._obs_type in ee_check:
-                    if "head" in key and "robot" in self._data_type:
-                        cur_obs[key] = np.array(ee_states[key]["pose"])
+                    # get cur rotated relative pose
+                    ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
+                                                        init_data=init_ee_poses[key])
+                    if self._obs_type == ObservationType.END_EFFECTOR_POSE:
+                        cur_obs[key] = np.array(ee_pose)
                     else:
-                        # get cur rotated relative pose
-                        ee_pose = self.apply_rotation_offset(ee_states[key]["pose"], key,
-                                                            init_data=init_ee_poses[key])
-                        if self._obs_type == ObservationType.END_EFFECTOR_POSE:
-                            cur_obs[key] = np.array(ee_pose)
-                        else:
-                            last_id = i - 1
-                            last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
-                            last_pose = last_ee_states[key]["pose"]
-                            # if has rotation offset, calculate the rotated relative pose 
-                            last_pose = self.apply_rotation_offset(last_pose, key,
-                                                    init_data=init_ee_poses[key])
-                            # delta: the diff between two relative pose if has rot offset
-                            cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
-                        if "head" in key:
-                            cur_obs[key] = R.from_quat(cur_obs[3:7]).as_euler("xyz")
+                        last_id = i - 1
+                        last_ee_states = ee_states if last_id < 0 else json_data[last_id].get("ee_states", {}) 
+                        last_pose = last_ee_states[key]["pose"]
+                        # if has rotation offset, calculate the rotated relative pose 
+                        last_pose = self.apply_rotation_offset(last_pose, key,
+                                                init_data=init_ee_poses[key])
+                        # delta: the diff between two relative pose if has rot offset
+                        cur_obs[key] = self.get_pose_diff(ee_pose, last_pose)
                 elif self._obs_type == ObservationType.FT_ONLY or self._contain_ft:
                     if async_save_ft:
                         assert len(async_ft_files) == len(list(ee_states.keys())), f'len async save ft files {len(async_ft_files)} != len ee {len(list(ee_states.keys()))}'
@@ -246,36 +256,36 @@ class RerunEpisodeReader:
                 action_tool_states = json_data[action_state_id].get("tools", {})
                 for key in cur_actions.keys():
                     if "head" in key: continue
-                    action_tool_state = action_tool_states[key]
-                    tool_state = tool_states[key]
-                    cur_actions[key] = np.hstack((cur_actions[key], action_tool_state["position"]))
+                    tool_scale = self._tool_scale if "robot" in self._data_type else 1.0
+                    action_tool_state = action_tool_states[key]["position"] / tool_scale
+                    tool_state = tool_states[key]["position"] / tool_scale
+                    cur_actions[key] = np.hstack((cur_actions[key], action_tool_state))
                     if self._obs_type == ObservationType.MASK:
                         cur_obs[key] = np.hstack((cur_obs[key], [0]))
                     else:
-                        cur_obs[key] = np.hstack((cur_obs[key], tool_state["position"]))
+                        cur_obs[key] = np.hstack((cur_obs[key], tool_state))
                         
             # @TODO: @zyx add the keyframe to the action
             assert len(cur_actions.keys()) == len(self._state_keys), f"expected {self._state_keys}, but only found {list(cur_actions.keys())}"
             # log.info(f'color keys: {list(colors.keys())}')
-            if counter % skip_steps_nums == 0:
-                episode_data.append(
-                    {
-                        'idx': item_data.get('idx', 0),
-                        'colors': colors,
-                        'colors_time_stamp': colors_time_stamp,
-                        'depths': depths,
-                        'depths_time_stamp': depths_time_stamp,
-                        'joint_states': item_data.get('joint_states', {}),
-                        'ee_states': item_data.get('ee_states', {}),
-                        'tools': item_data.get('tools', {}),
-                        'imus': item_data.get('imus', {}),
-                        'tactiles': item_data.get('tactiles', {}),
-                        'audios': audios,
-                        'actions': cur_actions,
-                        'observations': cur_obs
-                    }
-                )
-            counter += 1
+            # if counter % skip_steps_nums == 0:
+            episode_data.append(
+                {
+                    'idx': item_data.get('idx', 0),
+                    'colors': colors,
+                    'colors_time_stamp': colors_time_stamp,
+                    'depths': depths,
+                    'depths_time_stamp': depths_time_stamp,
+                    'joint_states': item_data.get('joint_states', {}),
+                    'ee_states': item_data.get('ee_states', {}),
+                    'tools': item_data.get('tools', {}),
+                    'imus': item_data.get('imus', {}),
+                    'tactiles': item_data.get('tactiles', {}),
+                    'audios': audios,
+                    'actions': cur_actions,
+                    'observations': cur_obs
+                }
+            )
         
         return episode_data
     
@@ -382,7 +392,8 @@ class RerunEpisodeReader:
                     if init data is provided as the last para
         """
         if self._rotation_transform is not None:
-            new_pose = copy.deepcopy(pose)
+            # new_pose = copy.deepcopy(pose)
+            new_pose = pose.copy()
             if key not in self._rotation_transform:
                 # head key rot trans could be unit qunternion(not rotation offset for key)                
                 if "head" in key:
@@ -403,6 +414,7 @@ class RerunEpisodeReader:
             return {}, {}
         
         found_keys = []
+        key_transform = self._camera_keys_transformation if "color" in data_type else None
         new_images = {}; time_stamp = {}
         for key, data in images.items():
             if self._camera_keys:
@@ -410,14 +422,16 @@ class RerunEpisodeReader:
                     continue
                 
             file_name = data["path"]
-            found_keys.append(key)
             if file_name:
                 file_path = os.path.join(dir_path, file_name)
                 if os.path.exists(file_path):
                     image = cv2.imread(file_path)
                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    if key_transform is not None and key in key_transform:
+                        key = key_transform[key]
                     new_images[key] = image
                     time_stamp[key] = data["time_stamp"]
+                    found_keys.append(key)
                 else:
                     return None, None
         if self._camera_keys is None:

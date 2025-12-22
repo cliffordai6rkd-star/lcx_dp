@@ -12,6 +12,7 @@ class LerobotLoader(DataLoaderBase):
                  observation_type = ObservationType.JOINT_POSITION_ONLY):
         super().__init__(config, task_dir, json_file_name, action_type, observation_type)
         self._observation_type = observation_type
+        self._key_sequences = config.get("key_sequences", None)
         self._push_to_repo = self._config.get("push_to_repo", False)
         self._robot_name = config.get("robot_name", "fr3")
         self._repo_name = config.get("repo_name", "peg_in_hole")
@@ -24,26 +25,49 @@ class LerobotLoader(DataLoaderBase):
         self._load_fps = config.get("fps", 10)
         self._num_writer_thread = config.get(f'num_writer_thread', 1)
         self._num_writer_process = config.get(f'num_writer_process', 1)
-        self._data_type = []
+        
         # 一种是只给一个task的文件夹
         if self._task_list is None:
             self._task_list = [self._task_dir]
             self._rotation_transform = [self._rotation_transform]
+            self._data_type = [self._data_type]
         else: # 另一种是个所有task的文件夹并给每个task的名字在list里
             if self._rotation_transform is None:
                 log.info(f'Take all task lists {self._task_list} as real robot data')
                 self._rotation_transform = [None] * len(self._task_list)
-            assert len(self._task_list) == len(self._rotation_transform)
+            elif all([key in self._rotation_transform for key in ["human", "robot"]]):
+                # co-trainig
+                assert isinstance(self._data_type, list) and len(self._data_type) == len(self._task_list)
+                assert isinstance(self._cam_keys, dict) and all([key in self._cam_keys for key in ["human", "robot"]])
+                assert all([key in self._skip_nums_step for key in ["human", "robot"]]) 
+                human_transform = self._rotation_transform["human"]; robot_transform = self._rotation_transform["robot"]
+                human_skip = self._skip_nums_step["human"]; robot_skip = self._skip_nums_step["robot"]
+                self._rotation_transform = []; self._skip_nums_step = []
+                for i in range(len(self._data_type)):
+                    if "human" in self._data_type[i]:
+                        self._rotation_transform.append(human_transform)
+                        self._skip_nums_step.append(human_skip)
+                    elif "robot" in self._data_type[i]:
+                        self._rotation_transform.append(robot_transform)
+                        self._skip_nums_step.append(robot_skip)
+                    else:
+                        raise ValueError(f'Data type {self._data_type[i]} is not supported!!!')
+            else:
+                # human robot sharing the same transform or only one kind of data
+                assert all([key not in self._rotation_transform for key in ["human", "robot"]])
+                self._rotation_transform = [self._rotation_transform] * len(self._task_list)
+            if not isinstance(self._data_type, list):
+                self._data_type = [self._data_type] * len(self._task_list)
             for i, task in enumerate(self._task_list):
                 cur_task_dir = os.path.join(self._task_dir, task)
                 if not os.path.exists(cur_task_dir):
                     raise ValueError(f'{cur_task_dir} did not exist, please check the value of task dir and task list')
                 self._task_list[i] = cur_task_dir
-        # data type assignment
-        for i, task_dir in enumerate(self._task_list):
-            data_type = "real_robot" if self._rotation_transform[i] is None else "human_hand"
-            self._data_type.append(data_type)
-            log.info(f'{task_dir} contains data collected by {data_type}')
+        
+        assert len(self._task_list) == len(self._rotation_transform)
+        assert len(self._data_type) == len(self._task_list)
+        if isinstance(self._skip_nums_step, list):
+            assert len(self._skip_nums_step) == len(self._task_list)
         if self._custom_prompt:
             assert len(self._custom_prompt) == len(self._task_list), \
             f'custom prompt dimension mismatch, prompt len: {len(self._custom_prompt)} task len: {len(self._task_list)}'
@@ -74,11 +98,33 @@ class LerobotLoader(DataLoaderBase):
         log.info(f'obs state: {self._obs_states_dim}')
         log.info(f'action dim: {self._action_dim}')
     
+    def _parse_episode_data(self, task_id, episode_dir, skip_nums_steps):
+        task_dir = self._task_list[task_id]
+        cam_keys = None
+        if isinstance(self._cam_keys, list):
+            cam_keys = self._cam_keys
+        elif isinstance(self._cam_keys, dict):
+            cam_keys = self._cam_keys["human"] if "human" in self._data_type[task_id] else self._cam_keys["robot"]
+        else:
+            log.debug(f'Take all cameras as the obs images for all task dir since cam keys is {self._cam_keys}')
+        cam_keys_transform = self._cam_keys_human2robot if "human" in self._data_type[task_id] else None
+        cur_skip_nums_steps = None
+        if isinstance(self._skip_nums_step, list):
+            cur_skip_nums_steps = self._skip_nums_step[task_id]
+        else: cur_skip_nums_steps = self._skip_nums_step
+        if cur_skip_nums_steps is None:
+            cur_skip_nums_steps = skip_nums_steps
+        episode_data, text_info = self.load_episode(task_dir, episode_dir, 
+                    cur_skip_nums_steps, self._rotation_transform[task_id], cam_keys, 
+                    cam_keys_transform, self._data_type[task_id])
+        return episode_data, text_info
+    
     def convert_dataset(self):
         skip_nums_steps = int(30.0 / self._load_fps)
         task_dir = self._task_list[0]
         episode_dir = os.listdir(task_dir)[0]
-        example_episode, _ = self.load_episode(task_dir, episode_dir, skip_nums_steps)
+        log.info(f'task dir: {task_dir}, episode dir: {episode_dir}')
+        example_episode, _ = self._parse_episode_data(0, episode_dir, skip_nums_steps)
         self.get_example_feature_dim(example_episode[0])
         feature_dicts = {}
         for i, key in enumerate(self._image_keys):
@@ -111,9 +157,8 @@ class LerobotLoader(DataLoaderBase):
             dirs = os.listdir(task_dir)
             # 同一个task下的每一个episode
             for cur_episode_dir in tqdm(dirs, desc=f"processing episodes", unit="episode"):
-                episode_data, text_info = self.load_episode(task_dir, cur_episode_dir, 
-                    skip_nums_steps, self._rotation_transform[task_id], self._data_type[task_id])
-                if episode_data is None:
+                episode_data, text_info = self._parse_episode_data(task_id, cur_episode_dir, skip_nums_steps)
+                if episode_data is None or len(episode_data) == 0:
                     continue
                 state_wrong_nums = 0; action_wrong_nums = 0 
                 for num_step, step in tqdm(enumerate(episode_data), desc=f"processing steps", unit="step"):
@@ -125,8 +170,10 @@ class LerobotLoader(DataLoaderBase):
                     # obs states
                     frame_feature["state"] = np.array([])
                     obs_states = step["observations"]
-                    for key, obs_state in obs_states.items():
-                        frame_feature["state"] = np.hstack((frame_feature["state"], obs_state))
+                    low_dim_keys = self._key_sequences if self._key_sequences is not None else list(obs_states.keys())
+                    for key in low_dim_keys:
+                        assert key in obs_states, f"low dim key {key} not in action states {list(obs_states.keys())}"
+                        frame_feature["state"] = np.hstack((frame_feature["state"], obs_states[key]))
                     # print(f'state: {frame_feature["state"]}')  # 注释掉频繁的调试输出
                     if len(frame_feature["state"]) != self._obs_states_dim:
                         log.warn(f'{task_dir} {episode_dir} has wrong state dim: {len(frame_feature["state"])} in {num_step}th step')
@@ -137,8 +184,10 @@ class LerobotLoader(DataLoaderBase):
                         continue
                     # actions
                     frame_feature["actions"] = np.array([])
-                    for key, value in step["actions"].items():
-                        frame_feature["actions"] = np.hstack((frame_feature["actions"], value))
+                    action_states = step["actions"]
+                    for key in low_dim_keys:
+                        assert key in action_states, f"low dim key {key} not in action states {list(action_states.keys())}"
+                        frame_feature["actions"] = np.hstack((frame_feature["actions"], action_states[key]))
                     # print(f'actions: {frame_feature["actions"]}')  # 注释掉频繁的调试输出
                     action_dim = len(frame_feature["actions"])
                     if action_dim != self._action_dim:

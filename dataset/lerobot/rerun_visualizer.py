@@ -398,16 +398,18 @@ if __name__ == "__main__":
 
 
     # # TEST DATA OF data_dir
-    # data_dir = "/home/yuxuan/Code/hirol/teleoperated_trajectory/fr3/0910/picking_up_kiwi_0910_fr3_50ep_side"
-    # /workspace/dataset/data/peg_in_hole
-    data_dir = "dataset/data/bread_picking"
-    # data_dir = "/home/hanyu/Data_Collection/1018_block_stacking_fr3_3Dmosue_110eps"
-    episode_data_number = 1
+    # dataset/data/1212_duo_unitree_bread_n_picking——214ep dataset/data/1221_duo_unitree_bread_picking_human_114ep
+    data_dir = "dataset/data/1221_duo_unitree_bread_picking_human_114ep"
+    episode_data_number = 17
     fps = 100
     skip_step_nums = 4
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
-    umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
+    # umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
+    umi_rotation_transform = {"left": [0, 0, 0, 1], "right": [0, 0, 0, 1], "head": [0, 0, 0, 1]}
+    camera_keys = ['head_color', 'left_hand_fisheye_color', 'right_hand_fisheye_color']
+    cam_key_transform = {"left_hand_fisheye_color": "left_fisheye_color",
+                         "right_hand_fisheye_color": "right_fisheye_color"}
     contain_ft = False; data_type = "real_robot"
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
@@ -416,11 +418,14 @@ if __name__ == "__main__":
         episode_reader = RerunEpisodeReader(task_dir = data_dir, action_type=ActionType.END_EFFECTOR_POSE,
                                              action_prediction_step=1, action_ori_type=action_ori_type,
                                              observation_type=ObservationType.END_EFFECTOR_POSE,
-                                             rotation_transform=None,
+                                             rotation_transform=umi_rotation_transform,
                                              contain_ft=contain_ft,
+                                             camera_keys=None,
+                                             camera_keys_transformation=None,
                                             #  camera_keys=["right_hand_color", "right_hand_fisheye_color"],
                                             #  state_keys=["right"]
                                              data_type=data_type,
+                                             real_robot_tool_sacle=90.0
                                             )
         episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
         logger_mp.info(f'Successfully load the episode data')
