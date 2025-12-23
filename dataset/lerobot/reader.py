@@ -62,7 +62,7 @@ class RerunEpisodeReader:
         json_path = os.path.join(episode_dir, self.json_file)
 
         if not os.path.exists(json_path):
-            log.warn(f"Episode {episode_idx} data.json not found.")
+            log.warn(f"Episode {episode_idx} data.json not found for {self.task_dir}.")
             return None
 
         with open(json_path, 'r', encoding='utf-8') as jsonf:
