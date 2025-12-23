@@ -114,6 +114,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         action_index = 0
         gripper_position_dof = self._tool_position_dof
         ee_keys = ["single"] if len(dofs) == 1 else ["left", "right", "head"]
+        if self._gym_robot._contain_head: 
+            assert self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.COMMAND_END_EFFECTOR_POSE]
+            dofs.append(7) # hack 占位府
+            ee_keys.append("head")
         # log.info(f'len dof: {len(dofs)}')
         for j in range(len(dofs)):
             if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
@@ -142,6 +146,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     cur_arm_action[3:] = rot6d_to_quat(rot_6d)
                 # obs anchor   
                 if self._chunk_anchor_mode:
+                    if ee_keys[j] == "head": continue
                     assert chunk_anchor is not None
                     log.info(f'chunk anchor len: {chunk_anchor[ee_keys[j]]["pose"].shape}')
                     # cur_obs_anchor = chunk_anchor[j*(7+gripper_position_dof):j*(7+gripper_position_dof)+7]
@@ -151,6 +156,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 raise ValueError(f"Unsupported action type: {self._action_type}")
 
             action["arm"] = np.hstack((action["arm"], cur_arm_action))
+
+            if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
             log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
@@ -310,6 +317,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     log.info(f'chunk shape: {chunk_shape}')
                     # update chunk anchor
                     if self._chunk_anchor_mode:
+                        # @TODO: sleep could be deleted
                         time.sleep(2.5)
                         chunk_anchor = self._gym_robot.get_ee_state()
                     if self._use_relative_pose:
@@ -319,8 +327,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
+                        exec_latency = 0.01
                         cur_time = time.perf_counter()
-                        is_new = action_timestamps > (cur_time + 0.01)
+                        is_new = action_timestamps > (cur_time + exec_latency)
                         if np.sum(is_new) == 0:
                             log.warn(f'action chunk is old, execute the last action from chunk only')
                             execution_index = [chunk_shape - 1]

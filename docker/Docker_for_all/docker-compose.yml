@@ -1,7 +1,7 @@
 
 services:
   # zyx_development   hirol_platform:
-  unitree_teleop:
+  zyx_development:
     build:
       context: .  # Assuming the Dockerfile is in the current directory
       dockerfile: Dockerfile

@@ -21,6 +21,7 @@ class GymApi(gym.Env):
         self._action_type = config.get("action_type", "joint_position")
         self._action_type = Action_Type_Mapping_Dict[self._action_type]
         self._action_ori_type = config.get("action_orientation_type", "euler")
+        self._contain_head = config.get("contain_head", False)
         self._delta_action_target = {}
         self._obs_type = config.get("observation_type", "jonit_position")
         self._obs_type = ObservationType(self._obs_type)
@@ -104,11 +105,12 @@ class GymApi(gym.Env):
         elif self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
             end_effector_names = self._robot_motion.get_model_end_effector_link_list()
             ee_index = ['left', 'right'] if len(end_effector_names) > 1 else ['single']
+            if self._contain_head: ee_index.append("head")
             # assume the gym action step is alredy represented with quaternion
             assert arm_action.shape[-1] == len(ee_index) * 7, \
                 f"{arm_action.shape[-1]} != {len(ee_index) * 7} with {ee_index}"
             action_index = 0
-            for j ,key in enumerate(ee_index):
+            for j, key in enumerate(ee_index):
                 cur_arm_action = arm_action[action_index:action_index+7]
                 action_index += 7
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
@@ -117,6 +119,7 @@ class GymApi(gym.Env):
                     self._delta_action_target[key] = cur_arm_action
                 # 使用relative (abs）pose，而非chunk relative
                 if self._use_relative_pose and self._chunk_anchor_mode is None:
+                    if key == "head": continue
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 
@@ -139,13 +142,11 @@ class GymApi(gym.Env):
         if tool_type_dict is not None:
             for j in range(len(tool_type_dict)):
                 index_r = tool_index + gripper_position_dof
-                if tool_action.ndim == 0:
-                    execute_tool_action.append(np.array(tool_action))
-                else:
-                    execute_tool_action.append(np.array(tool_action[tool_index:index_r]))
+                cur_tool_action = np.array(tool_action[tool_index:index_r])
+                execute_tool_action.append(cur_tool_action)
                 tool_index = index_r
-            log.info(f'tool action: {tool_action}')
-            self._robot_motion.set_tool_command(np.array(tool_action))
+            log.info(f'tool action: {execute_tool_action}')
+            self._robot_motion.set_tool_command(execute_tool_action)
         tool_time = time.perf_counter() - tool_satrt
         
         # obs
@@ -310,6 +311,16 @@ class GymApi(gym.Env):
             else: obs_state[key] = np.hstack((obs_state[key], [0]))
             log.info(f'obs state {key} shape: {obs_state[key].shape}')
         
+        # head process
+        if self._contain_head:
+            head_check = [ObservationType.END_EFFECTOR_POSE, ObservationType.MASK]
+            assert self._obs_type in head_check, f"contain head obs type {self._obs_type} not correct"
+            if self._obs_type == ObservationType.MASK:
+                obs_state["head"] = np.zeros(7)
+            else:
+                # @TODO: update!!!!
+                obs_state["head"] = np.zeros(7)
+        
         cam_start = time.perf_counter()
         camera_data = self.get_camera_infos()
         cam_time = time.perf_counter()-cam_start
@@ -357,7 +368,8 @@ class GymApi(gym.Env):
                     self._wait_key('c', 'please press c to execute in hardware!!!!')
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
-        self._robot_motion.update_high_level_command(poses)
+        # comment for testing only
+        # self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}

@@ -372,6 +372,10 @@ class MotionFactory:
             log.debug(f'There is no tool for the robot config!!!')
             return False
         
+        if len(tool_type_dict) != len(tool_command):
+            log.error(f'tool command should have len of {len(tool_type_dict)} for tool command but get {len(tool_command)}')
+            return False
+        
         # log.info(f'motion tool: {tool_command}')
         parsed_tool_command = {}
         if len(tool_type_dict) == 1:
@@ -379,9 +383,6 @@ class MotionFactory:
                 parsed_tool_command["single"] = tool_command
             else: parsed_tool_command = tool_command
         else: # for duo tool
-            if len(tool_type_dict) != len(tool_command):
-                log.error(f'tool command should have len of two for duo tool command but get {len(tool_command)}')
-                return False
             if not isinstance(tool_command, dict):
                 parsed_tool_command["left"] = tool_command[0]
                 parsed_tool_command["right"] = tool_command[1]

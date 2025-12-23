@@ -6,8 +6,8 @@ use_simulation: true
 # from the project directory
 robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
-# gripper: "zmq_pika_gripper"
-# gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
+gripper: "zmq_pika_gripper"
+gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
 # head: "zmq_servo_head"
 # head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
@@ -22,16 +22,16 @@ controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
 
 sensor_dicts:
-  # cameras:
-  #   - name: "head"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
-  #   - name: "left_fisheye"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
-  #   - name: "right_fisheye"
-  #     type: "zmq_camera"
-  #     cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
+  cameras:
+    # - name: "head"
+    #   type: "zmq_camera"
+    #   cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
+    - name: "left_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
+    - name: "right_fisheye"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
 
 model_type: "model"
 model_config:

@@ -460,9 +460,8 @@ class RobotFactory:
             
             if tool_type == ToolType.GRIPPER or tool_type == ToolType.SUCTION:
                 cur_tool_command[key] = np.array(cur_tool_command[key])
-                if cur_tool_command[key].ndim == 0: 
-                    cur_tool_command[key] = np.array([cur_tool_command[key]])
-                cur_tool_command[key] = cur_tool_command[key][0]
+                if cur_tool_command[key].ndim != 0: 
+                    cur_tool_command[key] = cur_tool_command[key][0]
             else:
                 cur_tool_command[key] = np.array(cur_tool_command[key])
         
