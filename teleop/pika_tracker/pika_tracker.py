@@ -130,6 +130,7 @@ class PikaTracker(TeleoperationDeviceBase):
                 continue
         
         # pika tracker uid check
+        log.info(f'Trying to find the trackers in {self._tracker_detection_attempts} times!')
         for j in range(self._tracker_detection_attempts):
             time.sleep(1.2)
             

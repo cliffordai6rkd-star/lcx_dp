@@ -175,8 +175,8 @@ class TeleoperationFactory:
             # only for mujoco 
             if self._use_simulation_target and not mocap_target_site is None and self._robot_system._use_simulation:
                 ee_target = {}
-                for i, target_site in enumerate(mocap_target_site):
-                    key = self._ee_index[i]
+                for i, key in enumerate(self._ee_index):
+                    target_site = mocap_target_site[i]
                     # log.info(f'target site in sim: {target_site} for {key}')
                     cur_sim_target = self._robot_system._simulation.get_site_pose(target_site, 'xyzw')
                     cur_base_pose = self.base2world_pose[0] if len(self.base2world_pose) == 1 else self.base2world_pose[i]

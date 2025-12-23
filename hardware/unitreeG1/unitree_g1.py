@@ -314,7 +314,9 @@ class UnitreeG1(ArmBase):
             self._low_state = self._lowstate_subscriber.Read()
             read_time = time.perf_counter() - start
             self._low_state_updated = True
+            start1 = time.perf_counter()
             self.update_arm_states()
+            update_time = time.perf_counter() - start1
 
             if self._update_mode_machine == False:
                 self._mode_machine = self._low_state.mode_machine
@@ -329,7 +331,8 @@ class UnitreeG1(ArmBase):
             elif used_time > 1.3 * target_dt:
                 counter += 1
                 if counter %1000 == 0:
-                    log.info(f'Unitree G1 state update slow, expected: {target_dt*1000:.1f}ms actual: {used_time*1000:.1f}ms read: {read_time*1000:.1f}ms')
+                    actual_freq = 1.0 / (time.perf_counter() - start)
+                    log.info(f'Unitree G1 state update slow, expected: {1.0/target_dt:.1f}hz actual: {actual_freq:.1f}hz read: {1.0/read_time:.1f}hz update: {1.0/update_time:.1f}hz')
                     counter = 0        
         log.info(f'Stopped unitree g1 state update loop!!!')
 
@@ -339,9 +342,10 @@ class UnitreeG1(ArmBase):
         target_dt = 1.0 / self._control_frequency    
         counter = 0
         while self._thread_running:
+            loop_start_time = time.perf_counter()
             if self._last_write_time is None: self._last_write_time = time.perf_counter()
             
-            # start = time.perf_counter()
+            start = time.perf_counter()
             sucess = False
             if self._command_buffer.size() > 0:
                 sucess = True; command =  self._command_buffer._data[0]
@@ -366,7 +370,7 @@ class UnitreeG1(ArmBase):
                     else:
                         raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
                 _, command, _ = self._command_buffer.pop_data()
-            # other_time = time.perf_counter() - start
+            other_time = time.perf_counter() - start
 
             start = time.perf_counter()
             if self._actuate_motors:
@@ -385,7 +389,8 @@ class UnitreeG1(ArmBase):
             elif dt > 1.35*target_dt:
                 counter += 1
                 if counter %1000 == 0:
-                    log.warn(f'Unitree G1 control frequency is slow for writing, expected: {self._control_frequency}, actual: {1.0/dt:.2f} write {1.0/write_time:.2f}Hz')
+                    actual_dt = time.perf_counter() - loop_start_time
+                    log.warn(f'Unitree G1 control frequency is slow for writing, expected: {self._control_frequency}, actual: {1.0/actual_dt:.2f} write {1.0/write_time:.2f}Hz other {1.0/other_time:.2f}Hz')
                     counter = 0
             elif dt > 10*target_dt:
                 # release the control and quit, @TODO:

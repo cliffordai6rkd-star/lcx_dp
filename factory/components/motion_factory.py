@@ -241,17 +241,16 @@ class MotionFactory:
             last_control_time = time.perf_counter()
             if used_time < ctrl_period:
                 sleep_time = ctrl_period - used_time
-                time.sleep(0.9*sleep_time)
-            else:
+                time.sleep(0.95*sleep_time)
+            elif used_time > 1.25 * ctrl_period:
                 # 处理超时情况
                 actual_time = time.perf_counter() - loop_start_time
                 slow_loop_count += 1
 
                 # 控制警告频率：每1000次慢循环警告一次
                 if slow_loop_count % 1000 == 0:
-                    expected_freq = self._control_frequency
                     actual_freq = 1.0 / actual_time
-                    log.warn(f"Controller frequency slow: expected {expected_freq:.1f}Hz, "
+                    log.warn(f"Controller frequency slow: expected {self._control_frequency:.1f}Hz, "
                                 f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
                     
             # 性能统计（降低频率，减少日志量）
