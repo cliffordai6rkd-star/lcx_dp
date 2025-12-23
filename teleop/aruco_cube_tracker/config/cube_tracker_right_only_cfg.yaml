@@ -1,0 +1,29 @@
+cube_tracker:
+  # ArUco marker IDs on each visible face, order: [None, -Z, +Y, -Y, +X, -X]
+  # The +Z face is unused; keep None as placeholder to align indexing.
+  all_cube_marker_ids:
+    right: [null, 3, 0, 4, 5, 2]
+
+  # Cube and marker physical sizes (centimeters)
+  cube_size: 8.0
+  marker_size: 6.4
+
+  # Camera-to-world 6D transform [x, y, z, rx, ry, rz]
+  # Set to zero if you want camera frame as control frame
+  transformation: [0.0, 0.0, 0.10, 0.0, 0.0, 0.0]
+
+  # RealSense camera config YAML (relative to repo root)
+  camera_config: "hardware/sensors/cameras/config/right_pika_d405_cfg.yaml"
+  camera_calibration_path: "calibration/camera_params.json"
+
+  output_left: false
+  output_right: true
+
+  # Scale for translation in absolute_delta mode
+  position_scale: 1.0
+
+  # Initial poses used for rotation alignment (can keep identity)
+  init_pose:
+    initial_pose_left:  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    initial_pose_right: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+

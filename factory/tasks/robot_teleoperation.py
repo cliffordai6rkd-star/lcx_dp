@@ -15,6 +15,7 @@ except (ImportError, ModuleNotFoundError):
         raise NotImplementedError("MetaQuest3 is not available. Install XR dependencies to use this interface.")
     
 from teleop.pika_tracker.pika_tracker import PikaTracker
+from teleop.aruco_cube_tracker.cube_tracker import CubePoseTracker
 from factory.components.motion_factory import MotionFactory, Robot_Space
 from factory.components.robot_factory import RobotFactory
 from simulation.base.sim_base import SimBase
@@ -85,6 +86,7 @@ class TeleoperationFactory:
             'duo_space_mouse': DuoSpaceMouse,
             'meta_quest3': MetaQuest3,
             'pika_tracker': PikaTracker,
+            'cube_tracker': CubePoseTracker,
         }
 
     def create_robot_teleoperation_system(self) -> bool:
