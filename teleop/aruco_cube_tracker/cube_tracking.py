@@ -193,7 +193,7 @@ class CubeTracker:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         corners_list, ids, _ = self.detector.detectMarkers(gray)
-        print(f'Detected ids: {ids}')
+        # print(f'Detected ids: {ids}')
 
         if ids is None:
             # print("No markers detected.")
@@ -283,7 +283,7 @@ class CubeTracker:
             camera_pts_3d.append([Xc, Yc, Zc])
             object_pts_3d.append([Xo, Yo, Zo])
 
-        print("valid depth points:", len(camera_pts_3d))
+        # print("valid depth points:", len(camera_pts_3d))
 
         # Must have enough corners with valid depth
         if len(camera_pts_3d) < 4:

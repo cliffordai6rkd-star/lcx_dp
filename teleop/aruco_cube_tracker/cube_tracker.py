@@ -44,18 +44,19 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
     # Fixed transforms and init targets follow PikaTracker conventions
     T_ROBOT_TRACKER = np.eye(4)
-    # T_TRACKER_ROBOT = np.array(
-    #     [
-    #         [-1, 0, 0, 0],
-    #         [0, -1, 0, 0],
-    #         [0, 0, 1, 0],
-    #         [0, 0, 0, 1],
-    #     ]
-    # )
+    # T_TRACKER_ROBOT = np.eye(4)
+    T_TRACKER_ROBOT = np.array(
+        [
+            [0, -1, 0, 0],
+            [-1, 0, 0, 0],
+            [0, 0, -1, 0],
+            [0, 0, 0, 1],
+        ]
+    )
 
     # init pose for absolute delta pose calculation, left, right, head
     INIT_TARGET_POSE = [[0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1]]
-
+    WORLD_POSE = [None, None, None]
     def __init__(self, config):
         # cube & marker related config
         all_cube_marker_ids: dict = config["all_cube_marker_ids"]
@@ -109,14 +110,6 @@ class CubePoseTracker(TeleoperationDeviceBase):
         self._position_scale = config.get("position_scale", 1.0)
 
         # Initialize offset pose for relative positioning
-        self._init_pose = config.get('init_pose', None)
-        self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
-        if not self._init_pose is None:
-            self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
-                                    self._init_pose["initial_pose_right"][3:]]
-            self._last_quat = self._init_pose_rot
-            self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
-                                    self._init_pose["initial_pose_right"][:3]]
         self._device_enabled = False
         self._reset_pose_counter = 0
         # Keyboard and transform caches
@@ -140,14 +133,25 @@ class CubePoseTracker(TeleoperationDeviceBase):
         log.info("CubePoseTracker initialized successfully")
         return True
     
+    def _update_init_pose(self, pose):
+        if pose is None:
+            return False
+        
+        for i, (key, cur_pose) in enumerate(pose.items()):
+            cur_pose = self._process_raw_pose(cur_pose, key)
+            if cur_pose is None:
+                return False
+            self.INIT_TARGET_POSE[self._index[key]] = cur_pose
+        return True
+    
     def _press_i(self):
         pose, _ = self.read_data()
         if pose is None:
             log.warn("Failed to read pose data for update init pose!!!")
             return
-        for i, (key, cur_pose) in enumerate(pose.items()):
-            cur_pose = self._process_raw_pose(cur_pose, key)
-            self.INIT_TARGET_POSE[self._index[key]] = cur_pose
+        if not self._update_init_pose(pose):
+            log.warn("Failed to for update init pose!!!")
+            return 
         self._device_enabled = True
         self._key_pressed = True
         log.info("init pose is updated!!!")
@@ -169,16 +173,19 @@ class CubePoseTracker(TeleoperationDeviceBase):
             pass
     
     def _process_raw_pose(self, pose, key):
-        # Apply the same basis-change and offsets as PikaTracker
-        res_pose = pose
+        # world coordinate alignment
+        if self.WORLD_POSE[self._index[key]] is None:
+            self.WORLD_POSE[self._index[key]] = pose
+            log.info(f'World pose updated for {key}')                
+            return None
+        
+        # Apply the same basis-change and offsets 
+        res_pose = pose_diff(pose, self.WORLD_POSE[self._index[key]])
+        # pre-process to correct the coordinate
         tracker_robot_trans = self._tracker_robot_trans
         robot_tracker_trans = self._robot_tracker_trans
-        res_pose = transform_pose(transform_pose(robot_tracker_trans, pose), tracker_robot_trans)
-
-        # Align to x-forward, y-left, z-up; then apply init offset
-        static_rot_offset = np.array([0, 0, 1, 0])
-        res_pose = self.apply_rotation_offset(res_pose, static_rot_offset)
-        res_pose = self.apply_init_offset(res_pose, self._index[key])
+        res_pose = transform_pose(transform_pose(robot_tracker_trans, res_pose), tracker_robot_trans)
+        
         return res_pose
     
     def parse_data_2_robot_target(self, mode: str) -> Tuple[bool, Optional[Dict], Optional[Dict]]:
@@ -197,16 +204,19 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
         pose_target: Dict[str, np.ndarray] = {}
         tool_target: Dict[str, np.ndarray] = {}
-
         for key, value in pose_quat.items():
             cur_pose = self._process_raw_pose(value, key)
+            if cur_pose is None: continue
             if mode == "absolute_delta" and self._device_enabled:
                 cur_pose = self._get_diff_trans(cur_pose, self._index[key])
                 cur_pose[:3] *= self._position_scale
             pose_target[key] = cur_pose
             # Provide a tool vector compatible with teleop pipeline: [position_like, command_like, key_pressed]
             tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
-
+        
+        if any([pose is None for key, pose in pose_target.items()]) or len(pose_target) == 0:
+            return False, None, None
+        
         if self._key_pressed:
             # Keep the pressed flag for a few cycles so robot can catch it
             if self._reset_pose_counter > 15:
@@ -230,13 +240,10 @@ class CubePoseTracker(TeleoperationDeviceBase):
         res = self._camera.capture_all_data()
         img = res["image"]
         depth_raw = res.get("depth_map", None)
+        assert img is not None
+        assert depth_raw is not None
 
-        if img is None:
-            return None, None
-
-        depth_m = None
-        if depth_raw is not None:
-            depth_m = depth_raw.astype(np.float32) * getattr(self._camera, "g_depth_scale", 0.001)
+        depth_m = depth_raw.astype(np.float32) * getattr(self._camera, "g_depth_scale", 0.001)
 
         pose_quat: Dict[str, np.ndarray] = {}
         tool_data: Dict[str, np.ndarray] = {}
@@ -254,7 +261,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
             # Dummy tool channel to align with teleop pipeline (position + command)
             tool_data[side] = np.array([0.0, 0.0])
 
-        # Collapse to 'single' if only one side is used
+        # @TODO: check how to know tool data
         if not self._output_left and self._output_right:
             pose_quat = dict(single=pose_quat.get("right"))
             tool_data = dict(single=tool_data.get("right", np.array([0.0, 0.0])))
@@ -263,21 +270,6 @@ class CubePoseTracker(TeleoperationDeviceBase):
             tool_data = dict(single=tool_data.get("left", np.array([0.0, 0.0])))
 
         return pose_quat, tool_data
-    
-    def apply_rotation_offset(self, pose, rot_offset):
-        new_pose = copy.deepcopy(pose)
-        # apply rotation offset
-        new_pose[3:] = transform_quat(pose[3:], rot_offset)
-        return new_pose
-    
-    def apply_init_offset(self, pose, id):
-        new_pose = pose
-        # basis convertion (mainly for rot)
-        if self._init_pose is not None:
-            init_rot = self._init_pose_rot[id]
-            # log.info(f'id: {id}, init rot: {init_rot}')
-            new_pose = self.apply_rotation_offset(new_pose, init_rot)
-        return new_pose
     
     def _get_diff_trans(self, cur_pose, index):
         diff_pose = pose_diff(cur_pose, self.INIT_TARGET_POSE[index])

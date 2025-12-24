@@ -13,7 +13,7 @@ cube_tracker:
   transformation: [0.0, 0.0, 0.10, 0.0, 0.0, 0.0]
 
   # RealSense camera config YAML (relative to repo root)
-  camera_config: "hardware/sensors/cameras/config/right_pika_d405_cfg.yaml"
+  camera_config: "hardware/sensors/cameras/config/third_person_d455_cfg.yaml"
   camera_calibration_path: "calibration/camera_params.json"
 
   output_left: false
@@ -24,6 +24,6 @@ cube_tracker:
 
   # Initial poses used for rotation alignment (can keep identity)
   init_pose:
-    initial_pose_left:  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-    initial_pose_right: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    initial_pose_left:  [0.0, 0.0, 0.0, 1, 0, 0, 0]
+    initial_pose_right: [0.0, 0.0, 0.0, 1, 0, 0, 0]
 
