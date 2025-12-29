@@ -11,7 +11,7 @@ cameras:
   - name: "left_hand_fisheye"
     type: "opencv_camera"
     config: !include hardware/sensors/cameras/config/left_pika_sense_fisheye_cfg.yaml
-  - name: "right_hand_fisheyed"
+  - name: "right_hand_fisheye"
     type: "opencv_camera"
     config: !include hardware/sensors/cameras/config/right_pika_sense_fisheye_cfg.yaml
 

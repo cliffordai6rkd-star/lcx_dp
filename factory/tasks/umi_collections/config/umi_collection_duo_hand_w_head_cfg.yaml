@@ -14,7 +14,7 @@ cameras:
   - name: "left_hand_fisheye"
     type: "opencv_camera"
     config: !include hardware/sensors/cameras/config/umi_left_fisheye.yaml
-  - name: "right_hand_fisheyed"
+  - name: "right_hand_fisheye"
     type: "opencv_camera"
     config: !include hardware/sensors/cameras/config/umi_right_fisheye.yaml
 

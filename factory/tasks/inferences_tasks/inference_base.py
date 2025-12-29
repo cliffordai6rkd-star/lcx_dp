@@ -13,6 +13,7 @@ import numpy as np
 from collections import deque
 from factory.tasks.inferences_tasks.utils.action_aggreagator import ActionAggregator, WeightMode
 from scipy.spatial.transform import Rotation as R
+from dataset.lerobot.data_process import EpisodeWriter
 
 class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -62,6 +63,15 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # display
         self._enable_display = config.get("enable_display", True)
         self._display_window_name = config["display_window_name"]
+        
+        # data saving
+        self._save_chunk_dir = config.get("save_chunk_dir", None)
+        if self._save_chunk_dir:
+            cur_path = os.path.dirname(os.path.abspath(__file__))
+            task_dir = os.path.join(cur_path, "../../dataset/data", self._save_chunk_dir)
+            self._action_chunk_writer = EpisodeWriter(
+                            task_dir=task_dir, rerun_log=False)
+            self._episode_id = self._action_chunk_writer.episode_id
         
         # keyboard listening
         listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
@@ -289,6 +299,15 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     log.info(f'save infer data traj!!!')
                 self._gym_robot.start_recording()
                 log.info(f'start record infer data traj!!!')
+            if self._save_chunk_dir:
+                if episode_id:
+                    self._action_chunk_writer.save_episode()
+                    log.info(f'save {self._episode_id}th model infer action chunk!!!')
+                    time.sleep(1.5)
+                self._action_chunk_writer.create_episode()
+                self._episode_id = self._action_chunk_writer.episode_id
+                time.sleep(0.5)
+                log.info(f'start record model infer action chunk!!!')
             if self._action_aggregation:
                 self._action_aggregation.reset()
             self._gym_robot.reset(options={"arm_to_default": True})
@@ -316,6 +335,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
                     log.info(f'chunk shape: {chunk_shape}')
+                    if self._save_chunk_dir:
+                        self._action_chunk_writer.add_item(actions=pred_action_chunk)
                     # update chunk anchor
                     if self._chunk_anchor_mode:
                         # @TODO: sleep could be deleted

@@ -146,6 +146,7 @@ class TeleoperationFactory:
         mocap_target_site = self._config.get('target_site_name', None)
         # @TODO: check how to integrate with hand
         self._init_pose = {}
+        self._init_pose_rot = {}; self._init_pose_rot_inv = {}
         self._robot_index = self._robot_motion_system.get_model_types()
         self._ee_index = ['left', 'right'] if len(self.ee_link) > 1 else ['single']
         log.info(f'ee index in robot teleoperation: {self._ee_index}')
@@ -216,8 +217,14 @@ class TeleoperationFactory:
                             # @TODO: check: after reset, the init pose could only be reset!!!!
                             if tool_target[key][-1] and len(self._init_pose) != len(self.ee_link):
                                 self._init_pose[key] = cur_tcp_pose[key]
+                                self._init_pose_rot[key] = np.hstack(([0,0,0], cur_tcp_pose[key][3:]))
+                                self._init_pose_rot_inv[key] = negate_pose(self._init_pose_rot[key])
                                 log.info(f"{'='*10} updated the robot neutral pose for {key}: {self._init_pose[key]} {'='*10} ")
                             if len(self._init_pose) == 0: break
+                            # @TODO: general to all absolute delta device
+                            if "cube" in self._teleop_interface_type:
+                                cur_ee_target = transform_pose(
+                                    transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
                             ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target, True)
                         elif interface_output_mode != "absolute":
                             raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")

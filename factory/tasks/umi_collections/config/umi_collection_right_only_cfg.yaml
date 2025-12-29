@@ -5,7 +5,7 @@ cameras:
   - name: "right_hand"
     type: "realsense_camera" 
     config: !include hardware/sensors/cameras/config/right_pika_sense_d405_cfg.yaml
-  - name: "right_hand_fisheyed"
+  - name: "right_hand_fisheye"
     type: "opencv_camera"
     config: !include hardware/sensors/cameras/config/right_pika_sense_fisheye_cfg.yaml
     
