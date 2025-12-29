@@ -33,6 +33,7 @@ tool_state_max: 90
 # tool_open_thresh: 45
 # tool_close_thresh: 45
 
+host: "192.168.36.204" 
 enable_display: true
 display_window_name: "pi0 client inference for unitree with umi data"
 enable_plotting: false

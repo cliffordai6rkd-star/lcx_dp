@@ -49,6 +49,7 @@ class GymApi(gym.Env):
         self._robot_system = RobotFactory(robot_motion_cfg)
         self._robot_motion = MotionFactory(robot_motion_cfg, self._robot_system)
         self._robot_motion.create_motion_components()
+        self._robot_index = self._robot_motion.get_model_types()
         log.info("The robot motion component is successfully created in gym api!")
         
         # record data
@@ -186,9 +187,10 @@ class GymApi(gym.Env):
         end_effector_names = self._robot_motion.get_model_end_effector_link_list()
         ee_index = ['left', 'right'] if len(end_effector_names) > 1 else ['single']
         joint_states = {}
-        for key in ee_index:
+        for i, key in enumerate(ee_index):
+            robot_key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
             joint_states[key] = {} 
-            sliced_joint_states = self._robot_motion.get_type_joint_state(current_joint_state, key)
+            sliced_joint_states = self._robot_motion.get_type_joint_state(current_joint_state, robot_key)
             joint_states[key]["position"] = sliced_joint_states._positions
             joint_states[key]["velocity"] = sliced_joint_states._velocities
             joint_states[key]["acceleration"] = sliced_joint_states._accelerations

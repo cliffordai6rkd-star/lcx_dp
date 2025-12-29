@@ -8,8 +8,8 @@ robot: "unitree_g1"
 robot_config: !include hardware/unitreeG1/config/unitree_g1_upper.yaml
 gripper: "zmq_pika_gripper"
 gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg.yaml
-# head: "zmq_servo_head"
-# head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
+head: "zmq_servo_head"
+head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
 use_smoother: true
 smoother_type: "ruckig" #critical_damped
@@ -23,9 +23,9 @@ controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yam
 
 sensor_dicts:
   cameras:
-    # - name: "head"
-    #   type: "zmq_camera"
-    #   cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
+    - name: "head"
+      type: "zmq_camera"
+      cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
     - name: "left_fisheye"
       type: "zmq_camera"
       cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml

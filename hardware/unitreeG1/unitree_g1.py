@@ -15,7 +15,7 @@ try:
     from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowState_
     from unitree_sdk2py.utils.thread import RecurrentThread
     from unitree_sdk2py.utils.crc import CRC
-    from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
+    # from unitree_sdk2py.comm.motion_switcher.motion_switcher_client import MotionSwitcherClient
 except (ImportError, ModuleNotFoundError):
     log.warning("unitree_sdk2py not available, using mock implementation")
     from hardware.mocks.mock_unitree_sdk2py import core, rtc, idl, utils
@@ -95,13 +95,13 @@ class UnitreeG1(ArmBase):
         self._control_mode = config.get("control_mode", "position")
         self._move_to_start_time = config.get("reset_time", 1.5)
         self._num_command = 60
-        self._command_buffer = Buffer(20, self._num_command)
+        self._command_buffer = Buffer(35, self._num_command)
         self._zero_finished = True
         
         # dds related 
         self.counter = 0
         ChannelFactoryInitialize(0, self._network_interface) # dds channel initialization
-        self._msc = MotionSwitcherClient()
+        # self._msc = MotionSwitcherClient()
         # pub_topic = "rt/lowcmd" if self._enable_low_level else "rt/arm_sdk"
         pub_topic = "rt/lowcmd" 
         self._lowcmd_publisher = ChannelPublisher(pub_topic, LowCmd_)
@@ -156,15 +156,15 @@ class UnitreeG1(ArmBase):
         if self._is_initialized:
             return True
         
-        self._msc.SetTimeout(5.0)
-        self._msc.Init()
+        # self._msc.SetTimeout(5.0)
+        # self._msc.Init()
         
-        status, result = self._msc.CheckMode()
-        while result['name']:
-            self._msc.ReleaseMode()
-            status, result = self._msc.CheckMode()
-            time.sleep(1)
-        log.info(f'Passed the check mode of motion service client for unitree G1')
+        # status, result = self._msc.CheckMode()
+        # while result['name']:
+        #     self._msc.ReleaseMode()
+        #     status, result = self._msc.CheckMode()
+        #     time.sleep(1)
+        # log.info(f'Passed the check mode of motion service client for unitree G1')
         total_dof = len(self._robot_id)
         self._joint_states.set_state_dof(total_dof)
         

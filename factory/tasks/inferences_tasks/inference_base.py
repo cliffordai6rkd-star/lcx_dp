@@ -113,13 +113,14 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         action = {'arm': np.array([]), 'tool': np.array([])}
         action_index = 0
         gripper_position_dof = self._tool_position_dof
-        ee_keys = ["single"] if len(dofs) == 1 else ["left", "right", "head"]
+        ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
+        ee_keys = ["single"] if len(ee_links) == 1 else ["left", "right"]
         if self._gym_robot._contain_head: 
             assert self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.COMMAND_END_EFFECTOR_POSE]
             dofs.append(7) # hack 占位府
             ee_keys.append("head")
         # log.info(f'len dof: {len(dofs)}')
-        for j in range(len(dofs)):
+        for j in range(len(ee_keys)):
             if self._action_type in [ActionType.JOINT_POSITION, ActionType.JOINT_POSITION_DELTA]:
                 index_l = action_index
                 index_r = action_index + dofs[j]
