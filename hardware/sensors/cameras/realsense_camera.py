@@ -112,7 +112,7 @@ class RealsenseCamera(CameraBase):
             # log.info(f'real freq for realsense camera: {1.0/dt}Hz')
             if dt < (1.0 / self._fps):
                 sleep_time = (1.0 / self._fps) - dt
-                time.sleep(sleep_time)
+                time.sleep(0.85*sleep_time)
             elif dt > 1.2 / self._fps:
                 log.warn(f'Camera could not reach the {self._fps}hz, '
                     f'actual freq: {1.0/dt:.2f}hz, img reading freq: {1.0/reading_total:.2f}hz')

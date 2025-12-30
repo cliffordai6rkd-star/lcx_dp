@@ -189,8 +189,8 @@ class MotionFactory:
             target_time = time.perf_counter() - loop_start_time
 
             # Controller execution
+            start_time = time.perf_counter(); controller_time = 1e-6; execution_time = 1e-6
             if len(target) != 0 and not self._blocking_motion:
-                start_time = time.perf_counter()
                 curr_joint_state = None
                 with timer("get_joint_states", "motion_factory_"):
                     curr_joint_state = self._robot_system.get_joint_states()

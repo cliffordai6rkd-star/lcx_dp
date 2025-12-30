@@ -13,7 +13,7 @@ from hardware.base.utils import (
     transform_quat,
     pose_diff,
 )
-import os, copy, json, time
+import os, copy, json, time, cv2
 import numpy as np
 from typing import Dict, Tuple, Optional
 import glog as log
@@ -83,6 +83,10 @@ class CubePoseTracker(TeleoperationDeviceBase):
         # Expect YAML format: {'realsense_camera': {...}}
         rs_config = rs_cfg_all.get("realsense_camera", rs_cfg_all)
         self._camera = RealsenseCamera(rs_config)
+        self._img_visualize = config.get("image_visualization", True)
+        if self._img_visualize:
+            self._img_visual_window = 'CubeTracker Overlay'
+            cv2.namedWindow(self._img_visual_window, cv2.WINDOW_NORMAL)
         
         self._cube_trackers: Dict[str, CubeTracker] = {}
         for key, marker_ids in all_cube_marker_ids.items():
@@ -145,7 +149,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
         return True
     
     def _press_i(self):
-        pose, _ = self.read_data()
+        pose, _ = self.read_data(draw=False)
         if pose is None:
             log.warn("Failed to read pose data for update init pose!!!")
             return
@@ -200,7 +204,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
         pose_quat, tool_data = self.read_data()
         if pose_quat is None:
-            return False, None, None
+            return -1, None, None
 
         pose_target: Dict[str, np.ndarray] = {}
         tool_target: Dict[str, np.ndarray] = {}
@@ -215,7 +219,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
             tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
         
         if any([pose is None for key, pose in pose_target.items()]) or len(pose_target) == 0:
-            return False, None, None
+            return -1, None, None
         
         if self._key_pressed:
             # Keep the pressed flag for a few cycles so robot can catch it
@@ -230,7 +234,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
         else:
             return False, None, None
 
-    def read_data(self):
+    def read_data(self, draw=True):
         """Capture frames and estimate cube pose(s).
 
         Returns:
@@ -247,7 +251,10 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
         pose_quat: Dict[str, np.ndarray] = {}
         tool_data: Dict[str, np.ndarray] = {}
-
+        
+        if self._img_visualize and draw:
+            overlay_img = img.copy()
+            cv2.waitKey(1)
         # Read poses according to configuration
         needed = {"left": self._output_left, "right": self._output_right}
         for side, need in needed.items():
@@ -256,11 +263,18 @@ class CubePoseTracker(TeleoperationDeviceBase):
             cur_pose = self._cube_trackers[side].get_pose(img, depth=depth_m)
             if cur_pose is None:
                 # If any required side is missing, abort this cycle
+                if self._img_visualize and draw:
+                    cv2.imshow(self._img_visual_window, overlay_img)
                 return None, None
             pose_quat[side] = cur_pose
+            if self._img_visualize and draw:
+                overlay_img = self._cube_trackers[side].overlay_cube_pose(overlay_img, {side: cur_pose})
             # Dummy tool channel to align with teleop pipeline (position + command)
             tool_data[side] = np.array([0.0, 0.0])
-
+        
+        if self._img_visualize and draw:
+            cv2.imshow(self._img_visual_window, overlay_img)
+        
         # @TODO: check how to know tool data
         if not self._output_left and self._output_right:
             pose_quat = dict(single=pose_quat.get("right"))
@@ -290,6 +304,8 @@ class CubePoseTracker(TeleoperationDeviceBase):
             self._camera.close()
         if self._keyboard_listener:
             self._keyboard_listener.stop()
+        if self._img_visualize:
+            cv2.destroyAllWindows()
         log.info("CubePoseTracker disconnected successfully")
         return True
     

@@ -166,9 +166,11 @@ class TeleoperationFactory:
             start = time.perf_counter()
             interface_output_mode = self._interface_output_mode
             with timer("get_interface_target", "robot_teleoperation_"):
+                raw_target_status = 0
                 if self._interface:
                     success_get_target, ee_target, tool_target  = \
                         self._interface.parse_data_2_robot_target(interface_output_mode)
+                    raw_target_status = success_get_target; success_get_target = int(success_get_target) > 0
                     # log.info(f'tool target: {tool_target}')
                 else: success_get_target=False; ee_target=None; tool_target=None
             tele_get_time = time.perf_counter() - start
@@ -292,6 +294,8 @@ class TeleoperationFactory:
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
+                if int(raw_target_status) == 0:
+                    self._init_pose = {}
             target_time = time.perf_counter() - start
 
             total_time = time.perf_counter() - loop_start_time
