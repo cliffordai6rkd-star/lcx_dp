@@ -17,7 +17,7 @@ smoother_config: !include smoother/config/smoother_unitree_g1_upper_cfg.yaml
 async_control_frequency: 500.0     # Async thread sends commands at this rate (Hz)
 auto_enable_async_control: true    # Auto-enable async mode on initialization (new!)
 
-control_frequency: 300
+control_frequency: 250
 controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
 

@@ -226,6 +226,10 @@ class RobotFactory:
         
         # initialize all objects
         self._is_initialize = self._initialize()
+
+        # useful variables
+        self._dof = self.get_robot_dofs()
+        self._total_dofs = self.get_total_dofs()
         
     def _create_smoother(self, dof: int) -> None:
         """Create smoother instance based on configuration"""
@@ -311,6 +315,9 @@ class RobotFactory:
         return joint_states
     
     def get_tool_dict_state(self):
+        if not self._is_initialize:
+            return None
+        
         sim_tool_state = None
         if self._use_simulation:
             sim_tool_state = self._simulation.get_tool_state()
@@ -347,6 +354,9 @@ class RobotFactory:
         
     def set_joint_commands(self, joint_command, mode, execute_hardware: bool = False,
                            update_action = False, change_action_status = False):
+        if not self._is_initialize:
+            return None
+        
         self._enable_hardware = execute_hardware
         if change_action_status:
             self._update_action = update_action
@@ -387,23 +397,22 @@ class RobotFactory:
     # Not used for external call, only for class internal use for hardware control
     def set_robot_joint_command(self, joint_command, mode, execute_hardware:bool = True,
                                 update_action = False):
+        if not self._is_initialize:
+            return 
+        
         # log.info(f'mode: {mode}')
-        dofs = self.get_robot_dofs()
+        dofs = self._dof
         if len(dofs) > 2:
             arm_dofs = dofs[-2:]
         else: arm_dofs = dofs
         
         if self._use_simulation:
             # mode assignment
-            total_dof = self.get_total_dofs()
+            total_dof = self._total_dofs
             sim_mode = [mode[0]] * arm_dofs[0]
             if len(arm_dofs) > 1:
                 sim_mode_r = [mode[1]] * arm_dofs[1]
                 sim_mode = np.hstack((sim_mode, sim_mode_r))
-            # handle dof other than arms 
-            if len(dofs) > 2:
-                rest_dof = total_dof - len(sim_mode)
-                sim_mode = [mode[0]] * total_dof
             # @TODO: zyx: hack for tau eff
             if len(joint_command) == 2*total_dof:
                 sim_command = joint_command[:total_dof]
@@ -418,12 +427,11 @@ class RobotFactory:
         # update joint action data
         if update_action:
             with self._last_robot_action_lock:
-                dof_list = self.get_robot_dofs()
-                index = ["single"] if len(dof_list) == 1 else ["left", "right"]
-                dof_list = [0] + dof_list
+                index = ["single"] if len(dofs) == 1 else ["left", "right"]
+                dofs = [0] + dofs
                 for i, key in enumerate(index):
                     self._last_robot_action[key] = dict(
-                        joint=dict(position=joint_command[dof_list[i]:dof_list[i+1]].tolist(), 
+                        joint=dict(position=joint_command[dofs[i]:dofs[i+1]].tolist(), 
                                 time_stamp=time.perf_counter())
                     )
         
@@ -452,6 +460,9 @@ class RobotFactory:
             return mode in ['position', 'velocity']
             
     def set_tool_command(self, tool_command: dict[str, np.ndarray]):
+        if not self._is_initialize:
+            return False
+        
         cur_tool_command = copy.deepcopy(tool_command)
         tool_type_dict = self.get_tool_type_dict()
         for key, tool_type in tool_type_dict.items():
@@ -482,6 +493,9 @@ class RobotFactory:
         return res
     
     def get_tool_type_dict(self):
+        if not self._is_initialize:
+            return None
+        
         sim_tool_type_dict = None
         if self._use_simulation:
            sim_tool_type_dict = self._simulation.get_tool_type_dict()
@@ -494,12 +508,18 @@ class RobotFactory:
         return tool_type_dict
     
     def set_head_position(self, head_positions):
+        if not self._is_initialize:
+            return 
+        
         if not self._use_hardware or not hasattr(self, "_head"):
             return 
         
         self._head.set_head_command(head_positions)
 
     def get_head_position(self):
+        if not self._is_initialize:
+            return None
+        
         if not self._use_hardware or not hasattr(self, "_head"):
             return None
         
@@ -541,6 +561,9 @@ class RobotFactory:
         log.info(f'Robot systyem is closed successfully!!!')
         
     def get_cameras_infos(self):
+        if not self._is_initialize:
+            return None
+        
         cameras_data = None
         
         # Try to get simulation camera data first
@@ -578,6 +601,9 @@ class RobotFactory:
         return cameras_data
     
     def get_ft_data(self):
+        if not self._is_initialize:
+            return None
+        
         ft_data = None
         if self._use_hardware and 'FT_sensor' in self._sensors:
             ft_sensors = self._sensors['FT_sensor']
@@ -590,6 +616,9 @@ class RobotFactory:
         return ft_data
     
     def async_save_ft_data(self, save_dir):
+        if not self._is_initialize:
+            return False
+        
         if not self._use_hardware or not 'FT_sensor' in self._sensors:
             return False
         
@@ -609,6 +638,9 @@ class RobotFactory:
         
     def get_tactile_data(self):
         """Get tactile sensor data from all tactile sensors"""
+        if not self._is_initialize:
+            return None
+        
         tactile_data = {}
         if 'tactile' in self._sensors and self._use_hardware:
             tactile_sensors = self._sensors['tactile']
@@ -759,27 +791,30 @@ class RobotFactory:
                 if self._smoother is not None:
                     smoothed_command, is_active = self._smoother.get_command()
                     # log.info(f"smoother is active: {is_active}" )
+                    smooth_time = time.perf_counter() - loop_start
                     
+                    start = time.perf_counter()
                     if is_active:
                         mode = ["position"] * len(dofs)
                         # log.info(f"smoother command: {smoothed_command}, {mode}, {self._enable_hardware}" )
                         self.set_robot_joint_command(smoothed_command, mode,
                                             execute_hardware=self._enable_hardware,
                                             update_action=self._update_action)
+                    set_time = time.perf_counter() - start
 
             # Timing management
-            used_time = time.perf_counter() - last_time
-            last_time = time.perf_counter()            
+            used_time = time.perf_counter() - loop_start
+            # last_time = time.perf_counter()            
             if used_time < dt:
                 sleep_time = dt - used_time
                 time.sleep(0.8*sleep_time)
             elif used_time > 1.25 * dt:
                 # Performance warning
                 slow_loop_count += 1
-                if slow_loop_count % 1000 == 0:
+                if slow_loop_count % 10 == 0:
                     actual_dt = time.perf_counter() - loop_start
-                    log.warn(f"Async control loop running slow: {actual_dt*1000:.1f}ms "
-                              f"(target: {dt*1000:.1f}ms)")
+                    log.warn(f"Async control loop running slow: {used_time*1000:.1f}ms "
+                        f"(target: {dt*1000:.1f}ms smooth: {smooth_time*1000:.1f}ms({smooth_time/actual_dt*100:.2f}%) set: {set_time*1000:.1f}ms({set_time/actual_dt*100:.2f}%))")
                     slow_loop_count  = 0
         
         log.info("Async command loop stopped")

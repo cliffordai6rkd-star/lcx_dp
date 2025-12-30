@@ -77,6 +77,7 @@ class RuckigSmoother(SmootherBase):
         
         # Thread control
         self._lock = threading.Lock()
+        self._output_lock = threading.Lock()
         self._pause_flag = False
         self._thread = None
         self._target_updated = False
@@ -194,23 +195,23 @@ class RuckigSmoother(SmootherBase):
         with self._lock:
             self._target_position = joint_target.copy()
             
-            if immediate:
-                # Immediate jump mode - reset everything
-                self._current_position = joint_target.copy()
-                self._current_velocity = np.zeros(self._dof)
-                self._current_acceleration = np.zeros(self._dof)
-                
-                # Update Ruckig state
-                self._input.current_position = self._current_position.tolist()
-                self._input.current_velocity = [0.0] * self._dof
-                self._input.current_acceleration = [0.0] * self._dof
-                self._input.target_position = self._target_position.tolist()
-                
-                log.debug("Immediate jump to target")
-            else:
-                # Normal update - just set new target
-                self._input.target_position = self._target_position.tolist()
-                self._target_updated = True
+        if immediate:
+            # Immediate jump mode - reset everything
+            self._current_position = self._target_position.copy()
+            self._current_velocity = np.zeros(self._dof)
+            self._current_acceleration = np.zeros(self._dof)
+            
+            # Update Ruckig state
+            self._input.current_position = self._current_position.tolist()
+            self._input.current_velocity = [0.0] * self._dof
+            self._input.current_acceleration = [0.0] * self._dof
+            self._input.target_position = self._target_position.tolist()
+            
+            log.debug("Immediate jump to target")
+        else:
+            # Normal update - just set new target
+            self._input.target_position = self._target_position.tolist()
+            self._target_updated = True
     
     def get_command(self) -> Tuple[np.ndarray, bool]:
         """
@@ -219,7 +220,7 @@ class RuckigSmoother(SmootherBase):
         Returns:
             (joint_positions, is_active): Current positions and active flag
         """
-        with self._lock:
+        with self._output_lock:
             return self._current_position.copy(), not self._pause_flag
     
     def pause(self) -> None:
@@ -335,8 +336,7 @@ class RuckigSmoother(SmootherBase):
     
     def _control_loop(self) -> None:
         """Main control loop running in separate thread"""
-        next_time = time.perf_counter()
-        
+        last_time = time.perf_counter()
         while self._is_running:
             loop_start = time.perf_counter()
             
@@ -345,46 +345,49 @@ class RuckigSmoother(SmootherBase):
                     time.sleep(self._dt)
                     continue
                 
-                # Update Ruckig input with current state
-                # Use saved acceleration from previous cycle
-                self._input.current_position = self._current_position.tolist()
-                self._input.current_velocity = self._current_velocity.tolist()
-                self._input.current_acceleration = self._current_acceleration.tolist()
+            # Update Ruckig input with current state
+            # Use saved acceleration from previous cycle
+            self._input.current_position = self._current_position.tolist()
+            self._input.current_velocity = self._current_velocity.tolist()
+            self._input.current_acceleration = self._current_acceleration.tolist()
             
             # Compute next trajectory step (outside lock for performance)
             try:
                 result = self._ruckig.update(self._input, self._output)
                 
                 # Update state with new trajectory point
-                with self._lock:
+                with self._output_lock:
                     self._current_position = np.array(self._output.new_position)
-                    self._current_velocity = np.array(self._output.new_velocity)
-                    self._current_acceleration = np.array(self._output.new_acceleration)
                     self._last_result = result
+                self._current_velocity = np.array(self._output.new_velocity)
+                self._current_acceleration = np.array(self._output.new_acceleration)
+
+                with self._lock:
+                    self._target_position = np.array(self._output.new_position)
                     
-                    # Pass output to input for next cycle
-                    self._output.pass_to_input(self._input)
-                    
-                    # Log trajectory completion
-                    if result == Result.Finished and self._target_updated:
-                        log.debug(f"Trajectory finished in {self._output.trajectory.duration:.3f}s")
-                        self._target_updated = False
+                # Pass output to input for next cycle
+                self._output.pass_to_input(self._input)
+                
+                # Log trajectory completion
+                if result == Result.Finished and self._target_updated:
+                    log.debug(f"Trajectory finished in {self._output.trajectory.duration:.3f}s")
+                    self._target_updated = False
                         
             except Exception as e:
                 log.error(f"Ruckig update failed: {e}")
                 # Keep current state on error
             
             # Timing management
-            next_time += self._dt
-            sleep_time = next_time - time.perf_counter()
-            
-            if sleep_time > 0:
+            used_time = time.perf_counter() - last_time
+            last_time = time.perf_counter()
+            if used_time < self._dt:
+                sleep_time = self._dt - used_time
                 time.sleep(sleep_time)
-            else:
+            elif used_time > 1.2 * self._dt:
                 # Performance warning
                 self._slow_loop_count += 1
                 if self._slow_loop_count % 1000 == 0:
                     actual_dt = time.perf_counter() - loop_start
                     log.warn(f"Ruckig loop slow: {actual_dt*1000:.1f}ms "
                                  f"(target: {self._dt*1000:.1f}ms)")
-                next_time = time.perf_counter()
+                    

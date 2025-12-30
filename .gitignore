@@ -35,6 +35,7 @@ CLAUDE.md
 CLAUDE.local.md
 dino_tsne*.png
 dataset/dtw
+dataset/lerobot.zip
 *uv.lock
 build/
 .venv

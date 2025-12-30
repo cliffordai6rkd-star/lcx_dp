@@ -163,7 +163,7 @@ class MotionFactory:
                 if self._high_level_command is not None:
                     if not self._use_traj_planner and self._high_level_updated:
                         target = self._get_controller_target(self._high_level_command)
-                        self._high_level_updated = True
+                        self._high_level_updated = False
                     elif self._use_traj_planner:
                         self._buffer_lock.acquire()
                         get_data, data, time_stamp = self._buffer.pop_data()
@@ -186,9 +186,11 @@ class MotionFactory:
                                     self._robot_system._simulation.update_trajectory_data(cur_traj_pint_sim)
                             target = self._get_controller_target(data)
                     # log.info(f'controller target: {target}')
-            
+            target_time = time.perf_counter() - loop_start_time
+
             # Controller execution
             if len(target) != 0 and not self._blocking_motion:
+                start_time = time.perf_counter()
                 curr_joint_state = None
                 with timer("get_joint_states", "motion_factory_"):
                     curr_joint_state = self._robot_system.get_joint_states()
@@ -200,8 +202,10 @@ class MotionFactory:
                                                         target, robot_state=curr_joint_state)
                     # log.info(f'controller time: {(time.perf_counter() - start)*1000:.1f}ms')
                     # success = False; joint_target = None; joint_mode = None
+                controller_time = time.perf_counter() - start_time
                 
                 with timer("hardware_execution", "motion_factory_"):
+                    start_time = time.perf_counter()
                     if success:
                         joint_mode = joint_mode if isinstance(joint_mode, list) else [joint_mode]
                         # log.info(f'controller mode: {joint_mode}')
@@ -236,12 +240,13 @@ class MotionFactory:
                             joint_mode = ["position"] * len(self._ee_links)
                             self._robot_system.set_joint_commands(curr_joint_state._positions, joint_mode, False)
                         log.warning(f"Controller failed to compute valid joint commands for target: {target}")
+                    execution_time = time.perf_counter() - start_time
             
             used_time = time.perf_counter() - last_control_time
             last_control_time = time.perf_counter()
             if used_time < ctrl_period:
                 sleep_time = ctrl_period - used_time
-                time.sleep(0.95*sleep_time)
+                time.sleep(0.98*sleep_time)
             elif used_time > 1.25 * ctrl_period:
                 # 处理超时情况
                 actual_time = time.perf_counter() - loop_start_time
@@ -251,7 +256,7 @@ class MotionFactory:
                 if slow_loop_count % 1000 == 0:
                     actual_freq = 1.0 / actual_time
                     log.warn(f"Controller frequency slow: expected {self._control_frequency:.1f}Hz, "
-                                f"actual {actual_freq:.1f}Hz (warning #{slow_loop_count})")
+                        f"actual {actual_freq:.1f}Hz target: {1.0/target_time:.1f}hz ({target_time/actual_time*100:.2f}%), control: {1.0/controller_time:.1f}hz ({controller_time/actual_time*100:.2f}%) execu: {1.0/execution_time:.1f}hz ({execution_time/actual_time*100:.2f}%)")
                     
             # 性能统计（降低频率，减少日志量）
             if iteration_count % 5000 == 0:

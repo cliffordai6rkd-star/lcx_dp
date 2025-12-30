@@ -63,6 +63,10 @@ class MujocoSim(SimBase):
         # time.sleep(0.5)
         while not self._sim_started:
             time.sleep(0.001)
+        
+        # forever variable
+        self._joint_ids = [mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, joint_name) for joint_name in self._joint_names]
+        self._qpos_adrs = [self._model.jnt_qposadr[joint_id] for joint_id in self._joint_ids]
     
     def sim_thread(self):
         if self._model is None or self._data is None:
@@ -201,16 +205,16 @@ class MujocoSim(SimBase):
                 break
             
             joint_name = self._joint_names[i]
-            joint_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            joint_id = self._joint_ids[i]
             if joint_id < 0:
                 raise ValueError(f"Joint '{joint_name}' not found in the Mujoco model.")
             
             # command execution
             if mode[i] == 'position':
-                actuator_id = self._model.actuator(self._actuator_names[i]).id
-                self._data.ctrl[actuator_id] = target
-                # qpos_adr = self._model.jnt_qposadr[joint_id]
-                # self._data.qpos[qpos_adr] = target
+                # actuator_id = self._model.actuator(self._actuator_names[i]).id
+                # self._data.ctrl[actuator_id] = target
+                qpos_adr = self._qpos_adrs[i]
+                self._data.qpos[qpos_adr] = target
             elif mode[i] == "velocity":
                 qvel_adr = self._model.jnt_dofadr[joint_id]
                 self._data.qvel[qvel_adr] = target

@@ -95,7 +95,7 @@ class UnitreeG1(ArmBase):
         self._control_mode = config.get("control_mode", "position")
         self._move_to_start_time = config.get("reset_time", 1.5)
         self._num_command = 60
-        self._command_buffer = Buffer(35, self._num_command)
+        self._command_buffer = Buffer(25, self._num_command)
         self._zero_finished = True
         
         # dds related 
@@ -241,6 +241,7 @@ class UnitreeG1(ArmBase):
     def set_joint_command(self, mode, command):
         if not self._is_initialized:
             log.warn(f'Unitree g1 is still not initialized for setting joint command')
+            return 
         
         if not self._zero_finished:
             return 
@@ -381,11 +382,11 @@ class UnitreeG1(ArmBase):
             if not self._zero_finished:
                 self._zero_finished = True
             
-            dt = time.perf_counter() - self._last_write_time
-            self._last_write_time = time.perf_counter()
+            dt = time.perf_counter() - loop_start_time
+            # self._last_write_time = time.perf_counter()
             if dt < target_dt:
                 sleep_time = target_dt - dt
-                time.sleep(sleep_time)
+                time.sleep(0.8*sleep_time)
             elif dt > 1.35*target_dt:
                 counter += 1
                 if counter %1000 == 0:

@@ -5,6 +5,8 @@ pika_tracker:
   target_device: 
     left: "LHR-B8FF68EC"
     right: "LHR-5EC33B35"
+      # left: "LHR-5EC33B35"
+      # right: "LHR-B8FF68EC"
   num_attempts: 20
   # head device uid
   head:

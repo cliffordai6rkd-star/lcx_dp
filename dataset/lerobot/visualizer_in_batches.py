@@ -4,6 +4,7 @@
 """
 
 import os
+os.environ["RUST_LOG"] = "off"
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -11,9 +12,14 @@ import rerun as rr
 import rerun.blueprint as rrb
 from dataset.lerobot.reader import RerunEpisodeReader, ActionType, ObservationType
 from dataset.lerobot.rerun_visualizer import RerunLogger
+from dataset.lerobot.delete import Deleter
 from datetime import datetime
 import logging_mp
 import psutil
+
+# shut down the logger in the rerun_visualizer
+import dataset.lerobot.rerun_visualizer as reader_mod
+reader_mod.logger_mp.setLevel(logging_mp.ERROR)
 
 if "XDG_RUNTIME_DIR" not in os.environ:
     runtime_dir = "/tmp/runtime-user"
@@ -21,7 +27,7 @@ if "XDG_RUNTIME_DIR" not in os.environ:
     os.chmod(runtime_dir, 0o700)
     os.environ["XDG_RUNTIME_DIR"] = runtime_dir
 
-os.environ["RUST_LOG"] = "error"
+os.environ["RUST_LOG"] = "off"
 
 # Initialize logger for the module
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
@@ -35,31 +41,63 @@ def transform_pose(pose1, pose2):
         pose[:3] = t1 + rot1.apply(t2)
         pose[3:] = (rot1 * rot2).as_quat()
         return pose
+
+def data_starisrics_report(data_number,valid_episode_number,empty_data_number,totaol_step_num):
+    separator = "=" * 50
+    if data_number != 0:
+        # Calculate values
+        success_rate = valid_episode_number / data_number
+        avg_steps = totaol_step_num / data_number
+        
+        # Print the report
+        logger_mp.info(separator)
+        logger_mp.info(f"{'DATA STATISTICS REPORT':^50}") # Centered Title
+        logger_mp.info(separator)
+        logger_mp.info(f"Status:                 Rerun Finished")
+        logger_mp.info(f"Total Data Count:       {data_number}")
+        logger_mp.info(f"Valid Episodes:         {valid_episode_number}")
+        logger_mp.info(f"Empty Data Count:       {empty_data_number}")
+        logger_mp.info("-" * 50)  # Thinner internal separator
+        logger_mp.info(f"Final Success Rate:     {success_rate:.3%}")
+        logger_mp.info(f"Average Steps:          {avg_steps:.3f}")
+        logger_mp.info(separator)
+    
+    else:
+        logger_mp.info(separator)
+        logger_mp.info(f"{'DATA STATISTICS REPORT':^50}")
+        logger_mp.info(separator)
+        logger_mp.info(f"Status:                 No Data Rerun")
+        logger_mp.info(separator)
+
     
 if __name__ == "__main__":
 
-    data_dir = "dataset/data/1221_duo_unitree_bread_picking_human_114ep"
-    start_episode = 1
-    end_episode = 180
-    fps = 100
+    data_dir = "dataset/data/bread_picking"
+    start_episode = 62 #24 robot
+    end_episode = 121
+    fps = 1000
     skip_step_nums = 2
     # 根据电脑的运存大小调整运存上限 在终端里free -h查看avaliale内存大小 
-    lim_storage = 25
+    lim_storage = 20
+    data_type = "robot" # robot & human_hand
 
     episode_list = range(start_episode, end_episode + 1)
     action_ori_type = "quaternion"
     umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
     contain_ft = False
-    data_type = "human_hand"
-    logger_mp.info(f"Dir: {data_dir}")
     mem_gb = 0
+    valid_episode_number = 0 
+    data_number = 0
+    empty_data_number = 0
+    totaol_step_num = 0
 
     for episode_data_number in episode_list:
         episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
         logger_mp.info(f"episode_{str(episode_data_number).zfill(4)}")
         full_path = os.path.join(data_dir, episode_dir)
 
-        if os.path.exists(full_path):         
+        if os.path.exists(full_path): 
+            start = time.perf_counter()        
             episode_reader = RerunEpisodeReader(
                 task_dir=data_dir, 
                 action_type=ActionType.END_EFFECTOR_POSE,
@@ -69,19 +107,30 @@ if __name__ == "__main__":
                 rotation_transform=None,
                 contain_ft=contain_ft,
                 data_type=data_type,
-            )
-             
+            )           
+            read_time = time.perf_counter() - start
+            logger_mp.info(f'read time {read_time}')
+           
             logger_mp.info(f'find Episode {episode_data_number}')  
             episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)
 
             if episode_data is None or len(episode_data) == 0:
                 logger_mp.warning(f'Episode {episode_data_number} has no data')
                 # delete this data
-                
+                logger_mp.info(f"deleting Episode {episode_data_number}")
+                Deleter.delete_episodes(episode_data_number,data_dir)
+                logger_mp.info(f"successfull delete Episode {episode_data_number}")
+                valid_episode_number += 0
+                empty_data_number += 1
+                data_number += 0
                 continue
-              
-            # step counter
-            step_num = int(skip_step_nums*len(episode_data)) 
+            else:
+                data_number += 1
+                             
+              # step counter
+            step_num = skip_step_nums*len(episode_data) 
+            totaol_step_num += step_num
+
             example_data = episode_data[0]
             state_keys = episode_reader._state_keys            
             online_logger = RerunLogger(
@@ -95,7 +144,8 @@ if __name__ == "__main__":
             )
 
             logger_mp.info(f'Episode {episode_data_number}:  {step_num} step')
-            
+            # logger_mp.info(f'{totaol_step_num}')
+
             # storage waring messages
             process = psutil.Process(os.getpid())
             mem_info = process.memory_info()
@@ -107,28 +157,32 @@ if __name__ == "__main__":
                 logger_mp.warning(f'storage used too much')
                 logger_mp.warning(f'Close the rerun to release the storage')
                 logger_mp.warning(f" Press 'c' to release storage")  
-    
+            
+            # visuallize in fps
             for item_data in episode_data:
                 online_logger.log_item_data(item_data)
                 time.sleep(1/fps)
-            logger_mp.info(f"Episode {episode_data_number} rerun finished。")  
-            logger_mp.info(f" Press 'Enter' to continue ,or 'ctrl c' to exit")
 
+            logger_mp.info(f"Episode {episode_data_number} rerun finished。")  
+            logger_mp.info(f" Press 'Enter' to continue ,'d' to delete this episode ,or 'ctrl c' to exit")
             user_input = input() 
+            if user_input.lower() == 'd':
+                logger_mp.info(f"deleting Episode {episode_data_number}")
+                Deleter.delete_episodes(episode_data_number,data_dir)
+                logger_mp.info(f"successfull delete Episode {episode_data_number}")
+                valid_episode_number += 0
+                
+            else:
+                valid_episode_number += 1
 
             if mem_gb > lim_storage:
                 mem_gb = 0
                 os.system("pkill -x rerun")
                 logger_mp.info(f"Rerun UI has closed, system has enough storage now")
 
-            #     
-            # if user_input.lower() == 'q':
-            #     os.system("pkill -x rerun")
-            #     logger_mp.info("Keyboard interrupt")
-            #     break
         else:
             logger_mp.warning(f'Could not find: {full_path}')
             logger_mp.warning(f"Press 'Enter' to  continue, or 'ctrl c' to exit ")
-            user_input = input()  
-    logger_mp.info("rerun finished.")
+            user_input = input() 
         
+    data_starisrics_report(data_number,valid_episode_number,empty_data_number,totaol_step_num)
