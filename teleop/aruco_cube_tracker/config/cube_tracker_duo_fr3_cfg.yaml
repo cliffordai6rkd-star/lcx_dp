@@ -10,7 +10,7 @@ cube_tracker:
 
   # Camera-to-world 6D transform [x, y, z, rx, ry, rz]
   # For eye-in-hand or fixed camera, adjust accordingly
-  transformation: [0.0, 0.0, 0.10, 0.0, 0.0, 0.0]
+  transformation: [0.0, -0.1, 0.10, 0.0, 0.0, 0.0]
 
   # Choose one RealSense config for each side if using two cameras; if single camera
   # sees both cubes, keep the same config file and intrinsics.

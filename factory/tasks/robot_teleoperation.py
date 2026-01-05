@@ -223,11 +223,10 @@ class TeleoperationFactory:
                                 self._init_pose_rot_inv[key] = negate_pose(self._init_pose_rot[key])
                                 log.info(f"{'='*10} updated the robot neutral pose for {key}: {self._init_pose[key]} {'='*10} ")
                             if len(self._init_pose) == 0: break
-                            # @TODO: general to all absolute delta device
-                            if "cube" in self._teleop_interface_type:
-                                cur_ee_target = transform_pose(
-                                    transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
-                            ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target, True)
+                            # if "cube" in self._teleop_interface_type:
+                            cur_ee_target = transform_pose(
+                                transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
+                            ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target)
                         elif interface_output_mode != "absolute":
                             raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")
                         # @TODO: if mode is absolute your reset target will be same as before inside simulation

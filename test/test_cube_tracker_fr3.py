@@ -81,9 +81,10 @@ def main():
 
     while True:
         success, arm_target, tool_target = tracker.parse_data_2_robot_target(interface_mode)
+        success = int(success) > 0
         if not success and enabled:
             enabled = False
-
+            
         if success:
             # Select key among returned targets
             key = (

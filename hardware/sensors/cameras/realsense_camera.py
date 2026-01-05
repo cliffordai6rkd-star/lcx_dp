@@ -69,7 +69,6 @@ class RealsenseCamera(CameraBase):
     def update_camera_thread(self):
         log.info(f'Realsense camera {self._serial_number} thread started!!!')
 
-        last_read_time = time.perf_counter()
         while self._thread_running:
             # frame reading
             start = time.perf_counter()
@@ -107,8 +106,8 @@ class RealsenseCamera(CameraBase):
                                            gyro_data.x, gyro_data.y, gyro_data.z])
             self._lock.release()
             
-            dt = time.perf_counter() - last_read_time
-            last_read_time = time.perf_counter()
+            dt = time.perf_counter() - start
+            # last_read_time = time.perf_counter()
             # log.info(f'real freq for realsense camera: {1.0/dt}Hz')
             if dt < (1.0 / self._fps):
                 sleep_time = (1.0 / self._fps) - dt

@@ -86,14 +86,14 @@ class MetaQuest3(TeleoperationDeviceBase):
         self._img_shm_name = config["img_shm_name"]
         log.info(f'Image shared memory name: {self._img_shm_name}')
         self._img_shape = config["image_shape"]
-        self._init_pose = config.get('init_pose', None)
-        self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
-        if not self._init_pose is None:
-            self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
-                                    self._init_pose["initial_pose_right"][3:]]
-            self._last_quat = self._init_pose_rot
-            self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
-                                    self._init_pose["initial_pose_right"][:3]]
+        # self._init_pose = config.get('init_pose', None)
+        # self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
+        # if not self._init_pose is None:
+        #     self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
+        #                             self._init_pose["initial_pose_right"][3:]]
+        #     self._last_quat = self._init_pose_rot
+        #     self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
+        #                             self._init_pose["initial_pose_right"][:3]]
         self._img_height = self._img_shape[0]
         if self._binocular:
             self._img_width  = self._img_shape[1] // 2
@@ -214,25 +214,15 @@ class MetaQuest3(TeleoperationDeviceBase):
         data = self.parse_data_2_robot_target("absolute")
         log.info(f'pose: {data[1]}')
         
-    def apply_init_offset(self, pose, id):
-        new_pose = copy.deepcopy(pose)
-        # basis convertion (mainly for rot)
-        if self._init_pose is not None:
-            init_rot = self._init_pose_rot[id]
-            new_pose[3:] = transform_quat(pose[3:], init_rot)
+    # def apply_init_offset(self, pose, id):
+    #     new_pose = copy.deepcopy(pose)
+    #     # basis convertion (mainly for rot)
+    #     if self._init_pose is not None:
+    #         init_rot = self._init_pose_rot[id]
+    #         new_pose[3:] = transform_quat(pose[3:], init_rot)
         
-        # @TODO: try to add a threshold 
-        # no need posi offset means need head posi to calib
-        # if not need_posi_offset:
-        #     # filter of the pose
-        #     last_pose = np.hstack((np.array([0, 0, 0]), np.array(self._last_quat[id])))
-        #     pose_diff = compute_pose_diff(new_pose, last_pose)
-        #     if np.linalg.norm(pose_diff[3:]) < self.ROT_THRESHOLD:
-        #         self._last_quat[id] = new_pose[3:]
-        #     else:
-        #         new_pose[3:] = self._last_quat[id]
-        pose[:7] = new_pose[:7] # update step for sallow copy
-        return new_pose
+    #     pose[:7] = new_pose[:7] # update step for sallow copy
+    #     return new_pose
     
     def parse_data_2_robot_target(self, mode):
         if not self._is_initialized:
@@ -266,10 +256,8 @@ class MetaQuest3(TeleoperationDeviceBase):
         robot_world2right_arm_trans = self.T_ROBOT_OPENXR @ world2right_arm_trans @ self.T_OPENXR_ROBOT if right_arm_valid else np.eye(4)
         pose_left = convert_homo_2_7D_pose(robot_world2left_arm_trans)
         pose_right = convert_homo_2_7D_pose(robot_world2right_arm_trans)
-        #  init convertion and rotation clipping
-        pose_left = self.apply_init_offset(pose_left, 0)
-        pose_right = self.apply_init_offset(pose_right, 1)
-        debug = [pose_left, pose_right]
+        # pose_left = self.apply_init_offset(pose_left, 0)
+        # pose_right = self.apply_init_offset(pose_right, 1)
         
         if mode == "absolute":
             head_posi = robot_world2head_trans[:3, 3]
@@ -278,9 +266,6 @@ class MetaQuest3(TeleoperationDeviceBase):
             pose_left[2] = 1.0 - (head_posi[2] - pose_left[2])
             pose_right[:2] = pose_right[:2] - head_posi[:2]
             pose_right[2] = 1.0 - (head_posi[2] - pose_right[2])
-            # if self._init_pose is not None: # To support config based position offset
-            #     pose_left[:3] += self._init_pose_trans[0]
-            #     pose_right[:3] += self._init_pose_trans[1]
         # Generate pose targets based on config and data validity
         elif mode == "absolute_delta":
             if self._device_enabled:

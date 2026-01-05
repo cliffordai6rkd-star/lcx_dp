@@ -63,14 +63,14 @@ class PikaTracker(TeleoperationDeviceBase):
         self._position_scale = config.get("position_scale", 1.0)
         
         # Initialize offset pose for relative positioning
-        self._init_pose = config.get('init_pose', None)
-        self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
-        if not self._init_pose is None:
-            self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
-                                    self._init_pose["initial_pose_right"][3:]]
-            self._last_quat = self._init_pose_rot
-            self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
-                                    self._init_pose["initial_pose_right"][:3]]
+        # self._init_pose = config.get('init_pose', None)
+        # self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
+        # if not self._init_pose is None:
+        #     self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
+        #                             self._init_pose["initial_pose_right"][3:]]
+        #     self._last_quat = self._init_pose_rot
+        #     self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
+        #                             self._init_pose["initial_pose_right"][:3]]
         self._device_enabled = False
         self._reset_pose_counter = 0
         
@@ -294,11 +294,9 @@ class PikaTracker(TeleoperationDeviceBase):
             # read pose init sync to x forward y left z up 
             static_rot_offset = np.array([0, 0, 1, 0])
             res_pose = self.apply_rotation_offset(res_pose, static_rot_offset)
-            # apply rotation based on robot init pose
-            res_pose = self.apply_init_offset(res_pose, self._index[key])
-        else:
-            res_pose = self.apply_rotation_offset(res_pose, np.array([0, 0, 0, 1]))
-            # no need to apply for robot sync    
+            # # apply rotation based on robot init pose
+            # res_pose = self.apply_init_offset(res_pose, self._index[key])
+
         rot_offset_time = time.perf_counter() - start1
         total_time = time.perf_counter()-start
         # log.info(f'{key} pose porcess time: {(total_time)*1000.0:.2f}ms {basis_change_time/total_time*100:.2f}% {rot_offset_time/total_time*100:.2f}%')

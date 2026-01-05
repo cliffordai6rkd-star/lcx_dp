@@ -53,10 +53,11 @@ class CubePoseTracker(TeleoperationDeviceBase):
             [0, 0, 0, 1],
         ]
     )
-
-    # init pose for absolute delta pose calculation, left, right, head
+    BASE_QUAT = [-0.3544481, -0.31213022, -0.60429962, 0.64168781]
+    # init pose for absolute delta pose calculation, left, right, head; update during enable device
     INIT_TARGET_POSE = [[0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1]]
     WORLD_POSE = [None, None, None]
+    WORLD_BASIS_ANCHOR = {}; WORLD_BASIS_ANCHOR_INV = {}
     def __init__(self, config):
         # cube & marker related config
         all_cube_marker_ids: dict = config["all_cube_marker_ids"]
@@ -88,6 +89,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
             self._img_visual_window = 'CubeTracker Overlay'
             cv2.namedWindow(self._img_visual_window, cv2.WINDOW_NORMAL)
         
+        # tracker init
         self._cube_trackers: Dict[str, CubeTracker] = {}
         for key, marker_ids in all_cube_marker_ids.items():
             # One CubeTracker per hand side
@@ -180,12 +182,19 @@ class CubePoseTracker(TeleoperationDeviceBase):
         # world coordinate alignment
         if self.WORLD_POSE[self._index[key]] is None:
             self.WORLD_POSE[self._index[key]] = pose
-            log.info(f'World pose updated for {key}')                
+            # update basis anchor
+            self.WORLD_BASIS_ANCHOR[key] = np.hstack([0, 0, 0, self.BASE_QUAT])
+            self.WORLD_BASIS_ANCHOR_INV[key] = negate_pose(self.WORLD_BASIS_ANCHOR[key])
+            self.WORLD_BASIS_ANCHOR_INV[key][3:] = transform_quat(self.WORLD_BASIS_ANCHOR_INV[key][3:], pose[3:])
+            self.WORLD_BASIS_ANCHOR[key] = negate_pose(self.WORLD_BASIS_ANCHOR_INV[key])
+            log.info(f'World pose updated for {key}: {pose}')                
             return None
         
-        # Apply the same basis-change and offsets 
         res_pose = pose_diff(pose, self.WORLD_POSE[self._index[key]])
-        # pre-process to correct the coordinate
+        # Apply the same basis-change to the anchor pose
+        temp_pose = transform_pose(self.WORLD_BASIS_ANCHOR_INV[key], res_pose)
+        res_pose = transform_pose(temp_pose, self.WORLD_BASIS_ANCHOR[key])
+        # align to world coordinate
         tracker_robot_trans = self._tracker_robot_trans
         robot_tracker_trans = self._robot_tracker_trans
         res_pose = transform_pose(transform_pose(robot_tracker_trans, res_pose), tracker_robot_trans)
