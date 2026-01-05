@@ -179,8 +179,6 @@ class DataReplay:
             # relative pose reprensentation
             if self._rotation_transform and self._action_type == ActionType.END_EFFECTOR_POSE:
                 for key, cur_action in actions.items():
-                    # @TODO: umi data replay hack
-                    # cur_action[2] -= 0.3
                     actions[key] = cur_action 
                         
             gym_action = self._convert_to_gym_format(actions)
@@ -202,11 +200,13 @@ class DataReplay:
         tool_actions = []
         
         # @TODO: head info pop out
+        log.info(f'sorted action keys: {sorted(action_dict.keys())}')
         for key in sorted(action_dict.keys()):
             action = action_dict[key]
             if len(action) > 0:
                 arm_actions.append(action[:-1*self._tool_position_dof])
-                tool_actions.append(action[-1*self._tool_position_dof:] / self._tool_max)
+                if key != "head":
+                    tool_actions.append(action[-1*self._tool_position_dof:] / self._tool_max)
 
         return {
             'arm': np.concatenate(arm_actions) if arm_actions else np.array([]),

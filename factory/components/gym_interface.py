@@ -114,13 +114,18 @@ class GymApi(gym.Env):
             for j, key in enumerate(ee_index):
                 cur_arm_action = arm_action[action_index:action_index+7]
                 action_index += 7
+                if key == "head":
+                    head_rotation = R.from_quat(cur_arm_action[3:7]).as_euler("xyz")
+                    cur_arm_action[2] += 1.2
+                    self._robot_motion._robot_system.set_head_position(head_rotation)
+                    self._robot_motion._robot_system._simulation.set_target_mocap_pose("head", cur_arm_action)
+                    continue
                 if self._action_type == ActionType.END_EFFECTOR_POSE_DELTA:
                     # try to use the fixed reset pose
                     cur_arm_action = transform_pose(self._delta_action_target[key], cur_arm_action)
                     self._delta_action_target[key] = cur_arm_action
                 # 使用relative (abs）pose，而非chunk relative
                 if self._use_relative_pose and self._chunk_anchor_mode is None:
-                    if key == "head": continue
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
                 
