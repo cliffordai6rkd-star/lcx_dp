@@ -15,6 +15,25 @@ import warnings
 from threading import Thread
 import glog as log
 
+def serialize_data(data):
+    if data is None:
+        return None
+    
+    if isinstance(data, list):
+        return data
+    
+    if isinstance(data, dict):
+        for key, value in data.items():
+            data[key] = serialize_data(value)
+    elif not isinstance(data, list):
+        single_number_type = [int, float, bool, complex]
+        if not any([isinstance(data, cur_type) for cur_type in single_number_type]):
+            if isinstance(data, np.ndarray) and data.ndim:
+                data = data.tolist()
+            if hasattr(data, "ndim") and data.ndim == 0:
+                data = float(data)
+    return data
+
 class EpisodeWriter():
     def __init__(self, task_dir, frequency=30, image_size=[640, 480], rerun_log = True, 
                  robot_info = None, version = "1.0.0", date = None, author = None, 
@@ -210,11 +229,9 @@ class EpisodeWriter():
         data_keys = ["joint_states", "ee_states", "imus", "tools", "actions"]
         for cur_key in data_keys:
             cur_data = item_data.get(cur_key, {})
-            if cur_data:
-                # log.info(f"{cur_key} before serial: {cur_data}")
-                serialized_data = self.serialize_data(cur_data)
+            if cur_data is not None and len(cur_data) > 0:
+                serialized_data = serialize_data(cur_data)
                 item_data[cur_key] = serialized_data
-                # log.info(f"{cur_key} after serial: {serialized_data}")
         
         # Update episode data
         self.episode_data.append(item_data)
@@ -296,22 +313,6 @@ class EpisodeWriter():
                 return True
             
         return False
-    
-    def serialize_data(self, data):
-        if data is None:
-            return None
-        
-        if isinstance(data, dict):
-            for key, value in data.items():
-                data[key] = self.serialize_data(value)
-        else:
-            single_number_type = [int, float, bool, complex]
-            if not any([isinstance(data, cur_type) for cur_type in single_number_type]):
-                if isinstance(data, np.ndarray) and data.ndim:
-                    data = data.tolist()
-                if hasattr(data, "ndim") and data.ndim == 0:
-                    data = float(data)
-        return data
     
 class EpisodeLoader():
     def __init__(self, task_dir):

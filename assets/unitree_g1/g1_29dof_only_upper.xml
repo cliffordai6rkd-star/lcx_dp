@@ -457,4 +457,10 @@
     <framelinvel name="frame_vel" objtype="site" objname="imu" />
   </sensor>
 
+  <!-- init position definition -->
+  <custom>
+    <!-- ="0 0 0 -1.57079 0 1.57079 -0.7853" -->
+    <numeric name="init_pos" data="0 0 0 0 0 0 0 0 0 0 0 0 0 0" />
+  </custom>
+
 </mujoco>

@@ -1,4 +1,4 @@
-import abc
+import abc, json
 from factory.components.gym_interface import GymApi
 from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose
 from factory.tasks.inferences_tasks.utils.display import display_images
@@ -13,7 +13,7 @@ import numpy as np
 from collections import deque
 from factory.tasks.inferences_tasks.utils.action_aggreagator import ActionAggregator, WeightMode
 from scipy.spatial.transform import Rotation as R
-from dataset.lerobot.data_process import EpisodeWriter
+from dataset.lerobot.data_process import EpisodeWriter, serialize_data
 
 class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -68,9 +68,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._save_chunk_dir = config.get("save_chunk_dir", None)
         if self._save_chunk_dir:
             cur_path = os.path.dirname(os.path.abspath(__file__))
-            task_dir = os.path.join(cur_path, "../../dataset/data", self._save_chunk_dir)
+            self._task_dir = os.path.join(cur_path, "../../../dataset/data", self._save_chunk_dir)
             self._action_chunk_writer = EpisodeWriter(
-                            task_dir=task_dir, rerun_log=False)
+                            task_dir=self._task_dir, rerun_log=False)
             self._episode_id = self._action_chunk_writer.episode_id
         
         # keyboard listening
@@ -170,7 +170,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -299,15 +299,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     log.info(f'save infer data traj!!!')
                 self._gym_robot.start_recording()
                 log.info(f'start record infer data traj!!!')
-            if self._save_chunk_dir:
-                if episode_id:
-                    self._action_chunk_writer.save_episode()
-                    log.info(f'save {self._episode_id}th model infer action chunk!!!')
-                    time.sleep(1.5)
-                self._action_chunk_writer.create_episode()
-                self._episode_id = self._action_chunk_writer.episode_id
-                time.sleep(0.5)
-                log.info(f'start record model infer action chunk!!!')
+            if self._save_chunk_dir and episode_id:
+                self._action_chunk_writer.save_episode()
+                log.info(f'save {self._episode_id}th model infer action chunk!!!')
+                time.sleep(1.5)
             if self._action_aggregation:
                 self._action_aggregation.reset()
             self._gym_robot.reset(options={"arm_to_default": True})
@@ -320,6 +315,18 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 log.info(f'Please press s for start!!!!!!!!')
                 time.sleep(0.001)
             self._gym_robot.set_init_pose()
+            if self._save_chunk_dir:
+                if self._use_relative_pose and episode_id == 0:
+                    # save init pose for the absolute relative pose action space
+                    init_anchor = self._gym_robot._init_pose.copy()
+                    init_anchor = serialize_data(init_anchor)
+                    init_pose_file = os.path.join(self._task_dir, "init_pose.json")
+                    with open(init_pose_file, 'w', encoding='utf-8') as f:
+                        json.dump(init_anchor, f, indent=4)
+                self._action_chunk_writer.create_episode()
+                self._episode_id = self._action_chunk_writer.episode_id
+                time.sleep(0.5)
+                log.info(f'start record model infer action chunk for {self._episode_id}!!!')
             log.info(f'Starting the {episode_id} th episodes')
             # inference timestamp
             pred_action_chunk = None
@@ -391,7 +398,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 dt = time.perf_counter() - start_time
                 if dt < 1.0 / 50.0:
                     sleep_time = (1.0 / 50) -  dt
-                    time.sleep(sleep_time)
+                    time.sleep(0.85*sleep_time)
                 else: 
                     time.sleep(0.001)
                     # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
@@ -421,6 +428,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             # self._plotter.stop_animation()
             time.sleep(1.5)
             self.close()
+            if self._save_chunk_dir is not None and hasattr(self, "_action_chunk_writer"):
+                self._action_chunk_writer.close()
             cv2.destroyAllWindows()
         # reset
         elif key == 'r':

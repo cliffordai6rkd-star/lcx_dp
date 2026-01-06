@@ -24,9 +24,8 @@ def solve_table_collision(ee_pose, gripper_width, height_threshold,
     
 def prevent_table_collision(ee_pose, height_threshold):
     height = max(height_threshold, ee_pose[2])
-    log.info(f'beforce collisoon z: {ee_pose[2]}')
     ee_pose[2] = height
-    log.info(f'after collisoon z: {ee_pose[2]}')
+    return ee_pose[2] < height_threshold
 
 # def solve_sphere_collision(ee_poses, robots_config):
 #     num_robot = len(robots_config)

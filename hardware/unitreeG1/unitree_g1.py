@@ -5,7 +5,7 @@ from collections import deque
 from scipy.interpolate import interp1d
 from hardware.base.utils import Buffer
 from hardware.base.arm import ArmBase
-from hardware.unitreeG1.consts import G1_JOINTS_KP, G1_JOINTS_KD, Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS
+from hardware.unitreeG1.consts import Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS, G1_WRIST_PITCH_MOTORS
 
 # Try to import unitree_sdk2py, fall back to mock if not available
 try:
@@ -87,6 +87,7 @@ class UnitreeG1(ArmBase):
         self._control_frequency = config.get("control_frequency", 500)
         self._update_frequency = config.get("update_frequency", 500)
         self._ankle_mode = config.get('ankle_mode', "pr")
+        self._buffer_size = config.get("buffer_size", 25)
         self._actuate_motors = config.get("actuate_motors", True)
         log.info(f'G1 actuate motors: {self._actuate_motors}')
         if self._ankle_mode == "pr":
@@ -95,7 +96,7 @@ class UnitreeG1(ArmBase):
         self._control_mode = config.get("control_mode", "position")
         self._move_to_start_time = config.get("reset_time", 1.5)
         self._num_command = 60
-        self._command_buffer = Buffer(25, self._num_command)
+        self._command_buffer = Buffer(self._buffer_size, self._num_command)
         self._zero_finished = True
         
         # dds related 
@@ -145,11 +146,12 @@ class UnitreeG1(ArmBase):
         
         self._kp_high = 300.0
         self._kd_high = 3.0
-        self._kp_low = 80.0
-        self._kd_low = 3.0
-        self._kp_wrist = 40.0
-        self._kd_wrist = 1.5
-
+        self._kp_low = 120.0
+        self._kd_low = 11.0
+        self._kp_wrist = 70
+        self._kd_wrist = 2.6
+        self._kp_wrist_pitch = 80
+        self._kd_wrist_pitch = 2.0
         super().__init__(config)
         
     def initialize(self):
@@ -191,6 +193,9 @@ class UnitreeG1(ArmBase):
                 if jid in G1_WRIST_MOTORS:
                     self._low_cmd.motor_cmd[jid].kp = self._kp_wrist
                     self._low_cmd.motor_cmd[jid].kd = self._kd_wrist
+                elif jid in G1_WRIST_PITCH_MOTORS:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_wrist_pitch
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_wrist_pitch
                 else:
                     self._low_cmd.motor_cmd[jid].kp = self._kp_low
                     self._low_cmd.motor_cmd[jid].kd = self._kd_low

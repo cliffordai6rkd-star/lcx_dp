@@ -62,11 +62,16 @@ class Mode:
 
 G1_WRIST_MOTORS = [
     G1JointIndex.LeftWristRoll,
-    G1JointIndex.LeftWristPitch,
+    # G1JointIndex.LeftWristPitch,
     G1JointIndex.LeftWristYaw,
     G1JointIndex.RightWristRoll,
-    G1JointIndex.RightWristPitch,
+    # G1JointIndex.RightWristPitch,
     G1JointIndex.RightWristYaw,
+]
+
+G1_WRIST_PITCH_MOTORS = [
+    G1JointIndex.LeftWristPitch,
+    G1JointIndex.RightWristPitch,
 ]
 
 G1_WEAK_MOTORS = [

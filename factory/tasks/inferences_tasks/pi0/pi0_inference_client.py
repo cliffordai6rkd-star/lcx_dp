@@ -133,7 +133,6 @@ class PI0_Inferencer(InferenceBase):
         """Clean up resources and close display windows."""
         if self._enable_display:
             cv2.destroyWindow(self._display_window_name)
-        self._gym_robot.close()
         del self._pi0_policy
           
 def main():
