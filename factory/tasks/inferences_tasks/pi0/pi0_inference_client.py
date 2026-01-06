@@ -28,18 +28,24 @@ class PI0_Inferencer(InferenceBase):
                         host=host, port=port, api_key=api_key,)
         logger.info(f"Server metadata: {self._pi0_policy.get_server_metadata()}")
         self._key_mapping = config.get('key_mapping', None)
+        self._img_resize_shape = config.get('img_resize_shape', None)
         
         # Send a few observations to make sure the model is loaded.
+        obs = self.convert_from_gym_obs()
+        start = time.perf_counter()
         for i in range(2):
-            obs = self.convert_from_gym_obs()
-            log.info(f'{i}th init obs: {obs}')
+            # log.info(f'{i}th init obs: {obs}')
             self._pi0_policy.infer(obs)
-    
+        log.info(f'avg time: {(time.perf_counter() - start) / 50 * 1000}ms')
+
     def policy_reset(self):
         self._pi0_policy.reset()
 
     def policy_prediction(self, obs):
+        started = time.perf_counter()
         action = self._pi0_policy.infer(obs)
+        infer_time = time.perf_counter() - started
+        log.info(f'Policy inference time: {1.0/infer_time:.2f}Hz')
         return action["actions"]
     
     def start_inference(self):
@@ -104,6 +110,8 @@ class PI0_Inferencer(InferenceBase):
         for key, img in gym_obs["colors"].items():
             # log.info(f'{key} , shape: {img.shape}')
             pi0_obs[key] = img
+            if self._img_resize_shape is not None:
+                pi0_obs[key] = cv2.resize(img, dsize=self._img_resize_shape)
             # pi0_obs[key] = cv2.resize(img, (224, 224))
             # if pi0_obs[key].shape[0] == 3:
             #     pi0_obs[key] = einops.rearrange(pi0_obs[key], "c h w -> h w c")

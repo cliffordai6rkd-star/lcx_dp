@@ -310,7 +310,7 @@ class UnitreeG1(ArmBase):
             time.sleep(0.001)
     
     def _subscribe_motor_state(self):
-        log.info(f'Started unitree g1 state update loop with!!!!')
+        log.info(f'Started unitree g1 state update loop with {self._network_interface}!!!!')
         
         self._last_read_time = time.perf_counter()
         target_dt = 1.0 / self._update_frequency

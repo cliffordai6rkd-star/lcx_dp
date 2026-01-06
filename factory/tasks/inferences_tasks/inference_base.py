@@ -331,6 +331,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             # inference timestamp
             pred_action_chunk = None
             chunk_anchor = None
+            chunk_started = time.perf_counter()
             for t in range(self._max_timestamps):
                 start_time = time.perf_counter()
                     
@@ -339,9 +340,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 if t % query_frequency == 0:
                     obs = self.convert_from_gym_obs()
+                    infer_dt = time.perf_counter() - chunk_started
+                    chunk_started = time.perf_counter()
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
-                    log.info(f'chunk shape: {chunk_shape}')
+                    log.info(f'chunk shape: {chunk_shape}, time: {1.0 / infer_dt}Hz')
                     if self._save_chunk_dir:
                         self._action_chunk_writer.add_item(actions=pred_action_chunk)
                     # update chunk anchor
@@ -398,7 +401,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 dt = time.perf_counter() - start_time
                 if dt < 1.0 / 50.0:
                     sleep_time = (1.0 / 50) -  dt
-                    time.sleep(0.85*sleep_time)
+                    time.sleep(0.2*sleep_time)
                 else: 
                     time.sleep(0.001)
                     # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 

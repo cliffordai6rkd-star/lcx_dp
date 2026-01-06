@@ -26,7 +26,7 @@ class DataReplay:
 
         # Validate required keys
         required_keys = ["task_data_dir", "action_type", "action_orientation_type",
-                        "replay_frequency", "motion_config", "tool_position_dof"]
+            "replay_frequency", "motion_config", "tool_position_dof", "data_type"]
         for key in required_keys:
             if key not in config:
                 raise ValueError(f"Missing required config key: '{key}'")
@@ -54,6 +54,7 @@ class DataReplay:
         self._tool_max = config.get("tool_max", 90)
         self._rotation_transform = config.get("rotation_transform", None)
         self._state_keys = config.get("state_keys", None)
+        self._data_type = config.get("data_type", "human_hand")
 
         # State management
         self._state = ReplayState.IDLE
@@ -88,6 +89,7 @@ class DataReplay:
             observation_type=ObservationType.MASK,
             rotation_transform=self._rotation_transform,
             state_keys=self._state_keys,
+            data_type=self._data_type,
         )
 
         # Start keyboard listener
@@ -182,7 +184,7 @@ class DataReplay:
                     actions[key] = cur_action 
                         
             gym_action = self._convert_to_gym_format(actions)
-            self._gym_api.step(gym_action)
+            self._gym_api.step(gym_action, False)
 
             # Timing
             next_run_time += target_period
@@ -200,13 +202,15 @@ class DataReplay:
         tool_actions = []
         
         # @TODO: head info pop out
-        log.info(f'sorted action keys: {sorted(action_dict.keys())}')
-        for key in sorted(action_dict.keys()):
+        # log.info(f'sorted action keys: {sorted(action_dict.keys())} {self._state_keys}')
+        for key in self._state_keys:
             action = action_dict[key]
             if len(action) > 0:
-                arm_actions.append(action[:-1*self._tool_position_dof])
                 if key != "head":
+                    arm_actions.append(action[:-1*self._tool_position_dof])
                     tool_actions.append(action[-1*self._tool_position_dof:] / self._tool_max)
+                else:
+                    arm_actions.append(action)
 
         return {
             'arm': np.concatenate(arm_actions) if arm_actions else np.array([]),
@@ -235,7 +239,13 @@ class DataReplay:
                 log.warn(f'Please continue to enter the single number or s \
                          to the get the replay episode, cur episode: {self._current_episode_id}')
         if key == 's' and state == ReplayState.WATING_INPUT:
-            self._current_episode_id = int(self._episode_id_str)
+            try:
+                self._current_episode_id = int(self._episode_id_str)
+            except Exception as e:
+                log.warn(f'Catch the exception {e} when ready to replay data but {self._episode_id_str} is not valid!')
+                return
+            
+            # valid episode for replay
             with self._state_lock:
                 self._state = ReplayState.REPLAYING
             log.info(f'Will start to replay {self._current_episode_id} data from {self._task_data_dir}')

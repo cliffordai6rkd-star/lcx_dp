@@ -8,8 +8,9 @@ action_type: "end_effector_pose"
 action_orientation_type: "euler"
 # ee_pose mask 
 observation_type: "ee_pose"
+img_resize_shape: [128, 128]
 contain_ft: false
-contain_head: false
+contain_head: true
 # relative delta
 # chunk_action_mode: "relative"
 use_relative_pose: true
@@ -32,14 +33,14 @@ tool_state_max: 90
 # tool_open_thresh: 45
 # tool_close_thresh: 45
 
-host: "192.168.36.204" 
+host: "192.168.35.213" 
 enable_display: true
 display_window_name: "pi0 client inference for unitree with umi data"
 enable_plotting: false
 enable_hardware: true
 # for data saving 
 # data_save_path: "unitree_bread_picking_infer" # execution trajectory
-save_chunk_dir: "unitree_bread_picking_infer/action_chunks_robot_wo_head_absolute" # model infer action chunks
+# save_chunk_dir: "unitree_bread_picking_infer/action_chunks_robot_wo_head_absolute" # model infer action chunks
 
 num_episodes: 100
 max_timestamps: 3000
