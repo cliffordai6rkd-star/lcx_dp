@@ -20,12 +20,13 @@ from factory.components.motion_factory import MotionFactory, Robot_Space
 from factory.components.robot_factory import RobotFactory
 from simulation.base.sim_base import SimBase
 from dataset.lerobot.data_process import EpisodeWriter
-from hardware.base.utils import convert_homo_2_7D_pose, Buffer, negate_pose, transform_pose, object_class_check
+from hardware.base.utils import convert_homo_2_7D_pose, negate_pose, transform_pose, object_class_check
 from hardware.base.utils import ToolState, ToolType
 from factory.tasks.inferences_tasks.utils.display import display_images
 from teleop.base.utils import RisingEdgeDetector
 import warnings, os
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 # 确保teleop模式环境变量被设置
 os.environ['TELEOP_MODE'] = 'true'
@@ -52,6 +53,9 @@ class TeleoperationFactory:
         self._teleoperation_loop_time = config["teleoperation_loop_time"]
         self._reset_arm_command = config.get("reset_arm_command", None)
         self._reset_space = config.get("reset_space", None)
+        self._random_reset_cartesian_space = config.get("random_reset_cartesian_space", None)        
+        if self._random_reset_cartesian_space is not None:
+            self._reset_space = "cartesian"
         self._reset_space = Robot_Space(self._reset_space) if not self._reset_space is None else None
         log.info(f'reset space: {self._reset_space}')
         self._reset_tool_command = config.get("reset_tool_command", None)
@@ -293,7 +297,7 @@ class TeleoperationFactory:
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
-                if int(raw_target_status) == 0:
+                if int(raw_target_status) < 0:
                     self._init_pose = {}
             target_time = time.perf_counter() - start
 
@@ -473,6 +477,17 @@ class TeleoperationFactory:
         # move to start
         self._update_high_level_state = False
         log.info(f"{'='*20}, Blocking the Motion process to reset the robot to init state{'='*20}")
+        if self._random_reset_cartesian_space is not None:
+            init_anchor = self._random_reset_cartesian_space["init_anchor"]
+            reset_range = self._random_reset_cartesian_space["reset_range"]
+            assert len(reset_range) == 6, f"reset range not match 6 dims but {len(reset_range)}"
+            ranges = np.asarray(reset_range, dtype=float)  # shape (6, 2)
+            low = ranges[:, 0]; high = ranges[:, 1]
+            delta = np.random.uniform(low, high)
+            log.info(f'random delta for reset: {delta}')
+            delta_pose = np.zeros(7); delta_pose[:6] = delta
+            delta_pose[3:] = R.from_euler('xyz', delta_pose[3:6]).as_quat()
+            self._reset_arm_command = transform_pose(init_anchor, delta_pose)
         log.info(f'reset space: {self._reset_space}, command: {self._reset_arm_command}\
                  tool command: {self._reset_tool_command}')
         self._robot_motion_system.reset_robot_system(self._reset_arm_command, self._reset_space,

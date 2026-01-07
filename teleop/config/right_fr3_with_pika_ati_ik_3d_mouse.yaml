@@ -13,6 +13,17 @@ inteface_output_mode: "relative"
 use_simulation_target: false
 teleoperation_loop_time: 0.005
 aync_save_ft: false
+random_reset_cartesian_space:
+  init_anchor: [0.5, -0.28, 0.15826055, 0.7071068, 0, 0.7071068, 0]
+  reset_range:
+    # position x,y,z range
+    - [-0.02, 0.035]
+    - [-0.03, 0.01]
+    - [-0.01, 0.035]
+    # euler roll,pitch,yaw range, please check sim first
+    - [0.0, 0.0]
+    - [-0.3, -0.087]
+    - [0.0, 0.0]
 
 # reset related
 # 平行joint: [-0.12811446303481758, -0.5941484292388739, 0.5812243630046557, -3.013044449006018, 0.3912777097642327, 4.008831121234368, 0.7964079609386593]
@@ -31,8 +42,9 @@ aync_save_ft: false
 #                     -2.65401198e-03, -1.43284955e-03,  3.34460145e-03]
 # reset_space: "cartesian"
 
-reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
-reset_space: "joint"   
+# reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
+# reset_space: "joint"   
+
 
 # data collection related
 # save_path_prefix: "peg_in_hole"
