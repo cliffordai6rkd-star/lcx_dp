@@ -242,8 +242,8 @@ class MotionFactory:
                         log.warning(f"Controller failed to compute valid joint commands for target: {target}")
                     execution_time = time.perf_counter() - start_time
             
-            used_time = time.perf_counter() - last_control_time
-            last_control_time = time.perf_counter()
+            used_time = time.perf_counter() - loop_start_time
+            # last_control_time = time.perf_counter()
             if used_time < ctrl_period:
                 sleep_time = ctrl_period - used_time
                 time.sleep(0.98*sleep_time)

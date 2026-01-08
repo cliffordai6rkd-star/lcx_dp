@@ -46,12 +46,12 @@ class WholeBodyIk(ControllerBase):
         init_q = robot_state._positions
         self.opti.set_initial(self.var_q, init_q)
         
-        if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
-            # log.info(f'Updated the kinematics!!!!')
-            pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
-            pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
-                                        robot_state._velocities, robot_state._accelerations)
-            self.previous_robot_position = init_q  
+        # if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
+        # log.info(f'Updated the kinematics!!!!')
+        pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
+        pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
+                                    robot_state._velocities, robot_state._accelerations)
+            # self.previous_robot_position = init_q  
             
         # set parameter values
         self.opti.set_value(self.parameters[0], init_q)
@@ -89,10 +89,11 @@ class WholeBodyIk(ControllerBase):
                 # log.info(f'Target updated {target_updated} for {i}th target with diff {diff}')
         
         # update target to the optimization problem
-        if target_updated or self.previous_solution is None:
-            for i, cur_target in enumerate(target_values):
-                self.opti.set_value(self.parameters[i+1], cur_target)
-            
+        # if target_updated or self.previous_solution is None:
+        for i, cur_target in enumerate(target_values):
+            self.opti.set_value(self.parameters[i+1], cur_target)
+        target_updated = True
+
         # solve optimization
         try:
             if target_updated or self.previous_solution is None:

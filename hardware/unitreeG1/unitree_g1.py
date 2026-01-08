@@ -316,28 +316,28 @@ class UnitreeG1(ArmBase):
         target_dt = 1.0 / self._update_frequency
         counter = 0
         while self._thread_running:
-            start = time.perf_counter()
+            loop_start = time.perf_counter()
             self._low_state = self._lowstate_subscriber.Read()
-            read_time = time.perf_counter() - start
+            read_time = time.perf_counter() - loop_start
             self._low_state_updated = True
             start1 = time.perf_counter()
-            self.update_arm_states()
+            if self._low_state is not None:
+                self.update_arm_states()
             update_time = time.perf_counter() - start1
 
             if self._update_mode_machine == False:
                 self._mode_machine = self._low_state.mode_machine
                 self._update_mode_machine = True
 
-            used_time = time.perf_counter() - self._last_read_time
-            self._last_read_time = time.perf_counter()
+            used_time = time.perf_counter() - loop_start
+            # self._last_read_time = time.perf_counter()
             if used_time < target_dt:
                 sleep_time = target_dt - used_time
-                # log.info(f'sleep time: {sleep_time*1000:.1f}ms')
                 time.sleep(sleep_time)
             elif used_time > 1.3 * target_dt:
                 counter += 1
                 if counter %1000 == 0:
-                    actual_freq = 1.0 / (time.perf_counter() - start)
+                    actual_freq = 1.0 / (time.perf_counter() - loop_start)
                     log.info(f'Unitree G1 state update slow, expected: {1.0/target_dt:.1f}hz actual: {actual_freq:.1f}hz read: {1.0/read_time:.1f}hz update: {1.0/update_time:.1f}hz')
                     counter = 0        
         log.info(f'Stopped unitree g1 state update loop!!!')
@@ -391,7 +391,7 @@ class UnitreeG1(ArmBase):
             # self._last_write_time = time.perf_counter()
             if dt < target_dt:
                 sleep_time = target_dt - dt
-                time.sleep(0.8*sleep_time)
+                time.sleep(0.9*sleep_time)
             elif dt > 1.35*target_dt:
                 counter += 1
                 if counter %1000 == 0:

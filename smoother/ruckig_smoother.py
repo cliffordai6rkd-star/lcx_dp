@@ -5,7 +5,7 @@ Provides jerk-limited smooth trajectories using Ruckig library
 
 import numpy as np
 import threading
-import time
+import time,copy
 import glog as log
 from typing import Dict, Any, Tuple, Optional
 
@@ -85,7 +85,8 @@ class RuckigSmoother(SmootherBase):
         # Performance monitoring
         self._slow_loop_count = 0
         self._last_result = Result.Working
-        
+        self.max_time = 0
+
         # Apply initial configuration
         self._apply_limits()
         
@@ -220,8 +221,15 @@ class RuckigSmoother(SmootherBase):
         Returns:
             (joint_positions, is_active): Current positions and active flag
         """
+        start = time.perf_counter()
         with self._output_lock:
-            return self._current_position.copy(), not self._pause_flag
+            command = copy.deepcopy(self._current_position)
+        used_time = (time.perf_counter() - start)*1000
+        if used_time > self.max_time:
+            self.max_time = used_time
+            log.info(f'max time get command {self.max_time:.2f}ms')
+        need_pause = not self._pause_flag
+        return command, need_pause
     
     def pause(self) -> None:
         """Pause smoother (maintains current output)"""
@@ -378,15 +386,15 @@ class RuckigSmoother(SmootherBase):
                 # Keep current state on error
             
             # Timing management
-            used_time = time.perf_counter() - last_time
-            last_time = time.perf_counter()
+            used_time = time.perf_counter() - loop_start
+            # last_time = time.perf_counter()
             if used_time < self._dt:
                 sleep_time = self._dt - used_time
                 time.sleep(sleep_time)
             elif used_time > 1.2 * self._dt:
                 # Performance warning
                 self._slow_loop_count += 1
-                if self._slow_loop_count % 1000 == 0:
+                if self._slow_loop_count % 300 == 0:
                     actual_dt = time.perf_counter() - loop_start
                     log.warn(f"Ruckig loop slow: {actual_dt*1000:.1f}ms "
                                  f"(target: {self._dt*1000:.1f}ms)")
