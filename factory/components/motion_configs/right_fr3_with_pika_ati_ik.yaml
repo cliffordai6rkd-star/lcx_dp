@@ -17,7 +17,7 @@ auto_enable_async_control: true    # Auto-enable async mode on initialization (n
 
 # sensor infos
 sensor_dicts:
-  cameras:
+  # cameras:
     # - name: "ee_cam"
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
@@ -28,10 +28,10 @@ sensor_dicts:
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
     # right_pika_sense_d405_cfg right_pika_sense_fisheye_cfg  right_pika_d405_cfg right_pika_fisheye_cfg
-    - name: "right_hand"
+    - name: "right"
       type: "realsense_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
-    - name: "right_hand_fisheye"
+    - name: "right_fisheye"
       type: "opencv_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_fisheye_cfg.yaml
   # ft_sensors:

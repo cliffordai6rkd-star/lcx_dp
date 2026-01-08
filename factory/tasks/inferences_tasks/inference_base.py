@@ -303,18 +303,19 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 self._action_chunk_writer.save_episode()
                 log.info(f'save {self._episode_id}th model infer action chunk!!!')
                 time.sleep(1.5)
+            
             if self._action_aggregation:
                 self._action_aggregation.reset()
             self._gym_robot.reset(options={"arm_to_default": True})
             self._last_gripper_open = [True, True]
-            self.policy_reset()
-            self._status_ok = True
-            obs = None
+            self.policy_reset(); self._status_ok = True; obs = None
+            
             self._episode_start = False
             while not self._episode_start:
                 log.info(f'Please press s for start!!!!!!!!')
                 time.sleep(0.001)
             self._gym_robot.set_init_pose()
+            
             if self._save_chunk_dir:
                 if self._use_relative_pose and episode_id == 0:
                     # save init pose for the absolute relative pose action space
@@ -328,13 +329,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 time.sleep(0.5)
                 log.info(f'start record model infer action chunk for {self._episode_id}!!!')
             log.info(f'Starting the {episode_id} th episodes')
+            
             # inference timestamp
-            pred_action_chunk = None
-            chunk_anchor = None
-            chunk_started = time.perf_counter()
-            for t in range(self._max_timestamps):
-                start_time = time.perf_counter()
-                    
+            pred_action_chunk = None; chunk_anchor = None; chunk_started = time.perf_counter()
+            async_execute_thread = None            
+            for t in range(self._max_timestamps):                    
                 if not self._status_ok or self._quit: 
                     break 
                 
@@ -353,7 +352,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         time.sleep(2.5)
                         chunk_anchor = self._gym_robot.get_ee_state()
                     if self._use_relative_pose:
-                        self._gym_robot.get_camera_infos()
+                        # self._gym_robot.get_camera_infos()
                         obs_timestamp = self._gym_robot.get_obs_timestamp()
                         action_timestamps = (np.arange(len(pred_action_chunk), dtype=np.float64)
                             ) * infer_dt + obs_timestamp
@@ -377,37 +376,57 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._action_aggregation = ActionAggregator(query_frequency=query_frequency,
                         chunk_size=chunk_shape, max_timestamps=self._max_timestamps,
                         action_size=pred_action_chunk.shape[1], k=self._weight_gain)
-                if t % query_frequency == 0:
+                elif t % query_frequency == 0:
                     # update action chunk
                     self._action_aggregation.add_action_chunk(t, pred_action_chunk)
 
-                # calculate aggregated action
-                aggregated_action = self._action_aggregation.aggregation_action(t, self._weight_mode)
-                # log.info(f'aggregated action: {aggregated_action}')
-                # smoothed action
-                execution_time = time.perf_counter()
-                
-                need_execution = True if not self._use_relative_pose else execution_index[0] == t
-                if need_execution:
-                    if self._use_relative_pose: execution_index = execution_index[1:]
-                    convert_start = time.perf_counter()
-                    gym_action = self.convert_to_gym_action_single_step(
-                        aggregated_action, pred_action_chunk[t%query_frequency], chunk_anchor)
-                    convert_time = time.perf_counter() - convert_start
-                    step_start = time.perf_counter()
-                    res = self._gym_robot.step(gym_action, False)
-                    step_time = time.perf_counter() - step_start
+                def execute_one_action(cur_t):
+                    start_time = time.perf_counter()
                     
-                dt = time.perf_counter() - start_time
-                if dt < 1.0 / 50.0:
-                    sleep_time = (1.0 / 50) -  dt
-                    time.sleep(0.2*sleep_time)
-                else: 
-                    time.sleep(0.001)
-                    # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
-                    log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
+                    # calculate aggregated action
+                    aggregated_action = self._action_aggregation.aggregation_action(cur_t, self._weight_mode)
+                    # log.info(f'aggregated action: {aggregated_action}')
+                    # smoothed action
+                    
+                    need_execution = True if not self._use_relative_pose else execution_index[0] == cur_t
+                    if need_execution:
+                        if self._use_relative_pose: execution_index = execution_index[1:]
+                        convert_start = time.perf_counter()
+                        gym_action = self.convert_to_gym_action_single_step(
+                            aggregated_action, pred_action_chunk[cur_t%query_frequency], chunk_anchor)
+                        convert_time = time.perf_counter() - convert_start
+                        step_start = time.perf_counter()
+                        res = self._gym_robot.step(gym_action, False)
+                        step_time = time.perf_counter() - step_start
+                        
+                    dt = time.perf_counter() - start_time
+                    if dt < 1.0 / 85.0:
+                        sleep_time = (1.0 / 50) -  dt
+                        time.sleep(0.2*sleep_time)
+                    else: 
+                        time.sleep(0.001)
+                        # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
+                        log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
                 
-                t += 1
+                def execute_chunk_action(t_start):
+                    for i in range(query_frequency):
+                        if not self._status_ok or self._quit: 
+                            return
+                        
+                        cur_t = t_start + i
+                        execute_one_action(cur_t)
+                
+                if not self._async_execution:
+                    execute_one_action(t)
+                    t += 1
+                else:
+                    if async_execute_thread is not None and async_execute_thread.is_alive():
+                        async_execute_thread.join()
+                    
+                    async_execute_thread = threading.Thread(target=execute_chunk_action, args=(t,))
+                    async_execute_thread.start()
+                    t = t + query_frequency
+                    
                                 
     @abc.abstractmethod
     def close(self):

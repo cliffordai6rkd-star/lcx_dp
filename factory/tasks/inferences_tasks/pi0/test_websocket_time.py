@@ -10,10 +10,10 @@ pi0_policy = _websocket_client_policy.WebsocketClientPolicy(
 print(f"Server metadata: {pi0_policy.get_server_metadata()}")
 
 fake_obs = {
-    "state": np.zeros(23),
-    "right_fisheye_color": np.zeros((480, 640, 3), dtype=np.uint8),
-    "left_fisheye_color": np.zeros((480, 640, 3), dtype=np.uint8),
-    "head_color": np.zeros((480, 640, 3), dtype=np.uint8),
+    "state": np.ones(23),
+    "right_color": np.ones((480, 640, 3), dtype=np.uint8),
+    "right_fisheye_color": np.ones((480, 640, 3), dtype=np.uint8),
+    # "head_color": np.zeros((480, 640, 3), dtype=np.uint8),
     "task": "hello, who you are!!!"
 }
 
@@ -23,8 +23,9 @@ for key, value in fake_obs.items():
     fake_obs[key] = cv2.resize(value, dsize=[224, 224])
     print(f'{key} obs shape: {fake_obs[key].shape}')
 
-test_num = 100
+test_num = 50
 start = time.perf_counter()
 for i in range(test_num):
-    pi0_policy.infer(fake_obs)
+    actions = pi0_policy.infer(fake_obs)
+    print(f'{i}th action: {actions["actions"].shape}')
 print(f'avg time: {(time.perf_counter() - start) / test_num * 1000}ms')

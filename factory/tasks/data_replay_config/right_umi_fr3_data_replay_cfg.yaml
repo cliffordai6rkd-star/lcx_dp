@@ -2,9 +2,10 @@ motion_config: !include factory/components/motion_configs/right_fr3_with_pika_at
 max_step_nums: 150 # for gym steps
 is_debug: false
 
-task_data_dir: "dataset/data/1207_duo_unitree_pick_n_place_194ep"
+task_data_dir: "dataset/data/1227_duo_unitree_bread_picking_human_182ep"
+data_type: "human_hand"
 action_prediction_step: 2
-# skip_steps: 2
+skip_steps: 2
 # end_effector_pose_delta
 action_type: "end_effector_pose"
 action_orientation_type: "quaternion"
@@ -12,6 +13,7 @@ observation_type: "ee_pose"
 contain_ft: false
 use_relative_pose: true
 state_keys: ["right"]
+cam_keys: ["right_color", "right_fisheyed_color"]
 rotation_transform: 
   right: [0.7071068, 0, 0.7071068, 0]
 

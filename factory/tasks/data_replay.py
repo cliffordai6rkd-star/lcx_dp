@@ -54,6 +54,7 @@ class DataReplay:
         self._tool_max = config.get("tool_max", 90)
         self._rotation_transform = config.get("rotation_transform", None)
         self._state_keys = config.get("state_keys", None)
+        self._cam_keys = config.get("cam_keys", None)
         self._data_type = config.get("data_type", "human_hand")
 
         # State management
@@ -89,6 +90,7 @@ class DataReplay:
             observation_type=ObservationType.MASK,
             rotation_transform=self._rotation_transform,
             state_keys=self._state_keys,
+            camera_keys=self._cam_keys,
             data_type=self._data_type,
         )
 
