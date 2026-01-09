@@ -665,14 +665,25 @@ class RobotFactory:
             joint_commands: If provided, use smoother to move smoothly to target
                            If None, use robot's default move_to_start (immediate)
         """
+        if self._use_hardware and not self._enable_hardware:
+            log.warn(f"Move to start no respone due to "\
+                f"{self._use_hardware} exeute hw {self._enable_hardware}")
+            return
+        
         if joint_commands is not None and self._use_smoother and self._smoother is not None:
             if mode is None:
                 raise ValueError("Mode must be specified when using smoother for move_to_start")
             log.info(f"Move to start mode: {mode}, command: {joint_commands} with smoother")
             self.set_joint_commands(joint_commands, mode, execute_hardware=self._enable_hardware)
             # @TODO: use detection method to ensure the time is enough for robot to reach the start configuration
-            time.sleep(4.5)
-            
+            time.sleep(4.5); counter = 0
+            while True:
+                cur_joint_position = self.get_joint_states()._positions
+                posi_error = np.linalg.norm(cur_joint_position, np.array(joint_commands))
+                log.info(f'joint posi error: {posi_error}')
+                if posi_error < 0.01 or counter > 2000:
+                    break
+                time.sleep(0.001)
         else:
             # joint_commands is None: use robot's default move_to_start (immediate reset)
             # Pause smoother before immediate movement

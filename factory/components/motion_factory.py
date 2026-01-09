@@ -13,7 +13,7 @@ from controller.duo_controller import DuoController
 from trajectory.cartesian_trajectory import CartessianTrajectory
 from hardware.base.utils import Buffer
 import threading
-from hardware.base.utils import object_class_check, TrajectoryState
+from hardware.base.utils import object_class_check, TrajectoryState, compute_pose_diff
 import time
 from factory.components.robot_factory import RobotFactory
 from hardware.base.utils import convert_homo_2_7D_pose, get_joint_slice_value, \
@@ -398,6 +398,11 @@ class MotionFactory:
     def reset_robot_system(self, arm_command: list[float] | None = None, 
                            space: Robot_Space = Robot_Space.JOINT_SPACE,
                            tool_command: list[np.ndarray] | Dict[str, np.ndarray] = None):
+        if self._robot_system._use_hardware and not self._execute_hardware:
+            log.warn(f"Reset no respone due to "\
+                f"{self._robot_system._use_hardware} exeute hw {self._execute_hardware}")
+            return
+        
         mode = ["position"] * len(self._ee_links)
         if space == Robot_Space.CARTESIAN_SPACE:
             if arm_command is not None:
@@ -406,16 +411,26 @@ class MotionFactory:
                 self.clear_traj_buffer()
                 self.wait_buffer_empty()
                 log.info('Trajectory buffer has all been consumed for cartesian space reset!!!')
-                # @TODO: attach to current tcp
                 self.set_next_pose_target(arm_command)
-                time.sleep(2.0)
+                time.sleep(2.0); counter = 0
+                # @TODO: wait until tcp reach the target
+                while True:
+                    counter += 1
+                    model_types = self.get_model_types(); erros = 0
+                    for i, cur_model_type in enumerate(model_types):
+                        cur_tcp = self.get_frame_pose(self._ee_links[i], cur_model_type)
+                        pose_error = compute_pose_diff(cur_tcp, np.array(arm_command[i*7:i*7+7]))
+                        erros += np.linalg.norm(pose_error)
+                    log.info(f'reset cartesian command error: {erros}')
+                    if erros < 0.02 or counter > 3500:
+                        break
+                    time.sleep(0.001)
                 self.enable_high_level_update = True
             else:
                 self.move_to_start_blocking()
-                self._high_level_command = None
         else:
             self.move_to_start_blocking(arm_command, mode)
-            self._high_level_command = None
+        self._high_level_command = None
         
         # Reset controller
         robot_state = self._robot_system.get_joint_states()

@@ -41,6 +41,8 @@ class GymApi(gym.Env):
         self._reset_space = config.get("reset_space", "joint")
         self._reset_space = Robot_Space.JOINT_SPACE if self._reset_space== 'joint' else Robot_Space.CARTESIAN_SPACE
         self._reset_arm_command = config.get("reset_arm_command", None)
+        if self._reset_arm_command is not None: 
+            self._reset_arm_command = np.array(self._reset_arm_command)
         self._reset_tool_command = config.get("reset_tool_command", [[1]])
         self._reset_arm_to_default = config.get("reset_arm_to_default", False)
         self._is_debug = config.get("is_debug", False)

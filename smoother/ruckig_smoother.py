@@ -227,7 +227,7 @@ class RuckigSmoother(SmootherBase):
         used_time = (time.perf_counter() - start)*1000
         if used_time > self.max_time:
             self.max_time = used_time
-            log.info(f'max time get command {self.max_time:.2f}ms')
+            # log.info(f'max time get command {self.max_time:.2f}ms')
         need_pause = not self._pause_flag
         return command, need_pause
     
