@@ -110,10 +110,6 @@ class DataReplay:
         target_period = 1.0 / self._replay_frequency
 
         while self._replay_thread_running:
-            imgs = self._gym_api.get_camera_infos()
-            if imgs:
-                display_images(imgs["color"], f"Data replay for {self._task_data_dir}")
-            
             with self._state_lock:
                 current_state = self._state
 
@@ -186,8 +182,13 @@ class DataReplay:
                     actions[key] = cur_action 
                         
             gym_action = self._convert_to_gym_format(actions)
-            self._gym_api.step(gym_action, False)
-
+            res = self._gym_api.step(gym_action, True)
+            display_colors = res[0]["color"]; data_colors = frame_data.get("colors", {})
+            for cam_name, cam_data in data_colors.items():
+                cam_name = "data_" + cam_name
+                display_colors[cam_name] = cam_data
+            display_images(display_images, "Data replay colors")
+            
             # Timing
             next_run_time += target_period
             sleep_time = next_run_time - time.perf_counter()

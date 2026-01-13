@@ -170,7 +170,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -289,7 +289,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # query_frequency = int(50 / self._infer_frequency)
         infer_dt = 1.0 / self._infer_frequency
         # 50
-        query_frequency = 45
+        query_frequency = 50
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -332,7 +332,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             
             # inference timestamp
             pred_action_chunk = None; chunk_anchor = None; chunk_started = time.perf_counter()
-            async_execute_thread = None            
+            async_execute_thread = None; self._execution_index = None        
             for t in range(self._max_timestamps):                    
                 if not self._status_ok or self._quit: 
                     break 
@@ -358,16 +358,16 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 0.01
+                        exec_latency = 9.0
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         if np.sum(is_new) == 0:
                             log.warn(f'action chunk is old, execute the last action from chunk only')
-                            execution_index = [chunk_shape - 1]
+                            self._execution_index = np.array([chunk_shape - 1])
                         else:
-                            execution_index = np.arange(chunk_shape)[is_new]
-                        log.info(f'exeution action index: {execution_index}')
-                        execution_index += t
+                            self._execution_index = np.arange(chunk_shape)[is_new]
+                        log.info(f'exeution action index: {self._execution_index}')
+                        self._execution_index += t
                             
                         # smooth the entire action chunk before ensembling
                         # pose_intep = PoseTrajectoryInterpolator()
@@ -388,9 +388,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # log.info(f'aggregated action: {aggregated_action}')
                     # smoothed action
                     
-                    need_execution = True if not self._use_relative_pose else execution_index[0] == cur_t
+                    need_execution = True if not self._use_relative_pose else self._execution_index[0] == cur_t
                     if need_execution:
-                        if self._use_relative_pose: execution_index = execution_index[1:]
+                        if self._use_relative_pose: self._execution_index = self._execution_index[1:]
                         convert_start = time.perf_counter()
                         gym_action = self.convert_to_gym_action_single_step(
                             aggregated_action, pred_action_chunk[cur_t%query_frequency], chunk_anchor)
@@ -402,7 +402,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     dt = time.perf_counter() - start_time
                     if dt < 1.0 / 85.0:
                         sleep_time = (1.0 / 50) -  dt
-                        time.sleep(0.2*sleep_time)
+                        # time.sleep(0.2*sleep_time)
+                        time.sleep(0.001)
                     else: 
                         time.sleep(0.001)
                         # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 

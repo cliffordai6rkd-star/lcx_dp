@@ -1,0 +1,15 @@
+whole_body_ik:
+  tracking_frames:
+  - name: "pika_gripper_ee"
+    dim: [4, 4]
+    require_trans: true
+    trans_scalar: 1.0
+    require_rot: true
+    rot_scalar: 1.0
+  show_debug: false
+  trans_weight: 1500
+  rot_weight: 5
+  smooth_weight: 0.2
+  regularization_weight: 0.02
+  target_threshold: 0.0000001
+  

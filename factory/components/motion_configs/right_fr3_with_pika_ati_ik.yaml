@@ -17,7 +17,7 @@ auto_enable_async_control: true    # Auto-enable async mode on initialization (n
 
 # sensor infos
 sensor_dicts:
-  # cameras:
+  cameras:
     # - name: "ee_cam"
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
@@ -39,9 +39,11 @@ sensor_dicts:
   #     type: "ati_ft"
   #     cfg: !include hardware/sensors/ft_sensor/config/right_ati_cfg.yaml
   
-control_frequency: 800
-controller_type: "ik"
-controller_config: !include controller/config/ik_fr3_pika_ati_cfg.yaml
+control_frequency: 300
+# controller_type: "ik"
+# controller_config: !include controller/config/ik_fr3_pika_ati_cfg.yaml
+controller_type: "whole_body_ik"
+controller_config: !include controller/config/wbik_fr3_pika_ati_cfg.yaml
 
 model_type: "model"
 model_config:

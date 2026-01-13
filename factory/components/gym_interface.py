@@ -184,6 +184,7 @@ class GymApi(gym.Env):
             log.info("Reset the robot arm to default position!!!!!!")
             self._robot_motion.reset_robot_system(tool_command=self._reset_tool_command)
             time.sleep(1.5)
+        log.info(f"Reset the robot to {self._reset_arm_command} with {self._reset_space}")
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)

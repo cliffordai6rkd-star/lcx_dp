@@ -11,17 +11,18 @@ action_type: "end_effector_pose"
 action_orientation_type: "euler"
 # ee_pose mask 
 observation_type: "ee_pose"
+img_resize_shape: [224, 224]
 contain_ft: false
 # relative delta
-chunk_action_mode: "relative"
+# chunk_action_mode: "relative"
 use_relative_pose: true
 is_debug: false
 
 # collision related parameters
 tool_wdith: 0.1
 tool_thickness: 0.0255
-# height_thresh: 0.02
-height_thresh: 0.02
+# height_thresh: 0.002
+height_thresh: 0.005
 
 reset_space: "joint"
 # z: 0.32969364
@@ -32,12 +33,14 @@ reset_tool_command: [[1]]
 
 # transfer banana
 # reset_arm_command: [0.4949421897203528, -1.567805829578173, -1.8572166701179154, -1.9905463709529319, 0.17777157010546682, 2.514054533859691, -1.230442816921196]
-reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
+# reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
+reset_arm_command: [0.6, -0.4, 0.12526055, 0.8544521, 0.0036385, 0.5192927, 0.015278 ]
+reset_space: "cartesian"
 reset_arm_to_default: true
 
 tool_control_mode: "incremental"
 tool_min: 0
-tool_max: 1.1
+tool_max: 1.2
 tool_state_max: 90
 # tool_control_mode: "binary"
 # tool_open_thresh: 45
@@ -49,7 +52,7 @@ enable_plotting: false
 enable_hardware: true
 
 num_episodes: 100
-max_timestamps: 1500
+max_timestamps: 15000
 action_weight_mode: "uniform"
 async_execution: false
 infer_frequency: 10
@@ -61,5 +64,5 @@ infer_frequency: 10
 # tasks: "collect a portion of rice with spoon and transfer it into the bowl"
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
-tasks: "transfer the banana from the yellow plate into the white plate"
-
+# tasks: "transfer the banana from the yellow plate into the white plate"
+tasks: "Pick up the bread on the right and place it on the white tray inside the container."

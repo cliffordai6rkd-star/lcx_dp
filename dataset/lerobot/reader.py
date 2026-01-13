@@ -62,7 +62,7 @@ class RerunEpisodeReader:
         json_path = os.path.join(episode_dir, self.json_file)
 
         if not os.path.exists(json_path):
-            log.warn(f"Episode {episode_idx} data.json not found for {self.task_dir}.")
+            log.warn(f"Episode {episode_idx} data.json not found.")
             return None
 
         with open(json_path, 'r', encoding='utf-8') as jsonf:
@@ -139,6 +139,8 @@ class RerunEpisodeReader:
                     raise ValueError(f'Do not get the {i}th ee state pose from {self.task_dir} {episode_dir} for {self._obs_type}')
             # update head to cur ee state, 确保head是在最后一个key
             if contain_head:
+                assert self._obs_type in [ObservationType.MASK, ObservationType.END_EFFECTOR_POSE], f"{self._obs_type} not support for contain head"
+                assert self.action_type in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA], f"{self.action_type} not support for contain head"
                 log.debug(f'ee states contain head pose: {list(ee_states.keys())}')
             ee_check.remove(ObservationType.JOINT_POSITION_END_EFFECTOR)
             

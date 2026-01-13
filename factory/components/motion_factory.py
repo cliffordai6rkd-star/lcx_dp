@@ -398,9 +398,9 @@ class MotionFactory:
     def reset_robot_system(self, arm_command: list[float] | None = None, 
                            space: Robot_Space = Robot_Space.JOINT_SPACE,
                            tool_command: list[np.ndarray] | Dict[str, np.ndarray] = None):
-        if self._robot_system._use_hardware and not self._execute_hardware:
-            log.warn(f"Reset no respone due to "\
-                f"{self._robot_system._use_hardware} exeute hw {self._execute_hardware}")
+        if self._robot_system._use_hardware and not all([self._execute_hardware, self._robot_system._enable_hardware]):
+            log.warn(f"Reset no respone due to use hw {self._robot_system._use_hardware}"\
+                f" exeute hw {self._execute_hardware} robot enable hw: {self._robot_system._enable_hardware}")
             return
         
         mode = ["position"] * len(self._ee_links)
@@ -422,7 +422,9 @@ class MotionFactory:
                         pose_error = compute_pose_diff(cur_tcp, np.array(arm_command[i*7:i*7+7]))
                         erros += np.linalg.norm(pose_error)
                     log.info(f'reset cartesian command error: {erros}')
-                    if erros < 0.02 or counter > 3500:
+                    if erros < 0.035 or counter > 3500:
+                        if counter > 3500:
+                            log.warn(f'Break reset due to timeout')
                         break
                     time.sleep(0.001)
                 self.enable_high_level_update = True
