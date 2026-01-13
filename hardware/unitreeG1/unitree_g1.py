@@ -352,10 +352,8 @@ class UnitreeG1(ArmBase):
             if self._last_write_time is None: self._last_write_time = time.perf_counter()
             
             start = time.perf_counter()
-            sucess = False
-            if self._command_buffer.size() > 0:
-                sucess = True; command =  self._command_buffer._data[0]
-            
+            sucess, command, _ = self._command_buffer.pop_data()
+           
             if sucess:
                 self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1.0 # 1:Enable arm_sdk, 0:Disable arm_sdk
                 tau = np.zeros(30)
@@ -375,7 +373,6 @@ class UnitreeG1(ArmBase):
                         self._low_cmd.motor_cmd[joint].tau = command[joint]
                     else:
                         raise ValueError(f'The unitree g1 motor do not support the mode {self._control_mode}')
-                _, command, _ = self._command_buffer.pop_data()
             other_time = time.perf_counter() - start
 
             start = time.perf_counter()
@@ -391,7 +388,7 @@ class UnitreeG1(ArmBase):
             # self._last_write_time = time.perf_counter()
             if dt < target_dt:
                 sleep_time = target_dt - dt
-                time.sleep(0.9*sleep_time)
+                time.sleep(0.95*sleep_time)
             elif dt > 1.35*target_dt:
                 counter += 1
                 if counter %1000 == 0:
