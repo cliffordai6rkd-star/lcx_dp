@@ -144,14 +144,21 @@ class UnitreeG1(ArmBase):
         if self._enable_low_level:
             self._robot_id = self._leg_joints + self._waist_joints + self._robot_id
         
+        # self._kp_high = 300.0
+        # self._kd_high = 3.0
+        # self._kp_low = 120.0
+        # self._kd_low = 11.0
+        # self._kp_wrist = 70
+        # self._kd_wrist = 2.6
+        self._kp_wrist_pitch = 80
+        self._kd_wrist_pitch = 10.0
+
         self._kp_high = 300.0
         self._kd_high = 3.0
-        self._kp_low = 120.0
-        self._kd_low = 11.0
-        self._kp_wrist = 70
-        self._kd_wrist = 2.6
-        self._kp_wrist_pitch = 80
-        self._kd_wrist_pitch = 2.0
+        self._kp_low = 80.0
+        self._kd_low = 13.0
+        self._kp_wrist = 40.0
+        self._kd_wrist = 7.5
         super().__init__(config)
         
     def initialize(self):
@@ -352,7 +359,11 @@ class UnitreeG1(ArmBase):
             if self._last_write_time is None: self._last_write_time = time.perf_counter()
             
             start = time.perf_counter()
-            sucess, command, _ = self._command_buffer.pop_data()
+            sucess, command, command_ts = self._command_buffer.pop_data()
+            if sucess and command_ts - loop_start_time > 3*target_dt:
+                sucess = False
+                self._command_buffer.clear_outdated_data(loop_start_time)
+                log.warn(f'Unitree execute outdated and cleared!!!')
            
             if sucess:
                 self._low_cmd.motor_cmd[G1JointIndex.kNotUsedJoint].q =  1.0 # 1:Enable arm_sdk, 0:Disable arm_sdk

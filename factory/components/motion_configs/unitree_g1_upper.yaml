@@ -11,13 +11,13 @@ gripper_config: !include hardware/tools/grippers/config/zmq_duo_pika_gripper_cfg
 head: "zmq_servo_head"
 head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 
-use_smoother: true
-smoother_type: "ruckig" #critical_damped
-smoother_config: !include smoother/config/smoother_unitree_g1_upper_cfg.yaml
-async_control_frequency: 500.0     # Async thread sends commands at this rate (Hz)
-auto_enable_async_control: true    # Auto-enable async mode on initialization (new!)
+# use_smoother: true
+# smoother_type: "ruckig" #critical_damped
+# smoother_config: !include smoother/config/smoother_unitree_g1_upper_cfg.yaml
+# async_control_frequency: 500.0     # Async thread sends commands at this rate (Hz)
+# auto_enable_async_control: true    # Auto-enable async mode on initialization (new!)
 
-control_frequency: 250
+control_frequency: 300
 controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
 

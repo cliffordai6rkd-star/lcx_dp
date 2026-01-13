@@ -72,14 +72,14 @@ def data_starisrics_report(data_number,valid_episode_number,empty_data_number,to
     
 if __name__ == "__main__":
 
-    data_dir = "dataset/data/bread_picking"
-    start_episode = 62 #24 robot
-    end_episode = 121
-    fps = 1000
-    skip_step_nums = 2
+    data_dir = "dataset/data/0109_duo_unitree_tube_insert_human_282ep"
+    start_episode = 1
+    end_episode = 330
+    fps = 60
+    skip_step_nums = 4
     # 根据电脑的运存大小调整运存上限 在终端里free -h查看avaliale内存大小 
     lim_storage = 20
-    data_type = "robot" # robot & human_hand
+    data_type = "human_hand" # robot & human_hand
 
     episode_list = range(start_episode, end_episode + 1)
     action_ori_type = "quaternion"
@@ -97,7 +97,6 @@ if __name__ == "__main__":
         full_path = os.path.join(data_dir, episode_dir)
 
         if os.path.exists(full_path): 
-            start = time.perf_counter()        
             episode_reader = RerunEpisodeReader(
                 task_dir=data_dir, 
                 action_type=ActionType.END_EFFECTOR_POSE,
@@ -108,8 +107,6 @@ if __name__ == "__main__":
                 contain_ft=contain_ft,
                 data_type=data_type,
             )           
-            read_time = time.perf_counter() - start
-            logger_mp.info(f'read time {read_time}')
            
             logger_mp.info(f'find Episode {episode_data_number}')  
             episode_data = episode_reader.return_episode_data(episode_data_number, skip_step_nums)

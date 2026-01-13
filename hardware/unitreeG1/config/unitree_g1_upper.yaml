@@ -2,10 +2,11 @@ unitree_g1:
   dof: [7, 7]  # Dual arm DOF configuration
   network_interface: "enx6c1ff7662180"
   enable_low_level: false
-  buffer_size: 30
-  control_frequency: 600
+  buffer_size: 2
+  control_frequency: 400
   update_frequency: 300
   ankle_mode: "pr" # pr or ab
   control_mode: "position"
-  init_joint_positions: [0.38073152, -0.0362881,  -0.14889574, -0.21130961, -0.1018877,  -0.25582314, 0.06142187,  0.36672187,  0.0962332,   0.12830758, -0.14180136, -0.07298589, -0.41636944, -0.02720642]
-  # actuate_motors: false
+  init_joint_positions: [ 0.39661062,  0.60458058, -0.29216707, -0.16234207, -0.66306114, -0.46565628,
+    0.2364645,  0.35582829, -0.32261533,  0.21295214, -0.26503515,  0.3368268, -0.19651937, -0.17084837]
+  actuate_motors: true
