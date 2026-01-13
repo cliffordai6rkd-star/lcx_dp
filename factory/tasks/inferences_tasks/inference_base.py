@@ -289,7 +289,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # query_frequency = int(50 / self._infer_frequency)
         infer_dt = 1.0 / self._infer_frequency
         # 50
-        query_frequency = 50
+        query_frequency = 120
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -339,11 +339,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 if t % query_frequency == 0:
                     obs = self.convert_from_gym_obs()
-                    infer_dt = time.perf_counter() - chunk_started
+                    chunk_dt = time.perf_counter() - chunk_started
                     chunk_started = time.perf_counter()
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
-                    log.info(f'chunk shape: {chunk_shape}, time: {1.0 / infer_dt}Hz')
+                    log.info(f'chunk shape: {chunk_shape}, time: {1.0 / chunk_dt}Hz')
                     if self._save_chunk_dir:
                         self._action_chunk_writer.add_item(actions=pred_action_chunk)
                     # update chunk anchor
@@ -358,7 +358,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 9.0
+                        exec_latency = 8
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         if np.sum(is_new) == 0:
@@ -408,6 +408,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         time.sleep(0.001)
                         # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
                         log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
+                    # time.sleep(0.2)
                 
                 def execute_chunk_action(t_start):
                     for i in range(query_frequency):

@@ -236,8 +236,8 @@ class Fr3Arm(ArmBase):
             # Only acquire lock for the actual recover call
             self._controller_lock.acquire()
             try:
-                self._fr3_robot.get_robot().automaticErrorRecovery()
-                # self._fr3_robot.recover()
+                # self._fr3_robot.get_robot().automatic_error_recovery()
+                self._fr3_robot.recover()
                 log.info(f'Recover from error')
             finally:
                 self._controller_lock.release()

@@ -422,7 +422,7 @@ class MotionFactory:
                         pose_error = compute_pose_diff(cur_tcp, np.array(arm_command[i*7:i*7+7]))
                         erros += np.linalg.norm(pose_error)
                     log.info(f'reset cartesian command error: {erros}')
-                    if erros < 0.035 or counter > 3500:
+                    if erros < 0.35 or counter > 3500:
                         if counter > 3500:
                             log.warn(f'Break reset due to timeout')
                         break
@@ -559,6 +559,7 @@ class MotionFactory:
                 
     def sim_visualize_targets(self, targets: dict[str, np.ndarray]):
         if not self._robot_system._use_simulation or not self._mocap_target_site:
+            log.info(f'{self._robot_system._use_simulation} {self._mocap_target_site}')
             return 
         
         for i, (key, cur_target) in enumerate(targets.items()):
