@@ -679,7 +679,7 @@ class RobotFactory:
             time.sleep(4.5); counter = 0
             while True:
                 cur_joint_position = self.get_joint_states()._positions
-                posi_error = np.linalg.norm(cur_joint_position, np.array(joint_commands))
+                posi_error = np.linalg.norm(cur_joint_position-np.array(joint_commands))
                 log.info(f'joint posi error: {posi_error}')
                 if posi_error < 0.01 or counter > 2000:
                     break

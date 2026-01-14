@@ -57,4 +57,4 @@ infer_frequency: 10
 # tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "transfer the banana from the yellow plate into the white plate"
 tasks: "Pick up the lid and place it next to the container. Then pick up the bread and place it on the white tray inside the container."
-
+# tasks: "Hold the left tube rack and insert the tube on the right to the left tube rack"

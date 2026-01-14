@@ -227,7 +227,6 @@ class TeleoperationFactory:
                                 self._init_pose_rot_inv[key] = negate_pose(self._init_pose_rot[key])
                                 log.info(f"{'='*10} updated the robot neutral pose for {key}: {self._init_pose[key]} {'='*10} ")
                             if len(self._init_pose) == 0: break
-                            # if "cube" in self._teleop_interface_type:
                             cur_ee_target = transform_pose(
                                 transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
                             ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target)
@@ -237,7 +236,7 @@ class TeleoperationFactory:
                     
                         high_level_command = np.hstack((high_level_command, ee_target[key]))
                     
-                    # skip the current, bug here to check @TODO: zyx
+                    # skip the current
                     if len(high_level_command) == 0: 
                         log.info(f'Len of high level command is 0!')
                         success_get_target = False
@@ -297,7 +296,7 @@ class TeleoperationFactory:
             # for torque control, handling pausing period of teleoperation device
             elif self._teleop_target is not None and self._update_high_level_state:
                 self._robot_motion_system.update_high_level_command(self._teleop_target)
-                if int(raw_target_status) < 0:
+                if int(raw_target_status) == 0 and interface_output_mode == 'absolute_delta':
                     self._init_pose = {}
             target_time = time.perf_counter() - start
 

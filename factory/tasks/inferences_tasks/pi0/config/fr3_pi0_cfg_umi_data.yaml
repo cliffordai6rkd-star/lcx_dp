@@ -22,9 +22,9 @@ is_debug: false
 tool_wdith: 0.1
 tool_thickness: 0.0255
 # height_thresh: 0.002
-height_thresh: 0.005
+height_thresh: 0.01
 
-reset_space: "joint"
+# reset_space: "joint"
 # z: 0.32969364
 # reset_arm_command: [0.24926367185098658, -1.0425780090835255, -1.1887405299550489, -2.4203714233442803, -0.83565228390469, 2.045317454320303, 0.30392395819882406]
 # now z: 0.39157
@@ -34,9 +34,15 @@ reset_tool_command: [[1]]
 # transfer banana
 # reset_arm_command: [0.4949421897203528, -1.567805829578173, -1.8572166701179154, -1.9905463709529319, 0.17777157010546682, 2.514054533859691, -1.230442816921196]
 # reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
-reset_arm_command: [0.6, -0.4, 0.1426055, 0.8544521, 0.0036385, 0.5192927, 0.015278 ]
-reset_space: "cartesian"
-reset_arm_to_default: false
+
+# reset_arm_command: [0.5, -0.4, 0.1466055, 0.77337564, -0.01884924,  0.63362282, -0.00754556]
+
+# reset_arm_command: [0.5, -0.4, 0.1466055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
+# reset_space: "cartesian"
+
+reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
+reset_space: "joint"
+reset_arm_to_default: true
 
 tool_control_mode: "incremental"
 tool_min: 0
@@ -65,4 +71,5 @@ infer_frequency: 10
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "transfer the banana from the yellow plate into the white plate"
-tasks: "Pick up the bread on the right and place it on the white tray inside the container."
+# tasks: "Pick up the bread on the right and place it on the white tray inside the container."
+tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"

@@ -289,7 +289,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # query_frequency = int(50 / self._infer_frequency)
         infer_dt = 1.0 / self._infer_frequency
         # 50
-        query_frequency = 120
+        query_frequency = 50
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -358,7 +358,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 8
+                        exec_latency = 1
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         if np.sum(is_new) == 0:
@@ -400,10 +400,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         step_time = time.perf_counter() - step_start
                         
                     dt = time.perf_counter() - start_time
-                    if dt < 1.0 / 85.0:
+                    if dt < 1.0 / 60.0:
                         sleep_time = (1.0 / 50) -  dt
-                        # time.sleep(0.2*sleep_time)
-                        time.sleep(0.001)
+                        time.sleep(0.4*sleep_time)
+                        # time.sleep(0.001)
                     else: 
                         time.sleep(0.001)
                         # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
