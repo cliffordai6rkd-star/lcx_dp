@@ -51,6 +51,6 @@ traj_frequency: 450
 simulation: "mujoco"
 # Use the new block stacking scene configuration
 # simulation_config: !include simulation/config/mujoco_fr3_block_stacking.yaml
-simulation_config: !include simulation/config/mujoco_fr3_insert_tube.yaml
+simulation_config: !include simulation/config/mujoco_fr3_pika_ati_posi.yaml
 target_site_name: ["target_site"]
 tcp_visualization_site: ["TCP_site"]

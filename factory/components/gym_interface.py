@@ -153,7 +153,7 @@ class GymApi(gym.Env):
                 cur_tool_action = np.array(tool_action[tool_index:index_r])
                 execute_tool_action.append(cur_tool_action)
                 tool_index = index_r
-            # log.info(f'tool action: {execute_tool_action}')
+            log.info(f'tool action: {execute_tool_action}')
             self._robot_motion.set_tool_command(execute_tool_action)
         tool_time = time.perf_counter() - tool_satrt
         

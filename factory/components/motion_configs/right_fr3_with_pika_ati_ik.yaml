@@ -28,6 +28,7 @@ sensor_dicts:
     #   type: "realsense_camera"
     #   cfg: !include hardware/sensors/cameras/config/rs_cfg_right_sidecam.yaml
     # right_pika_sense_d405_cfg right_pika_sense_fisheye_cfg  right_pika_d405_cfg right_pika_fisheye_cfg
+    # "right_hand_color", "right_hand_fisheye_color"
     - name: "right"
       type: "realsense_camera"
       cfg: !include hardware/sensors/cameras/config/right_pika_d405_cfg.yaml

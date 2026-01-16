@@ -404,8 +404,10 @@ class MotionFactory:
             return
         
         mode = ["position"] * len(self._ee_links)
+        has_cartesian_cmd = False
         if space == Robot_Space.CARTESIAN_SPACE:
             if arm_command is not None:
+                self._high_level_command = None
                 self.enable_high_level_update = False
                 # wait for the trajectory done
                 self.clear_traj_buffer()
@@ -415,6 +417,7 @@ class MotionFactory:
                 time.sleep(2.0); counter = 0
                 # @TODO: wait until tcp reach the target
                 while True:
+                    self.set_next_pose_target(arm_command)
                     counter += 1
                     model_types = self.get_model_types(); erros = 0
                     for i, cur_model_type in enumerate(model_types):
@@ -427,12 +430,14 @@ class MotionFactory:
                             log.warn(f'Break reset due to timeout')
                         break
                     time.sleep(0.001)
+                has_cartesian_cmd = True
                 self.enable_high_level_update = True
             else:
                 self.move_to_start_blocking()
         else:
             self.move_to_start_blocking(arm_command, mode)
-        self._high_level_command = None
+        if not has_cartesian_cmd:
+            self._high_level_command = None
         
         # Reset controller
         robot_state = self._robot_system.get_joint_states()

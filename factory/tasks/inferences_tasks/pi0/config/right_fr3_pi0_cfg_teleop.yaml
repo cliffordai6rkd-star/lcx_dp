@@ -15,7 +15,7 @@ img_resize_shape: [224, 224]
 contain_ft: false
 # relative delta
 # chunk_action_mode: "relative"
-use_relative_pose: true
+use_relative_pose: false
 is_debug: false
 
 # collision related parameters
@@ -37,30 +37,30 @@ reset_tool_command: [[1]]
 
 # reset_arm_command: [0.5, -0.4, 0.1466055, 0.77337564, -0.01884924,  0.63362282, -0.00754556]
 
-# 
-reset_arm_command: [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
-reset_space: "cartesian"
+# reset_arm_command: [0.5, -0.4, 0.1466055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
+# reset_space: "cartesian"
 
-# reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
-# reset_space: "joint"
+reset_arm_command: [-2.6089858634210525, 1.6377460698764574, 1.2375439519767828, -2.506936836678339, -0.08543651405819992, 3.0333567269094477, -1.1166328141781325]
+reset_space: "joint"
 # reset_arm_to_default: true
 
 tool_control_mode: "incremental"
 tool_min: 0
-tool_max: 1.2
-tool_state_max: 90
+tool_max: 90
+tool_state_max: 1.0
 # tool_control_mode: "binary"
 # tool_open_thresh: 45
 # tool_close_thresh: 45
 
 enable_display: true
-display_window_name: "pi0 client inference for umi data"
+display_window_name: "pi0 client inference for right fr3 teleop"
 enable_plotting: false
 enable_hardware: true
 
 num_episodes: 100
-max_timestamps: 6000
+max_timestamps: 8000
 action_weight_mode: "uniform"
+action_weight_gain: 0.01
 async_execution: false
 infer_frequency: 10
 
@@ -72,5 +72,5 @@ infer_frequency: 10
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "transfer the banana from the yellow plate into the white plate"
-tasks: "Pick up the bread on the right and place it on the white tray inside the container."
-# tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"
+# tasks: "Pick up the bread on the right and place it on the white tray inside the container."
+tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"

@@ -183,11 +183,11 @@ class DataReplay:
                         
             gym_action = self._convert_to_gym_format(actions)
             res = self._gym_api.step(gym_action, True)
-            display_colors = res[0]["color"]; data_colors = frame_data.get("colors", {})
+            display_colors = res[0]["colors"]; data_colors = frame_data.get("colors", {})
             for cam_name, cam_data in data_colors.items():
                 cam_name = "data_" + cam_name
                 display_colors[cam_name] = cam_data
-            display_images(display_images, "Data replay colors")
+            display_images(display_colors, "Data replay colors")
             
             # Timing
             next_run_time += target_period
@@ -199,6 +199,7 @@ class DataReplay:
                 time.sleep(1.0 / self._replay_frequency)
 
         log.info(f"Episode {episode_id} completed")
+        self._gym_api.reset()
 
     def _convert_to_gym_format(self, action_dict: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         arm_actions = []

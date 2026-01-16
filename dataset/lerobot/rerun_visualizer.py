@@ -399,10 +399,10 @@ if __name__ == "__main__":
 
     # # TEST DATA OF data_dir
     # dataset/data/1212_duo_unitree_bread_n_picking——214ep dataset/data/1221_duo_unitree_bread_picking_human_114ep
-    data_dir = "dataset/data/1221_duo_unitree_bread_picking_human_114ep"
+    data_dir = "dataset/data/0109_duo_unitree_tube_insert_human_282ep"
     episode_data_number = 17
     fps = 100
-    skip_step_nums = 4
+    skip_step_nums = 1
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     # umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     camera_keys = ['head_color', 'left_hand_fisheye_color', 'right_hand_fisheye_color']
     cam_key_transform = {"left_hand_fisheye_color": "left_fisheye_color",
                          "right_hand_fisheye_color": "right_fisheye_color"}
-    contain_ft = False; data_type = "real_robot"
+    contain_ft = False; data_type = "human_hand"
     if os.path.exists(os.path.join(data_dir, episode_dir)):
         logger_mp.info(f'Found the {episode_dir} in {data_dir}')
         # camera_keys=["right_hand_color", "right_hand_fisheye_color"],

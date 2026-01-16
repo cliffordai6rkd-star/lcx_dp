@@ -10,8 +10,9 @@ action_type: "end_effector_pose"
 # euler quaternion
 action_orientation_type: "euler"
 # jonit_position ee_pose jonit_position_ee_pose mask delta_ee_pose ft_only
-observation_type: "ee_pose"
-chunk_action_mode: "relative"
+observation_type: "mask"
+img_resize_shape: [224, 224]
+# chunk_action_mode: "relative"
 contain_ft: false
 is_debug: false
 
@@ -35,7 +36,7 @@ enable_plotting: false
 enable_hardware: true
 
 num_episodes: 150
-max_timestamps: 1500
+max_timestamps: 6500
 action_weight_mode: "uniform"
 action_weight_gain: -0.01
 async_execution: false
@@ -47,6 +48,6 @@ infer_frequency: 10
 # tasks: "grasp the right cup and pour it into the left cup"
 # tasks: "collect a portion of rice with spoon and transfer it into the bowl"
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
-# tasks: "pick up the kiwi fruit and place it into the red box"
-tasks: "grasp the white pin board and insert it into the red board slot"
+tasks: "pick up the kiwi fruit and place it into the red box"
+# tasks: "grasp the white pin board and insert it into the red board slot"
 # tasks: "locate the block and move towards it"

@@ -170,7 +170,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -289,7 +289,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # query_frequency = int(50 / self._infer_frequency)
         infer_dt = 1.0 / self._infer_frequency
         # 50
-        query_frequency = 50
+        query_frequency = 50; num_quries = 30
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -314,6 +314,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             while not self._episode_start:
                 log.info(f'Please press s for start!!!!!!!!')
                 time.sleep(0.001)
+            self._gym_robot.reset()
             self._gym_robot.set_init_pose()
             
             if self._save_chunk_dir:
@@ -337,7 +338,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 if not self._status_ok or self._quit: 
                     break 
                 
-                if t % query_frequency == 0:
+                if t % num_quries == 0:
                     obs = self.convert_from_gym_obs()
                     chunk_dt = time.perf_counter() - chunk_started
                     chunk_started = time.perf_counter()
@@ -358,9 +359,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 1
+                        exec_latency = 4
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
+                        log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')
                         if np.sum(is_new) == 0:
                             log.warn(f'action chunk is old, execute the last action from chunk only')
                             self._execution_index = np.array([chunk_shape - 1])
@@ -376,7 +378,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._action_aggregation = ActionAggregator(query_frequency=query_frequency,
                         chunk_size=chunk_shape, max_timestamps=self._max_timestamps,
                         action_size=pred_action_chunk.shape[1], k=self._weight_gain)
-                elif t % query_frequency == 0:
+                elif t % num_quries == 0:
                     # update action chunk
                     self._action_aggregation.add_action_chunk(t, pred_action_chunk)
 
@@ -402,14 +404,21 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     dt = time.perf_counter() - start_time
                     if dt < 1.0 / 60.0:
                         sleep_time = (1.0 / 50) -  dt
-                        time.sleep(0.4*sleep_time)
-                        # time.sleep(0.001)
+                        # time.sleep(0.4*sleep_time)
+                        time.sleep(0.001)
                     else: 
                         time.sleep(0.001)
                         # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
                         log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
                     # time.sleep(0.2)
-                
+                   
+                    # self._proceed = False; counter = 0
+                    # while not self._proceed:
+                    #     if counter < 5:
+                    #         log.info(f'Press c to proceed to next step!!!!')
+                    #         counter += 1 
+                    #     time.sleep(0.001)
+                        
                 def execute_chunk_action(t_start):
                     for i in range(query_frequency):
                         if not self._status_ok or self._quit: 
@@ -464,4 +473,6 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             log.info(f"Set done to True for current episode!!!")
         elif key == 's':
             self._episode_start = True
+        elif key == 'c':
+            self._proceed = True
     
