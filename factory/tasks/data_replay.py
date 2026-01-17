@@ -2,6 +2,7 @@ from factory.components.gym_interface import GymApi
 from dataset.lerobot.reader import RerunEpisodeReader, Action_Type_Mapping_Dict, ActionType, ObservationType
 from hardware.base.utils import transform_pose, pose_diff, transform_quat
 from factory.tasks.inferences_tasks.utils.display import display_images
+from dataset.lerobot.delete import Deleter
 import threading
 import time
 import numpy as np
@@ -248,11 +249,18 @@ class DataReplay:
             except Exception as e:
                 log.warn(f'Catch the exception {e} when ready to replay data but {self._episode_id_str} is not valid!')
                 return
-            
+        
             # valid episode for replay
             with self._state_lock:
                 self._state = ReplayState.REPLAYING
             log.info(f'Will start to replay {self._current_episode_id} data from {self._task_data_dir}')
+
+        if key == 'd':
+            self._current_episode_id = int(self._episode_id_str)
+            log.info(f'Deleting episode {self._current_episode_id} data from {self._task_data_dir}')
+            Deleter.delete_episodes(self._current_episode_id, self._task_data_dir)
+            log.info(f'Deleting success')
+        
         if key == 'h':
             self._enable_hardware = not self._enable_hardware
             self._gym_api.change_hardware_state(self._enable_hardware)
