@@ -4,7 +4,7 @@ from hardware.base.utils import transform_pose, pose_diff, transform_quat
 from factory.tasks.inferences_tasks.utils.display import display_images
 from dataset.lerobot.delete import Deleter
 import threading
-import time
+import time, shutil
 import numpy as np
 import glog as log
 from enum import Enum
@@ -13,6 +13,7 @@ from scipy.spatial.transform import Rotation as R
 import os, copy
 from sshkeyboard import listen_keyboard, stop_listening
 import glog as log
+from dataset.lerobot.data_process import EpisodeWriter, serialize_data
 
 class ReplayState(Enum):
     IDLE = "idle"
@@ -20,6 +21,7 @@ class ReplayState(Enum):
     STOPPED = "stopped"
     WATING_INPUT = "waiting"
     INTERRUPTION = "interruption"
+    WAITING_DATA_SAVING = "waiting_data"
 
 class DataReplay:
     def __init__(self, config: dict):
@@ -58,6 +60,14 @@ class DataReplay:
         self._cam_keys = config.get("cam_keys", None)
         self._data_type = config.get("data_type", "human_hand")
 
+        # data saving 
+        self._data_save_dir = config.get("data_save_dir", None)
+        if self._data_save_dir is not None:
+            self._data_task = config.get('data_task', None)
+            assert self._data_task is not None
+            self._task_dir = os.path.join(cur_path, "../..", self._data_save_dir)
+            self._episode_writer = EpisodeWriter(self._task_dir)
+        
         # State management
         self._state = ReplayState.IDLE
         self._state_lock = threading.Lock()
@@ -117,9 +127,14 @@ class DataReplay:
             if current_state == ReplayState.IDLE:
                 time.sleep(0.1)
             elif current_state == ReplayState.REPLAYING:
-                self._execute_replay(target_period)
+                success = self._execute_replay(target_period)
                 with self._state_lock:
-                    self._state = ReplayState.IDLE
+                    if self._data_save_dir is not None and success:
+                        self._episode_writer.save_episode()
+                        self._state = ReplayState.WAITING_DATA_SAVING
+                    else:
+                        self._state = ReplayState.IDLE
+                    
                 log.info("Replay completed, returning to IDLE")
             elif current_state == ReplayState.STOPPED:
                 break
@@ -129,7 +144,7 @@ class DataReplay:
     def _execute_replay(self, target_period: float):
         if self._current_episode_id is None:
             log.warn(f'Do not retrive the correct episode id for execution')
-            return
+            return False
 
         episode_id = self._current_episode_id
         log.info(f"Loading episode {episode_id}")
@@ -140,7 +155,7 @@ class DataReplay:
         
         if episode_data is None or len(episode_data) == 0:
             log.warning(f"Episode {episode_id} not found or empty")
-            return
+            return False
 
         # Reset robot
         self._gym_api.reset()
@@ -163,6 +178,8 @@ class DataReplay:
         # iterate over the whole episode
         log.info(f'Ready to execute repaly data for episode {episode_id} for {len(episode_data)} datapoints with replay state {self._state}')
         # log.info(f'episode data: {episode_data}')
+        if self._data_save_dir is not None:
+            self._episode_writer.create_episode()
         for frame_data in episode_data:
             with self._state_lock:
                 if self._state != ReplayState.REPLAYING:
@@ -170,7 +187,7 @@ class DataReplay:
                         log.info(f'Data {self._task_data_dir}_{episode_id} replay execution interrupted!!!')
                         self._state = ReplayState.IDLE
                     log.info(f'Exit replay with state {self._state}')
-                    return
+                    return True
 
             actions = frame_data.get("actions", {})
             if not actions:
@@ -190,6 +207,28 @@ class DataReplay:
                 display_colors[cam_name] = cam_data
             display_images(display_colors, "Data replay colors")
             
+            if self._data_save_dir is not None:
+                # saving step data
+                joint_states = self._gym_api.get_joint_state()
+                joint_ts = time.perf_counter()
+                for key in joint_states.keys():
+                    joint_states[key]["time_stamp"] = joint_ts
+                ee_states = self._gym_api.get_ee_state()
+                ee_ts = time.perf_counter()
+                for key in ee_states.keys():
+                    ee_states[key]["time_stamp"] = ee_ts
+                tool_states = self._gym_api.get_tool_state()
+                tool_ts = time.perf_counter()
+                for key in tool_states.keys():
+                    tool_states[key]["time_stamp"] = tool_ts
+                cur_colors = {}
+                obs_ts = self._gym_api.get_obs_timestamp()
+                for cam_name, img in res[0]["colors"].items():
+                    cur_colors[cam_data] = {"data": img, "time_stamp": obs_ts}
+                    log.info(f'Got cam key {cam_name}')
+                self._episode_writer.add_item(colors=cur_colors, 
+                    joint_states=joint_states, ee_states=ee_states, tools=tool_states)
+            
             # Timing
             next_run_time += target_period
             sleep_time = next_run_time - time.perf_counter()
@@ -201,6 +240,7 @@ class DataReplay:
 
         log.info(f"Episode {episode_id} completed")
         self._gym_api.reset()
+        return True
 
     def _convert_to_gym_format(self, action_dict: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         arm_actions = []
@@ -254,14 +294,24 @@ class DataReplay:
             with self._state_lock:
                 self._state = ReplayState.REPLAYING
             log.info(f'Will start to replay {self._current_episode_id} data from {self._task_data_dir}')
-
+        if key == 'y' and state == ReplayState.WAITING_DATA_SAVING:
+            with self._state_lock:
+                self._state = ReplayState.IDLE
+        if key == 'n' and state == ReplayState.WAITING_DATA_SAVING:
+            cur_episode = self._episode_writer.episode_id
+            episode_dir = os.path.join(self._task_dir, f"episode_{str(cur_episode).zfill(4)}")
+            if os.path.exists(episode_dir):
+                shutil.rmtree(episode_dir)
+                log.info(f'Deleting recorded robot data {episode_dir}')
+            with self._state_lock:
+                self._state = ReplayState.IDLE
         if key == 'd':
             self._current_episode_id = int(self._episode_id_str)
             log.info(f'Deleting episode {self._current_episode_id} data from {self._task_data_dir}')
             Deleter.delete_episodes(self._current_episode_id, self._task_data_dir)
             log.info(f'Deleting success')
         
-        if key == 'h':
+        if key == 'h' and state == ReplayState.IDLE:
             self._enable_hardware = not self._enable_hardware
             self._gym_api.change_hardware_state(self._enable_hardware)
             log.info(f'Data replay set to hw state {self._enable_hardware}!!!')
