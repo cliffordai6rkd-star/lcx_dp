@@ -131,6 +131,7 @@ class DataReplay:
                 with self._state_lock:
                     if self._data_save_dir is not None and success:
                         self._episode_writer.save_episode()
+                        log.info(f'Please input y/n to save or delete the {self._episode_writer.episode_id}th recorded data')
                         self._state = ReplayState.WAITING_DATA_SAVING
                     else:
                         self._state = ReplayState.IDLE
