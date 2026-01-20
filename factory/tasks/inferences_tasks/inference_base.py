@@ -170,7 +170,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -289,7 +289,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # query_frequency = int(50 / self._infer_frequency)
         infer_dt = 1.0 / self._infer_frequency
         # 50
-        query_frequency = 50; num_quries = 30
+        query_frequency = 50; num_quries = 50
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -359,10 +359,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 4
+                        exec_latency = 3.5
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
-                        log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')
+                        # log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')
                         if np.sum(is_new) == 0:
                             log.warn(f'action chunk is old, execute the last action from chunk only')
                             self._execution_index = np.array([chunk_shape - 1])

@@ -72,11 +72,11 @@ def data_starisrics_report(data_number,valid_episode_number,empty_data_number,to
     
 if __name__ == "__main__":
 
-    data_dir = "dataset/data/0109_duo_unitree_tube_insert_human_282ep"
+    data_dir = "/mnt/nas/ZML/0118_3_1_bread_picking_single_72ep"
     start_episode = 1
-    end_episode = 330
+    end_episode = 72
     fps = 60
-    skip_step_nums = 4
+    skip_step_nums = 6
     # 根据电脑的运存大小调整运存上限 在终端里free -h查看avaliale内存大小 
     lim_storage = 20
     data_type = "human_hand" # robot & human_hand

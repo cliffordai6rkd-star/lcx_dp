@@ -37,8 +37,9 @@ reset_tool_command: [[1]]
 
 # reset_arm_command: [0.5, -0.4, 0.1466055, 0.77337564, -0.01884924,  0.63362282, -0.00754556]
 
-# 
-reset_arm_command: [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
+# [0.3, -0.5, 0.16026055, 0.7071068, 0, 0.7071068, 0]
+# [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
+reset_arm_command: [0.3, -0.5, 0.145026055, 0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
 
 # reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
@@ -47,7 +48,7 @@ reset_space: "cartesian"
 
 tool_control_mode: "incremental"
 tool_min: 0
-tool_max: 1.2
+tool_max: 1.1
 tool_state_max: 90
 # tool_control_mode: "binary"
 # tool_open_thresh: 45
@@ -55,7 +56,7 @@ tool_state_max: 90
 
 enable_display: true
 display_window_name: "pi0 client inference for umi data"
-enable_plotting: false
+enable_plotting: true
 enable_hardware: true
 
 num_episodes: 100
