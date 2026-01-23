@@ -228,10 +228,10 @@ class PikaTracker(TeleoperationDeviceBase):
         tool_time = time.perf_counter() - start
         # log.info(f'pose time: {pose_time*1000:.1f}ms tool time: {tool_time*1000:.1f}ms')
             
-        if not self._output_left:
+        if not self._output_left and self._output_right:
             pose_quat = dict(single=pose_quat["right"])
             tool_data = dict(single=tool_data["right"])
-        if not self._output_right:
+        if not self._output_right and self._output_left:
             pose_quat = dict(single=pose_quat["left"])
             tool_data = dict(single=tool_data["left"])
         

@@ -2,7 +2,7 @@ motion_config: !include factory/components/motion_configs/right_fr3_with_pika_at
 max_step_nums: 150 # for gym steps
 is_debug: false
 
-task_data_dir: "/mnt/nas/ZML/0117_1_bread_picking_single_144"
+task_data_dir: "dataset/data/0123_test"
 data_type: "human_hand"
 action_prediction_step: 2
 skip_steps: 2
@@ -28,6 +28,6 @@ enable_hardware: false
 # reset_space: "cartesian"
 # reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
 # 0.70368387, 0.00697132, 0.71022211, 0.01910407
-reset_arm_command: [0.3, -0.5, 0.16026055, 0.7071068, 0, 0.7071068, 0]
+reset_arm_command: [0.3, -0.5, 0.145026055, 0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
 reset_arm_to_default: true

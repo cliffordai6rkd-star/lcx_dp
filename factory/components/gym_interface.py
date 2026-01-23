@@ -92,7 +92,6 @@ class GymApi(gym.Env):
         # visualize cur ee & add record data
         ee_states = self.get_ee_state()
         self.visualize_cur_tcp(ee_states)
-        self.add_record_data(ee_states)
         
         # action execution
         arm_action = action['arm']
@@ -161,6 +160,10 @@ class GymApi(gym.Env):
         obs_start = time.perf_counter()
         observation = self.get_observation() if update_obs else None
         obs_time = time.perf_counter() - obs_start
+        colors = None if observation is None else observation["colors"]
+        # add record data
+        if self._data_recorder:
+            self.add_record_data(ee_states, colors=colors)
         # observation = {}
         reward, done = self.compute_rewards()
         done = done or (self._step_counter >= self._max_step_nums)
@@ -319,7 +322,7 @@ class GymApi(gym.Env):
                 tool_state = tools_dict[key]["position"] / self._tool_state_max
                 obs_state[key] = np.hstack((obs_state[key], tool_state))
             else: obs_state[key] = np.hstack((obs_state[key], [0]))
-            log.info(f'obs state {key} shape: {obs_state[key].shape}')
+            # log.info(f'obs state {key} shape: {obs_state[key].shape}')
         
         # head process
         if self._contain_head:
@@ -389,18 +392,10 @@ class GymApi(gym.Env):
         if self._is_debug:
             self._wait_key('c', 'please press c to proceed next command!!!!')
     
-    def record_data(self, joint=None, ee=None):
-        if not self._data_recorder:
-            log.warn('Data recorder is not configured to be created')
-            
-        if not self._is_recording:
-            log.warn(f'The data recorder is not enabled for saving data to episode {self._episode_id}')
-        
-        self._data_recorder.add_item(joint_states=joint, ee_states=ee)
-    
     def start_recording(self):
         if not self._data_recorder:
             log.warn('Data recorder is not configured to be created')
+            return
         
         if not self._is_recording:
             self._data_recorder.create_episode()
@@ -413,6 +408,7 @@ class GymApi(gym.Env):
     def save_recording(self):
         if not self._data_recorder:
             log.warn('Data recorder is not configured to be created')
+            return
         
         if self._is_recording:
             self._data_recorder.save_episode()
@@ -422,11 +418,18 @@ class GymApi(gym.Env):
         else:
             log.warn("data recoreder is already in the disable state!!!")
     
-    def add_record_data(self, ee_states=None, joint_states=None):
+    def add_record_data(self, ee_states=None, joint_states=None, colors=None):
+        if self._data_recorder is None:
+            log.warn(f'Add record data failed due to {self._data_recorder}')
+            return
+        
+        if not self._is_recording:
+            log.warn(f'The gym interface is not in recording status!')
+            return
+        
         ee_states = self.get_ee_state() if ee_states is None else ee_states
         joint_states = self.get_joint_state() if joint_states is None else joint_states
-        if self._data_recorder and self._is_recording:
-            self._data_recorder.add_item(joint_states=joint_states, ee_states=ee_states)
+        self._data_recorder.add_item(colors=colors, joint_states=joint_states, ee_states=ee_states)
 
     def visualize_cur_tcp(self, ee_info=None):
         visual_ee_states = self.get_ee_state() if ee_info is None else ee_info

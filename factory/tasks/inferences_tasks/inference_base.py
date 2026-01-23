@@ -4,16 +4,25 @@ from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose
 from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
+from teleop.aruco_cube_tracker.cube_tracker import CubePoseTracker
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
 from sshkeyboard import listen_keyboard, stop_listening
 import glog as log
 import torch as th
 import numpy as np
+import datetime
 from collections import deque
 from factory.tasks.inferences_tasks.utils.action_aggreagator import ActionAggregator, WeightMode
 from scipy.spatial.transform import Rotation as R
 from dataset.lerobot.data_process import EpisodeWriter, serialize_data
+
+def json_saving(json_file, data):
+    dir_path = os.path.dirname(json_file)
+    os.makedirs(dir_path, exist_ok=True)
+    with open(json_file, "w", encoding="utf-8") as f:
+        data = serialize_data(data)
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -44,8 +53,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._tool_min: float | list = config.get(f'tool_min', 0)
         self._tool_max: float | list = config.get(f'tool_max', 90)
         self._tool_control_mode = config.get(f'tool_control_mode', ToolControlMode.BINARY)
+        self._last_gripper_open = [True, True]; self._gripper_close_times = [0, 0]
         if self._tool_control_mode == ToolControlMode.BINARY:
-            self._last_gripper_open = [True, True]
             self._tool_open_threshold = config.get(f'tool_open_thresh', 45)
             self._tool_close_threshold = config.get(f'tool_close_thresh', 45)
         self._num_episodes = config.get("num_episodes", 10)
@@ -66,12 +75,26 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         
         # data saving
         self._save_chunk_dir = config.get("save_chunk_dir", None)
+        cur_path = os.path.dirname(os.path.abspath(__file__))
         if self._save_chunk_dir:
-            cur_path = os.path.dirname(os.path.abspath(__file__))
             self._task_dir = os.path.join(cur_path, "../../../dataset/data", self._save_chunk_dir)
             self._action_chunk_writer = EpisodeWriter(
                             task_dir=self._task_dir, rerun_log=False)
             self._episode_id = self._action_chunk_writer.episode_id
+        
+        # model inference stats saving
+        self._infer_stats_saving_dir = config.get("infer_stats_saving_dir", None)
+        self._infer_stats = {}; self._waiting_infer_stats = False; self._user_feedback = []
+        if self._infer_stats_saving_dir is not None:
+            now_json = datetime.now().strftime("%Y-%m-%d-%H:%M:%S") + ".json"
+            self._infer_stats_saving_dir = os.path.join(cur_path, "../..", now_json)
+        
+        # @TODO: zyx: model inference teleoperation intervention
+        self._teleoperation_cfg = config.get("tele_cfg", None)
+        self._intervention = False
+        if self._teleoperation_cfg:
+            # self._teleop_device = 
+            pass
         
         # keyboard listening
         listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
@@ -79,7 +102,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         "until": None, "sequential": False,}, daemon=True)
         listen_keyboard_thread.start()
         
-        # animation plotter, @TODO: pad state and action to same len
+        # animation plotter
         self._joint_positions = None
         self._lock = threading.Lock()
         # Check if plotting should be enabled (can be disabled for performance)
@@ -125,6 +148,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         gripper_position_dof = self._tool_position_dof
         ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
         ee_keys = ["single"] if len(ee_links) == 1 else ["left", "right"]
+        ee_states = self._gym_robot.get_ee_state()
         if self._gym_robot._contain_head: 
             assert self._action_type in [ActionType.END_EFFECTOR_POSE, ActionType.COMMAND_END_EFFECTOR_POSE]
             dofs.append(7) # hack 占位府
@@ -179,10 +203,20 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 else:
                     log.info(f'close, action {cur_tool_action[0]}')
                     cur_tool_action[0] = 1.0 if cur_tool_action[0] > self._tool_close_threshold else 0.0
-                if cur_tool_action[0] > 0.0085:
-                    self._last_gripper_open[j] = True
-                else: self._last_gripper_open[j] = False
             else: cur_tool_action /= self._tool_max
+            # @TODO: 检查抓取点时机 
+            if gripper_position_dof == 1:
+                if cur_tool_action[0] > 0.645:
+                    self._last_gripper_open[j] = True
+                    self._gripper_close_times[j] = 0
+                else: 
+                    self._last_gripper_open[j] = False
+                    self._gripper_close_times[j] += 1
+                # and self._infer_stats_saving_dir
+                if self._gripper_close_times[j] > 15:
+                    # 从开到闭合
+                    self._infer_stats[len(self._infer_stats)-1][j].append(ee_states[ee_keys[j]])
+                    log.info(f'Detected the grasp time: {len(self._infer_stats[len(self._infer_stats)-1][j])} for {j}')
             action["tool"] = np.hstack((action["tool"], cur_tool_action))
             # log.info(f'tranformed tool action for {j}: {cur_tool_action}')
         return action
@@ -310,6 +344,35 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             self._last_gripper_open = [True, True]
             self.policy_reset(); self._status_ok = True; obs = None
             
+            if self._infer_stats_saving_dir:
+                if len(self._infer_stats) != 0:
+                    log.info(f'infer stats ee states: {self._infer_stats[episode_id-1]}')
+                    # for ee_id, ee_values in self._infer_stats[episode_id-1].items():
+                    #     self._infer_stats[episode_id-1][ee_id] = np.vstack(ee_values)
+                    self._waiting_infer_stats = True
+                    log.info(f'Please input the last episode succ stats, eg. attempts num succ ids: ')
+                    while self._waiting_infer_stats:
+                        time.sleep(0.001)
+                    log.info(f'Got user feedback: {self._user_feedback}')
+                    len_user_feedback = 0
+                    for ee_id, ee_values in self._infer_stats[episode_id-1].items():
+                        succ_times = int(self._user_feedback[len_user_feedback])
+                        succ_ids = [int(id) for id in self._user_feedback[1+len_user_feedback:1+len_user_feedback+succ_times]]
+                        len_user_feedback += 1 + succ_times
+                        cur_spatial_info = {}
+                        for cur_value_id, cur_ee_value in enumerate(ee_values):
+                            success = True if cur_value_id in succ_ids else False
+                            cur_spatial_info[cur_ee_value] = success
+                        self._infer_stats[episode_id-1][ee_id] = cur_spatial_info
+                    log.info(f'modified infer statas: {self._infer_stats[episode_id-1]}')
+                    self._user_feedback = []
+                    # @TODO: zyx testing
+                    
+            self._infer_stats[episode_id] = {}       
+            ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
+            for ee_id in range(len(ee_links)):
+                self._infer_stats[episode_id][ee_id] = []
+                     
             self._episode_start = False
             while not self._episode_start:
                 log.info(f'Please press s for start!!!!!!!!')
@@ -344,7 +407,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     chunk_started = time.perf_counter()
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
-                    log.info(f'chunk shape: {chunk_shape}, time: {1.0 / chunk_dt}Hz')
+                    log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
                     if self._save_chunk_dir:
                         self._action_chunk_writer.add_item(actions=pred_action_chunk)
                     # update chunk anchor
@@ -398,7 +461,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             aggregated_action, pred_action_chunk[cur_t%query_frequency], chunk_anchor)
                         convert_time = time.perf_counter() - convert_start
                         step_start = time.perf_counter()
-                        res = self._gym_robot.step(gym_action, False)
+                        res = self._gym_robot.step(gym_action, True)
+                        if res[0] is not None:
+                            self.convert_from_gym_obs(res[0])
                         step_time = time.perf_counter() - step_start
                         
                     dt = time.perf_counter() - start_time
@@ -412,13 +477,6 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
                     # time.sleep(0.2)
                    
-                    # self._proceed = False; counter = 0
-                    # while not self._proceed:
-                    #     if counter < 5:
-                    #         log.info(f'Press c to proceed to next step!!!!')
-                    #         counter += 1 
-                    #     time.sleep(0.001)
-                        
                 def execute_chunk_action(t_start):
                     for i in range(query_frequency):
                         if not self._status_ok or self._quit: 
@@ -457,8 +515,9 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             stop_listening()
             self._quit = True
             self._status_ok = False
-            # self._plotter.clear_data()
-            # self._plotter.stop_animation()
+            if self._enable_plotting:
+                self._plotter.clear_data()
+                self._plotter.stop_animation()
             time.sleep(1.5)
             self.close()
             if self._save_chunk_dir is not None and hasattr(self, "_action_chunk_writer"):
@@ -473,6 +532,12 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             log.info(f"Set done to True for current episode!!!")
         elif key == 's':
             self._episode_start = True
-        elif key == 'c':
-            self._proceed = True
-    
+        elif key == 'i' and self._infer_stats_saving_dir is not None:
+            if len(self._infer_stats) != 0:
+                json_saving(self._infer_stats_saving_dir, self._infer_stats)
+                log.info(f'Successfully saving infer stats to {self._infer_stats_saving_dir}')
+        elif self._waiting_infer_stats and key >= '0' and key <='9':
+            self._user_feedback.append(key)
+        elif self._waiting_infer_stats and key == 'f':
+            self._waiting_infer_stats = False
+            

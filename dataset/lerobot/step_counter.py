@@ -34,9 +34,9 @@ class Reader:
 
 
 if __name__ == "__main__":
-    data_dir = "dataset/data/0109_duo_unitree_tube_insert_human_282ep"
+    data_dir = "dataset/data/0122_bread_picking_supplement_55"
     start_episode = 1
-    end_episode = 350
+    end_episode = 90
     start_time = time.perf_counter()
     episode_reader = Reader(task_dir=data_dir)
 
