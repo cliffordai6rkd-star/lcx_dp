@@ -56,7 +56,7 @@ tool_state_max: 90
 
 enable_display: true
 display_window_name: "pi0 client inference for umi data"
-enable_plotting: true
+enable_plotting: false
 enable_hardware: true
 
 num_episodes: 100
@@ -69,7 +69,7 @@ infer_frequency: 10
 # data_save_path: "unitree_bread_picking_infer" # execution trajectory
 # save_chunk_dir: "unitree_bread_picking_infer/action_chunks_robot_wo_head_absolute" # model infer action chunks
 # model inference succ rate stats saving
-# infer_stats_saving_dir: "dataset/data/ifner_stats"
+infer_stats_saving_dir: "dataset/data/ifner_stats_bp_umi_fr3"
 
 # prompt guidance
 # tasks: "pick up the blue cube and place it onto the top of red cube and then pick up the yellow cube and place it onto the blue cube"

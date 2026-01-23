@@ -11,7 +11,7 @@ from sshkeyboard import listen_keyboard, stop_listening
 import glog as log
 import torch as th
 import numpy as np
-import datetime
+from datetime import datetime
 from collections import deque
 from factory.tasks.inferences_tasks.utils.action_aggreagator import ActionAggregator, WeightMode
 from scipy.spatial.transform import Rotation as R
@@ -85,10 +85,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # model inference stats saving
         self._infer_stats_saving_dir = config.get("infer_stats_saving_dir", None)
         self._infer_stats = {}; self._waiting_infer_stats = False; self._user_feedback = []
-        self._grasp_frame = config.get("grasp_check_frame", 10)
+        self._grasp_frame = config.get("grasp_check_frame", 15)
         if self._infer_stats_saving_dir is not None:
             now_json = datetime.now().strftime("%Y-%m-%d-%H:%M:%S") + ".json"
-            self._infer_stats_saving_dir = os.path.join(cur_path, "../..", now_json)
+            self._infer_stats_saving_dir = os.path.join(cur_path, "../../..", self._infer_stats_saving_dir, now_json)
         
         # @TODO: zyx: model inference teleoperation intervention
         self._teleoperation_cfg = config.get("tele_cfg", None)
@@ -207,17 +207,17 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             else: cur_tool_action /= self._tool_max
             # @TODO: 检查抓取点时机 
             if gripper_position_dof == 1:
-                if cur_tool_action[0] > 0.645:
+                if cur_tool_action[0] > 0.625:
                     self._last_gripper_open[j] = True
                     self._gripper_close_times[j] = 0
                 else: 
                     self._last_gripper_open[j] = False
                     self._gripper_close_times[j] += 1
-                # and self._infer_stats_saving_dir
-                if self._gripper_close_times[j] == self._grasp_frame:
+                    log.info(f'gripper close value {cur_tool_action[0]}. close time: {self._gripper_close_times[j]}')
+                if self._gripper_close_times[j] == self._grasp_frame and self._infer_stats_saving_dir:
                     # 从开到闭合
-                    self._infer_stats[len(self._infer_stats)-1][j].append(ee_states[ee_keys[j]])
-                    log.info(f'Detected the grasp time: {len(self._infer_stats[len(self._infer_stats)-1][j])} for {j}')
+                    self._infer_stats[len(self._infer_stats)-1][j].append(ee_states[ee_keys[j]]["pose"])
+                    log.info(f'Detected the grasp time: {len(self._infer_stats[len(self._infer_stats)-1][j])} for {j}th ee id and {len(self._infer_stats)-1}th episode!')
             action["tool"] = np.hstack((action["tool"], cur_tool_action))
             # log.info(f'tranformed tool action for {j}: {cur_tool_action}')
         return action
@@ -351,35 +351,36 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # for ee_id, ee_values in self._infer_stats[episode_id-1].items():
                     #     self._infer_stats[episode_id-1][ee_id] = np.vstack(ee_values)
                     self._waiting_infer_stats = True
-                    log.info(f'Please input the last episode succ stats, eg. t(succ) f (failed) s(skip): ')
+                    log.info(f'Please input infer succ stats (p for ending input), eg. t(succ) f (failed) x(skip): ')
                     while self._waiting_infer_stats:
                         time.sleep(0.001)
                     log.info(f'Got user feedback: {self._user_feedback}')
                     len_user_feedback = 0
                     for ee_id, ee_values in self._infer_stats[episode_id-1].items():
                         attempt_nums = len(ee_values)
-                        cur_spatial_info = {}
+                        cur_spatial_info = []
                         for cur_value_id, cur_ee_value in enumerate(ee_values):
-                            if self._user_feedback[len_user_feedback+cur_value_id] == 's':
+                            if self._user_feedback[len_user_feedback+cur_value_id] == 'x':
                                 # skip this unfinished attempts
                                 continue
                             
                             success = True if self._user_feedback[len_user_feedback+cur_value_id] == 't' else False
-                            cur_spatial_info[cur_ee_value] = success
+                            cur_spatial_info.append([cur_ee_value.tolist(), success])
                         self._infer_stats[episode_id-1][ee_id] = cur_spatial_info
                         len_user_feedback += attempt_nums
                     log.info(f'modified infer statas: {self._infer_stats[episode_id-1]}')
                     self._user_feedback = []
-                    # @TODO: zyx testing
-                    
-            self._infer_stats[episode_id] = {}       
-            ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
-            for ee_id in range(len(ee_links)):
-                self._infer_stats[episode_id][ee_id] = []
+                # @TODO: zyx testing
+                self._infer_stats[episode_id] = {}
+                ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
+                for ee_id in range(len(ee_links)):
+                    self._infer_stats[episode_id][ee_id] = []
                      
-            self._episode_start = False
+            self._episode_start = False; counter = 0
             while not self._episode_start:
-                log.info(f'Please press s for start!!!!!!!!')
+                if counter < 5:
+                    log.info(f'Please press s for start!!!!!!!!')
+                    counter += 1
                 time.sleep(0.001)
             self._gym_robot.reset()
             self._gym_robot.set_init_pose()
@@ -477,8 +478,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         time.sleep(0.001)
                     else: 
                         time.sleep(0.001)
+                        if need_execution:
+                            time_stats = f" {'=='*8} {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ"
+                        else: time_stats = ' '
                         # {(1.0/step_time):.5f}HZ {(1.0/convert_time):.5f}HZ 
-                        log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz {'=='*8}")
+                        log.warn(f"{'=='*8} Execution is slow: {1.0 / dt:.3f}Hz" + time_stats)
                     # time.sleep(0.2)
                    
                 def execute_chunk_action(t_start):
@@ -536,12 +540,13 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             log.info(f"Set done to True for current episode!!!")
         elif key == 's':
             self._episode_start = True
-        elif key == 'i' and self._infer_stats_saving_dir is not None:
+        elif key == 'c' and self._infer_stats_saving_dir is not None:
             if len(self._infer_stats) != 0:
                 json_saving(self._infer_stats_saving_dir, self._infer_stats)
                 log.info(f'Successfully saving infer stats to {self._infer_stats_saving_dir}')
-        elif self._waiting_infer_stats and key >= '0' and key <='9':
+        elif self._waiting_infer_stats and key in ['t', 'f', 'x']:
             self._user_feedback.append(key)
-        elif self._waiting_infer_stats and key == 'f':
+            log.info(f'Cur user feedback for last episode inference is {self._user_feedback}')
+        elif self._waiting_infer_stats and key == 'p':
             self._waiting_infer_stats = False
             

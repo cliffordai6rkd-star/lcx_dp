@@ -242,7 +242,10 @@ class GymApi(gym.Env):
         return relative_pose
 
     def get_camera_infos(self):
+        cam_start = time.perf_counter()
         cameras_data = self._robot_system.get_cameras_infos()
+        cam_time = time.perf_counter() - cam_start
+        log.info(f'================ Get camera info cam time {cam_time} ================')
         if cameras_data is None: return None
         
         total_ts = 0; count = 0
