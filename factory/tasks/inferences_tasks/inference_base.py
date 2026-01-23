@@ -85,6 +85,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # model inference stats saving
         self._infer_stats_saving_dir = config.get("infer_stats_saving_dir", None)
         self._infer_stats = {}; self._waiting_infer_stats = False; self._user_feedback = []
+        self._grasp_frame = config.get("grasp_check_frame", 10)
         if self._infer_stats_saving_dir is not None:
             now_json = datetime.now().strftime("%Y-%m-%d-%H:%M:%S") + ".json"
             self._infer_stats_saving_dir = os.path.join(cur_path, "../..", now_json)
@@ -213,7 +214,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._last_gripper_open[j] = False
                     self._gripper_close_times[j] += 1
                 # and self._infer_stats_saving_dir
-                if self._gripper_close_times[j] > 15:
+                if self._gripper_close_times[j] == self._grasp_frame:
                     # 从开到闭合
                     self._infer_stats[len(self._infer_stats)-1][j].append(ee_states[ee_keys[j]])
                     log.info(f'Detected the grasp time: {len(self._infer_stats[len(self._infer_stats)-1][j])} for {j}')
@@ -350,20 +351,23 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # for ee_id, ee_values in self._infer_stats[episode_id-1].items():
                     #     self._infer_stats[episode_id-1][ee_id] = np.vstack(ee_values)
                     self._waiting_infer_stats = True
-                    log.info(f'Please input the last episode succ stats, eg. attempts num succ ids: ')
+                    log.info(f'Please input the last episode succ stats, eg. t(succ) f (failed) s(skip): ')
                     while self._waiting_infer_stats:
                         time.sleep(0.001)
                     log.info(f'Got user feedback: {self._user_feedback}')
                     len_user_feedback = 0
                     for ee_id, ee_values in self._infer_stats[episode_id-1].items():
-                        succ_times = int(self._user_feedback[len_user_feedback])
-                        succ_ids = [int(id) for id in self._user_feedback[1+len_user_feedback:1+len_user_feedback+succ_times]]
-                        len_user_feedback += 1 + succ_times
+                        attempt_nums = len(ee_values)
                         cur_spatial_info = {}
                         for cur_value_id, cur_ee_value in enumerate(ee_values):
-                            success = True if cur_value_id in succ_ids else False
+                            if self._user_feedback[len_user_feedback+cur_value_id] == 's':
+                                # skip this unfinished attempts
+                                continue
+                            
+                            success = True if self._user_feedback[len_user_feedback+cur_value_id] == 't' else False
                             cur_spatial_info[cur_ee_value] = success
                         self._infer_stats[episode_id-1][ee_id] = cur_spatial_info
+                        len_user_feedback += attempt_nums
                     log.info(f'modified infer statas: {self._infer_stats[episode_id-1]}')
                     self._user_feedback = []
                     # @TODO: zyx testing
