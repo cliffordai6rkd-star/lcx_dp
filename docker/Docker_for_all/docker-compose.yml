@@ -1,7 +1,7 @@
 
 services:
   # zyx_development   hirol_platform:
-  zyx_development:
+  zyx_replay:
     build:
       context: .  # Assuming the Dockerfile is in the current directory
       dockerfile: Dockerfile

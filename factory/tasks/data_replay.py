@@ -64,9 +64,9 @@ class DataReplay:
         self._data_save_dir = config.get("data_save_dir", None)
         if self._data_save_dir is not None:
             self._data_task = config.get('data_task', None)
-            assert self._data_task is not None
+            # assert self._data_task is not None
             self._task_dir = os.path.join(cur_path, "../..", self._data_save_dir)
-            self._episode_writer = EpisodeWriter(self._task_dir)
+            self._episode_writer = EpisodeWriter(self._task_dir, rerun_log=False)
         
         # State management
         self._state = ReplayState.IDLE
@@ -225,7 +225,7 @@ class DataReplay:
                 cur_colors = {}
                 obs_ts = self._gym_api.get_obs_timestamp()
                 for cam_name, img in res[0]["colors"].items():
-                    cur_colors[cam_data] = {"data": img, "time_stamp": obs_ts}
+                    cur_colors[cam_name] = {"data": img, "time_stamp": obs_ts}
                     log.info(f'Got cam key {cam_name}')
                 self._episode_writer.add_item(colors=cur_colors, 
                     joint_states=joint_states, ee_states=ee_states, tools=tool_states)
@@ -296,6 +296,7 @@ class DataReplay:
                 self._state = ReplayState.REPLAYING
             log.info(f'Will start to replay {self._current_episode_id} data from {self._task_data_dir}')
         if key == 'y' and state == ReplayState.WAITING_DATA_SAVING:
+            log.info(f'Successfully saved recorded robot data for {self._episode_writer.episode_id}th episode')
             with self._state_lock:
                 self._state = ReplayState.IDLE
         if key == 'n' and state == ReplayState.WAITING_DATA_SAVING:
@@ -304,6 +305,7 @@ class DataReplay:
             if os.path.exists(episode_dir):
                 shutil.rmtree(episode_dir)
                 log.info(f'Deleting recorded robot data {episode_dir}')
+            else: log.info(f'Recorded robot data {episode_dir} not exists!!!!')
             with self._state_lock:
                 self._state = ReplayState.IDLE
         if key == 'd':
