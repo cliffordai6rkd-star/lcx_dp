@@ -218,6 +218,7 @@ def main():
     parser = argparse.ArgumentParser(description="Visualize EE pose success/failure points in 3D space.")
     parser.add_argument("--data-dir", type=Path, default=Path("dataset/data/infer_bp_umi_fr3"), help="Directory containing inference JSON files.")
     parser.add_argument("--output", type=Path, default=None, help="Optional output image path (png). If omitted, show the plot window.")
+    # this is according to the gengeralization scene 0.08m for bread picking
     parser.add_argument("--cluster-radius", type=float, default=None, help="Clustering radius (meters). If omitted, auto-estimate; set <=0 to disable heatmap.")
     parser.add_argument("--heatmap-json", type=Path, default=None, help="Optional output path for cluster stats JSON. If omitted, print to terminal.")
     args = parser.parse_args()

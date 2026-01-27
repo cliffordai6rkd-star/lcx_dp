@@ -1,7 +1,7 @@
 from teleop.aruco_cube_tracker.cube_tracker import CubePoseTracker
 from controller.controller_base import IKController
 from simulation.mujoco.mujoco_sim import MujocoSim
-from hardware.base.utils import negate_pose, transform_pose, convert_homo_2_7D_pose, transform_quat
+from hardware.base.utils import negate_pose, transform_pose, convert_homo_2_7D_pose, transform_quat, pose_diff
 from motion.pin_model import RobotModel
 import glog as log
 from cfg_handling import get_cfg
@@ -98,10 +98,12 @@ def main():
             # Absolute-delta: lock relative to current EE pose when user presses 'i'
             if interface_mode == "absolute_delta" and enabled:
                 cur_init_pose = init_ee_pose
+                # cur_init_pose = np.hstack([init_ee_pose[:3], 0.7071068, 0, 0.7071068, 0])
                 tracker_robot_trans = np.hstack(([0,0,0], init_ee_rot))
                 # 重要改动： ！！！！ @TODO: zyx （集成进teleop里面）
                 robot_tracker_trans = negate_pose(tracker_robot_trans)
-                value = transform_pose(transform_pose(robot_tracker_trans, value), tracker_robot_trans)
+                if not tracker._require_axis_alignment:
+                    value = transform_pose(transform_pose(robot_tracker_trans, value), tracker_robot_trans)
                 value = transform_pose(cur_init_pose, value, True)
                 # log.info(f"init pose: {cur_init_pose}, diff: {value}")
 

@@ -22,8 +22,17 @@ cube_tracker:
   # Scale for translation in absolute_delta mode
   position_scale: 1.0
 
+  axis_alignment: false
+  # Axis mapping between cube frame and robot EE frame.
+  # Use "+x/-x/+y/-y/+z/-z" to define forward/up for each frame.
+  control_frame:
+    cube_forward: "-z"
+    cube_up: "+y"
+    
+    robot_forward: "+x"
+    robot_up: "-z"
+
   # Initial poses used for rotation alignment (can keep identity)
   init_pose:
     initial_pose_left:  [0.0, 0.0, 0.0, 1, 0, 0, 0]
     initial_pose_right: [0.0, 0.0, 0.0, 1, 0, 0, 0]
-

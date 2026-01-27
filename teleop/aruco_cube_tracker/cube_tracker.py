@@ -10,7 +10,6 @@ from hardware.base.utils import (
     convert_homo_2_7D_pose,
     negate_pose,
     transform_pose,
-    transform_quat,
     pose_diff,
 )
 import os, copy, json, time, cv2
@@ -114,6 +113,73 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
         # Position scale for absolute_delta
         self._position_scale = config.get("position_scale", 1.0)
+        self._require_axis_alignment = config.get(f'axis_alignment', False)
+        # Optional axis mapping between cube frame and robot EE frame
+        control_frame = config.get("control_frame", {})
+        cube_forward = control_frame.get("cube_forward", "+z")
+        cube_up = control_frame.get("cube_up", "+y")
+        robot_forward = control_frame.get("robot_forward", "+z")
+        robot_up = control_frame.get("robot_up", "+y")
+        axis_map = {
+            "x": np.array([1.0, 0.0, 0.0]),
+            "y": np.array([0.0, 1.0, 0.0]),
+            "z": np.array([0.0, 0.0, 1.0]),
+        }
+        axis_specs = {
+            "cube_forward": cube_forward,
+            "cube_up": cube_up,
+            "robot_forward": robot_forward,
+            "robot_up": robot_up,
+        }
+        axis_vecs = {}
+        for name, axis in axis_specs.items():
+            axis = axis.strip().lower()
+            sign = 1.0
+            if axis.startswith("-"):
+                sign = -1.0
+                axis = axis[1:]
+            elif axis.startswith("+"):
+                axis = axis[1:]
+            if axis not in axis_map:
+                raise ValueError(f"Invalid axis spec: {axis_specs[name]}")
+            axis_vecs[name] = sign * axis_map[axis]
+
+        cube_fwd = axis_vecs["cube_forward"]
+        cube_upv = axis_vecs["cube_up"]
+        if abs(np.dot(cube_fwd, cube_upv)) > 1e-6:
+            raise ValueError(f"Cube forward/up must be orthogonal: {cube_forward}, {cube_up}")
+        cube_fwd = cube_fwd / np.linalg.norm(cube_fwd)
+        cube_upv = cube_upv / np.linalg.norm(cube_upv)
+        cube_right = np.cross(cube_upv, cube_fwd)
+        if np.linalg.norm(cube_right) < 1e-8:
+            raise ValueError(f"Cube forward/up produce degenerate basis: {cube_forward}, {cube_up}")
+        cube_right = cube_right / np.linalg.norm(cube_right)
+        cube_upv = np.cross(cube_fwd, cube_right)
+        cube_basis = np.stack((cube_right, cube_upv, cube_fwd), axis=1)
+
+        robot_fwd = axis_vecs["robot_forward"]
+        robot_upv = axis_vecs["robot_up"]
+        if abs(np.dot(robot_fwd, robot_upv)) > 1e-6:
+            raise ValueError(f"Robot forward/up must be orthogonal: {robot_forward}, {robot_up}")
+        robot_fwd = robot_fwd / np.linalg.norm(robot_fwd)
+        robot_upv = robot_upv / np.linalg.norm(robot_upv)
+        robot_right = np.cross(robot_upv, robot_fwd)
+        if np.linalg.norm(robot_right) < 1e-8:
+            raise ValueError(f"Robot forward/up produce degenerate basis: {robot_forward}, {robot_up}")
+        robot_right = robot_right / np.linalg.norm(robot_right)
+        robot_upv = np.cross(robot_fwd, robot_right)
+        robot_basis = np.stack((robot_right, robot_upv, robot_fwd), axis=1)
+
+        cube_to_robot = robot_basis @ cube_basis.T
+        cube_to_robot_homo = np.eye(4)
+        cube_to_robot_homo[:3, :3] = cube_to_robot
+        self._cube_to_robot_pose = convert_homo_2_7D_pose(cube_to_robot_homo)
+        self._robot_to_cube_pose = negate_pose(self._cube_to_robot_pose)
+        if not np.allclose(cube_to_robot, np.eye(3), atol=1e-6):
+            log.info(
+                "CubePoseTracker axis mapping enabled: "
+                f"cube {cube_forward}/{cube_up} -> robot {robot_forward}/{robot_up}"
+            )
 
         # Initialize offset pose for relative positioning
         self._device_enabled = False
@@ -180,24 +246,17 @@ class CubePoseTracker(TeleoperationDeviceBase):
     
     def _process_raw_pose(self, pose, key):
         # world coordinate alignment
-        if self.WORLD_POSE[self._index[key]] is None:
-            self.WORLD_POSE[self._index[key]] = pose
-            # update basis anchor
-            self.WORLD_BASIS_ANCHOR[key] = np.hstack([0, 0, 0, self.BASE_QUAT])
-            self.WORLD_BASIS_ANCHOR_INV[key] = negate_pose(self.WORLD_BASIS_ANCHOR[key])
-            self.WORLD_BASIS_ANCHOR_INV[key][3:] = transform_quat(self.WORLD_BASIS_ANCHOR_INV[key][3:], pose[3:])
-            self.WORLD_BASIS_ANCHOR[key] = negate_pose(self.WORLD_BASIS_ANCHOR_INV[key])
-            log.info(f'World pose updated for {key}: {pose}')                
-            return None
+        # if self.WORLD_POSE[self._index[key]] is None:
+        #     # self.WORLD_POSE[self._index[key]] = pose
+        #     self.WORLD_POSE[self._index[key]] = np.hstack([0,0,0, pose[3:]])
         
-        res_pose = pose_diff(pose, self.WORLD_POSE[self._index[key]])
+        # res_pose = pose_diff(pose, self.WORLD_POSE[self._index[key]])
         # Apply the same basis-change to the anchor pose
-        temp_pose = transform_pose(self.WORLD_BASIS_ANCHOR_INV[key], res_pose)
-        res_pose = transform_pose(temp_pose, self.WORLD_BASIS_ANCHOR[key])
-        # align to world coordinate
-        tracker_robot_trans = self._tracker_robot_trans
-        robot_tracker_trans = self._robot_tracker_trans
-        res_pose = transform_pose(transform_pose(robot_tracker_trans, res_pose), tracker_robot_trans)
+        res_pose = pose
+        if not self._require_axis_alignment:
+            tracker_robot_trans = self._tracker_robot_trans
+            robot_tracker_trans = self._robot_tracker_trans
+            res_pose = transform_pose(transform_pose(robot_tracker_trans, res_pose), tracker_robot_trans)
         
         return res_pose
     
@@ -296,6 +355,11 @@ class CubePoseTracker(TeleoperationDeviceBase):
     
     def _get_diff_trans(self, cur_pose, index):
         diff_pose = pose_diff(cur_pose, self.INIT_TARGET_POSE[index])
+        if self._cube_to_robot_pose is not None and self._require_axis_alignment:
+            diff_pose = transform_pose(
+                transform_pose(self._cube_to_robot_pose, diff_pose),
+                self._robot_to_cube_pose,
+            )
         return diff_pose
 
     def print_data(self):
