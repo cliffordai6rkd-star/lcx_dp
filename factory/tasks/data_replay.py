@@ -133,8 +133,8 @@ class DataReplay:
                         self._episode_writer.save_episode()
                         while not self._episode_writer.is_available:
                             time.sleep(0.001)
-                        log.info(f'Please input y/n to save or delete the {self._episode_writer.episode_id}th recorded data')
                         self._state = ReplayState.WAITING_DATA_SAVING
+                        log.info(f'Please input y/n to save or delete the {self._episode_writer.episode_id}th recorded data')
                     else:
                         self._state = ReplayState.IDLE
                     
@@ -270,7 +270,7 @@ class DataReplay:
             state = copy.deepcopy(self._state)
         if key == 'q':
             self.close()
-        if key == 'k':
+        if key == 'k' and state == ReplayState.REPLAYING:
             with self._state_lock:
                 self._state = ReplayState.INTERRUPTION
         if key == 's' and state == ReplayState.IDLE:
@@ -304,6 +304,7 @@ class DataReplay:
         if key == 'n' and state == ReplayState.WAITING_DATA_SAVING:
             cur_episode = self._episode_writer.episode_id
             episode_dir = os.path.join(self._task_dir, f"episode_{str(cur_episode).zfill(4)}")
+            log.info(f'Started to delete recorded robot data {episode_dir}')
             if os.path.exists(episode_dir):
                 while not self._episode_writer.is_available:
                     time.sleep(0.001)

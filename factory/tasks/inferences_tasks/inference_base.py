@@ -381,11 +381,12 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._infer_stats[episode_id][ee_id] = []
                      
             self._episode_start = False; counter = 0
-            while not self._episode_start:
-                if counter < 5:
-                    log.info(f'Please press s for start!!!!!!!!')
-                    counter += 1
-                time.sleep(0.001)
+            time.sleep(1.5)
+            # while not self._episode_start:
+            #     if counter < 5:
+            #         log.info(f'Please press s for start!!!!!!!!')
+            #         counter += 1
+            #     time.sleep(0.001)
             self._gym_robot.reset()
             self._gym_robot.set_init_pose()
             self._intervention = False; self._intervention_init_anchor = {}

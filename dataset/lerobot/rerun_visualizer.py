@@ -399,8 +399,8 @@ if __name__ == "__main__":
 
     # # TEST DATA OF data_dir
     # dataset/data/1212_duo_unitree_bread_n_picking——214ep dataset/data/1221_duo_unitree_bread_picking_human_114ep
-    data_dir = "dataset/data/0116_duo_unitree_bread_picking_human"
-    episode_data_number = 2
+    data_dir = "/home/tele/Code/hph/HIROLRobotPlatform/dataset/data/bread_picking"
+    episode_data_number = 1
     fps = 100
     skip_step_nums = 3
     action_ori_type = "quaternion"
