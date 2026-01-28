@@ -65,6 +65,10 @@ action_weight_mode: "uniform"
 async_execution: false
 infer_frequency: 10
 
+# teleoperation intervention
+tele_cfg: !include teleop/aruco_cube_tracker/config/cube_tracker_right_only_fr3_cfg.yaml
+tele_device: "cube_tracker"
+
 # for data saving 
 # data_save_path: "unitree_bread_picking_infer" # execution trajectory
 # save_chunk_dir: "unitree_bread_picking_infer/action_chunks_robot_wo_head_absolute" # model infer action chunks

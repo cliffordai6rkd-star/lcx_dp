@@ -251,7 +251,12 @@ class CubePoseTracker(TeleoperationDeviceBase):
                 log.info("CubePoseTracker disabled!!!")
             else:
                 for side, control_keys in self._tool_control_keyboard.items():
-                    idx = control_keys.index(key.char)
+                    try:
+                        idx = control_keys.index(key.char)
+                    except:
+                        log.warn(f'cube tracker key detection wrong {key.char}')
+                        return 
+                    
                     if idx == 0:
                         if self._tool_control_mode == "binary":
                             log.info(f'tool control binary toggle for {side} and cur value {self._tool_controls[side]}')
@@ -382,6 +387,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
                 transform_pose(self._cube_to_robot_pose, diff_pose),
                 self._robot_to_cube_pose,
             )
+            log.info(f'require axis alignment')
         return diff_pose
 
     def print_data(self):

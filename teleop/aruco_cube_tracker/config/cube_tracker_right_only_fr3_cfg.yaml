@@ -29,8 +29,8 @@ cube_tracker:
     cube_forward: "-z"
     cube_up: "+y"
     
-    robot_forward: "+x"
-    robot_up: "-z"
+    robot_forward: "+z"
+    robot_up: "+x"
 
   # Initial poses used for rotation alignment (can keep identity)
   init_pose:

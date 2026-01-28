@@ -76,14 +76,14 @@ class GymApi(gym.Env):
             self._delta_action_target[key] = cur_ee_state["pose"]
             self._last_ee[key] = cur_ee_state["pose"]
             log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
+            self._init_pose[key] = cur_ee_state["pose"]
+            log.info(f'Updated init pose!!!')
             if self._use_relative_pose or self._chunk_anchor_mode:
-                self._init_pose[key] = cur_ee_state["pose"]
                 # for action
                 self._delta_action_target[key] = pose_diff(
                     self._delta_action_target[key], self._init_pose[key])
                 # for obs
                 self._last_ee[key] = pose_diff(self._last_ee[key], self._init_pose[key])
-                log.info(f'Updated init pose!!!')
                 
     def set_action_type(self, action_type: ActionType):
         self._action_type = action_type
@@ -245,7 +245,7 @@ class GymApi(gym.Env):
         cam_start = time.perf_counter()
         cameras_data = self._robot_system.get_cameras_infos()
         cam_time = time.perf_counter() - cam_start
-        log.info(f'================ Get camera info cam time {cam_time} ================')
+        # log.info(f'================ Get camera info cam time {cam_time} ================')
         if cameras_data is None: return None
         
         total_ts = 0; count = 0
@@ -340,7 +340,7 @@ class GymApi(gym.Env):
         cam_start = time.perf_counter()
         camera_data = self.get_camera_infos()
         cam_time = time.perf_counter()-cam_start
-        log.info(f'{"=="*5} cam time: {cam_time}s, {1.0/cam_time}Hz {"=="*5}')
+        # log.info(f'{"=="*5} cam time: {cam_time}s, {1.0/cam_time}Hz {"=="*5}')
         obs_dict = {'state': obs_state, 'colors': camera_data["color"], 
                     'depths': camera_data["depth"]}
         return obs_dict
@@ -385,7 +385,7 @@ class GymApi(gym.Env):
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
         # comment for testing only
-        self._robot_motion.update_high_level_command(poses)
+        # self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}

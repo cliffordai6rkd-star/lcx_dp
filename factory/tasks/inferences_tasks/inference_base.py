@@ -1,6 +1,6 @@
 import abc, json
 from factory.components.gym_interface import GymApi
-from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose
+from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose, negate_pose, quat_to_rot6d
 from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
@@ -198,7 +198,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -328,7 +328,8 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         infer_dt = 1.0 / self._infer_frequency
         # 50
         query_frequency = 50; num_quries = 50
-        origin_chunk_anchor_mode = self._chunk_anchor_mode
+        origin_chunk_anchor_mode = self._chunk_anchor_mode; origin_action_ori_type = self._action_ori_type
+        origin_use_relative_pose = self._use_relative_pose
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -389,8 +390,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             #     time.sleep(0.001)
             self._gym_robot.reset()
             self._gym_robot.set_init_pose()
-            self._intervention = False; self._intervention_init_anchor = {}
-            
+            if self._teleoperation_cfg:
+                self._intervention = False; self._intervention_init_anchor = {}
+                self._teleop_device._press_u()
+
             if self._save_chunk_dir:
                 if self._use_relative_pose and episode_id == 0:
                     # save init pose for the absolute relative pose action space
@@ -418,7 +421,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     chunk_started = time.perf_counter()
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
-                    log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
+                    # log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
                     if self._save_chunk_dir:
                         self._action_chunk_writer.add_item(actions=pred_action_chunk)
                     # update chunk anchor
@@ -463,14 +466,16 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     if self._teleoperation_cfg:
                         raw_status, pose_tgt, tool_tgt = self._teleop_device.parse_data_2_robot_target("absolute_delta") 
                         self._intervention = True if int(raw_status) > 0 else False
+                        # log.info(f'intervention: {self._intervention} tool: {tool_tgt}')
                         if int(raw_status) == 0: self._intervention_init_anchor = {}
+                        elif int(raw_status) < 0: return
                     # calculate aggregated action
                     if not self._intervention:
                         aggregated_action = self._action_aggregation.aggregation_action(cur_t, self._weight_mode)
-                        raw_action = pred_action_chunk[cur_t%query_frequency]
-                        self._chunk_anchor_mode = origin_chunk_anchor_mode
+                        raw_action = pred_action_chunk[cur_t%query_frequency]; self._gym_robot._use_relative_pose = origin_use_relative_pose
+                        self._chunk_anchor_mode = origin_chunk_anchor_mode; self._action_ori_type = origin_action_ori_type
                     else:
-                        log.info(f'Human use the teleoperation to intervens the policy output')
+                        # log.info(f'Human use the teleoperation to intervens the policy output')
                         if len(self._intervention_init_anchor) == 0:
                             ee_states = self._gym_robot.get_ee_state()
                         else: ee_states = None
@@ -481,21 +486,22 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                                 self._intervention_init_anchor[key] = ee_states[key]["pose"]
                                 self._tele_init_pose_rot[key] = np.hstack(([0,0,0], ee_states[key]["pose"][3:]))
                                 self._tele_init_pose_rot_inv[key] = negate_pose(self._tele_init_pose_rot[key])
-                                log.info(f'Updated intervention init anchor for {key}')
+                                log.info(f'U111111t anchor for {key}')
                                 
                             # change the aggreation action array
                             if not self._teleop_device.require_axis_alignment():
                                 pose_tgt[key] = transform_pose(
                                     transform_pose(self._tele_init_pose_rot_inv[key], pose_tgt[key]), self._tele_init_pose_rot[key])
                             cur_action = transform_pose(self._intervention_init_anchor[key], pose_tgt[key])
-                            aggregated_action = np.hstack((aggregated_action, cur_action))
+                            aggregated_action = np.hstack((aggregated_action, cur_action, tool_tgt[key][:self._tool_position_dof]))
                         raw_action = aggregated_action; self._chunk_anchor_mode = None
+                        self._action_ori_type = "quaternion"; self._gym_robot._use_relative_pose = False
                     # log.info(f'aggregated action: {aggregated_action}')
                     # smoothed action
                     
                     need_execution = True if not self._use_relative_pose or self._intervention else self._execution_index[0] == cur_t
                     if need_execution:
-                        if self._use_relative_pose: self._execution_index = self._execution_index[1:]
+                        if self._use_relative_pose and not self._intervention: self._execution_index = self._execution_index[1:]
                         convert_start = time.perf_counter()
                         gym_action = self.convert_to_gym_action_single_step(
                             aggregated_action, raw_action, chunk_anchor)

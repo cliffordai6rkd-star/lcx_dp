@@ -1,5 +1,7 @@
 import numpy as np
 import abc
+from hardware.base.utils import convert_homo_2_7D_pose, negate_pose
+import glog as log
 
 class TeleoperationDeviceBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -45,9 +47,9 @@ class TeleoperationDeviceBase(abc.ABC, metaclass=abc.ABCMeta):
     
     
     def _init_tracker_robot_axis_alignment(self):
-        self._require_axis_alignment = config.get(f'axis_alignment', False)
+        self._require_axis_alignment = self._config.get(f'axis_alignment', False)
         # Optional axis mapping between cube frame and robot EE frame
-        control_frame = config.get("control_frame", None)
+        control_frame = self._config.get("control_frame", None)
         if not self._require_axis_alignment or control_frame is None:
             self._tracker_to_robot_pose = None
             self._robot_to_cube_pose = None
