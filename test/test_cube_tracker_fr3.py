@@ -86,6 +86,7 @@ def main():
             enabled = False
             
         if success:
+            # log.info(f'tool target: {tool_target}')
             # Select key among returned targets
             key = (
                 "single"

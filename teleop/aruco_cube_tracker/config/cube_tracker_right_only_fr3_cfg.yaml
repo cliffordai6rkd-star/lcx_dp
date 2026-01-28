@@ -14,7 +14,7 @@ cube_tracker:
 
   # RealSense camera config YAML (relative to repo root)
   camera_config: "hardware/sensors/cameras/config/third_person_d455_cfg.yaml"
-  camera_calibration_path: "calibration/camera_params.json"
+  camera_calibration_path: "calibration/camera_params1.json"
 
   output_left: false
   output_right: true
@@ -22,7 +22,7 @@ cube_tracker:
   # Scale for translation in absolute_delta mode
   position_scale: 1.0
 
-  axis_alignment: false
+  axis_alignment: true
   # Axis mapping between cube frame and robot EE frame.
   # Use "+x/-x/+y/-y/+z/-z" to define forward/up for each frame.
   control_frame:
@@ -36,3 +36,11 @@ cube_tracker:
   init_pose:
     initial_pose_left:  [0.0, 0.0, 0.0, 1, 0, 0, 0]
     initial_pose_right: [0.0, 0.0, 0.0, 1, 0, 0, 0]
+
+  # tools config 
+  tool_control_keyboard:
+    right: ["1", "2"]
+  tool_initial_position: 1.0
+  # binary incremental
+  tool_control_mode: "incremental"
+  incremental_scale: 0.06

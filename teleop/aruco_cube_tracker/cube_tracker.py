@@ -87,6 +87,14 @@ class CubePoseTracker(TeleoperationDeviceBase):
         if self._img_visualize:
             self._img_visual_window = 'CubeTracker Overlay'
             cv2.namedWindow(self._img_visual_window, cv2.WINDOW_NORMAL)
+            
+        # keyboard tool control
+        self._tool_control_keyboard = config.get("tool_control_keyboard", {"single": ["1", "2"]})
+        self._tool_initial_position = config.get("tool_initial_position", 1.0)
+        self._tool_controls = {}
+        self._tool_control_mode = config.get("tool_control_mode", "binary")
+        if self._tool_control_mode == "incremental":
+            self._tool_step_scale = config.get("incremental_scale", 0.1)
         
         # tracker init
         self._cube_trackers: Dict[str, CubeTracker] = {}
@@ -101,7 +109,8 @@ class CubePoseTracker(TeleoperationDeviceBase):
                 face_corners_3d[key],
                 transformation,
             )
-        
+            assert key in list(self._tool_control_keyboard.keys()), f"{key} not in tool_control_keyboard {list(self._tool_control_keyboard.keys())} "
+            self._tool_controls[key] = self._tool_initial_position
         self._output_left = config.get("output_left", True)
         self._output_right = config.get("output_right", True)
         if self._output_left and self._output_right:
@@ -240,6 +249,19 @@ class CubePoseTracker(TeleoperationDeviceBase):
             elif key.char == "u" and self._device_enabled:
                 self._press_u()
                 log.info("CubePoseTracker disabled!!!")
+            else:
+                for side, control_keys in self._tool_control_keyboard.items():
+                    idx = control_keys.index(key.char)
+                    if idx == 0:
+                        if self._tool_control_mode == "binary":
+                            log.info(f'tool control binary toggle for {side} and cur value {self._tool_controls[side]}')
+                            self._tool_controls[side] = 1.0 if self._tool_controls[side] < 0.2 else 0.0
+                        elif self._tool_control_mode == "incremental":
+                            self._tool_controls[side] += self._tool_step_scale
+                    elif idx == 1 and self._tool_control_mode == "incremental":
+                        self._tool_controls[side] -= self._tool_step_scale
+                    self._tool_controls[side] = np.clip(self._tool_controls[side], 0.0, 1.0)
+                    
         except AttributeError:
             # Ignore non-character hotkeys
             pass
@@ -338,7 +360,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
             if self._img_visualize and draw:
                 overlay_img = self._cube_trackers[side].overlay_cube_pose(overlay_img, {side: cur_pose})
             # Dummy tool channel to align with teleop pipeline (position + command)
-            tool_data[side] = np.array([0.0, 0.0])
+            tool_data[side] = np.array([self._tool_controls[side]])
         
         if self._img_visualize and draw:
             cv2.imshow(self._img_visual_window, overlay_img)

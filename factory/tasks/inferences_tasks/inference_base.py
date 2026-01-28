@@ -99,7 +99,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             if not self._teleop_device.initialize():
                 raise ValueError(f'{self._teleop_device_type} failed to initialize!')
             self._intervention_init_anchor = {}
-        
+            self._tele_init_pose_rot = {}; self._tele_init_pose_rot_inv = {}
         # keyboard listening
         listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
                 kwargs={"on_press": self._keyboard_on_press, 
@@ -388,6 +388,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 time.sleep(0.001)
             self._gym_robot.reset()
             self._gym_robot.set_init_pose()
+            self._intervention = False; self._intervention_init_anchor = {}
             
             if self._save_chunk_dir:
                 if self._use_relative_pose and episode_id == 0:
@@ -477,9 +478,14 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             if tool_value[-1] and len(self._intervention_init_anchor) != len(list(tool_tgt.keys())):
                                 assert ee_states is not None
                                 self._intervention_init_anchor[key] = ee_states[key]["pose"]
+                                self._tele_init_pose_rot[key] = np.hstack(([0,0,0], ee_states[key]["pose"][3:]))
+                                self._tele_init_pose_rot_inv[key] = negate_pose(self._tele_init_pose_rot[key])
                                 log.info(f'Updated intervention init anchor for {key}')
                                 
                             # change the aggreation action array
+                            if not self._teleop_device.require_axis_alignment():
+                                pose_tgt[key] = transform_pose(
+                                    transform_pose(self._tele_init_pose_rot_inv[key], pose_tgt[key]), self._tele_init_pose_rot[key])
                             cur_action = transform_pose(self._intervention_init_anchor[key], pose_tgt[key])
                             aggregated_action = np.hstack((aggregated_action, cur_action))
                         raw_action = aggregated_action; self._chunk_anchor_mode = None

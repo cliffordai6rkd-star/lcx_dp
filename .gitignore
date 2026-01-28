@@ -39,3 +39,4 @@ dataset/lerobot.zip
 *uv.lock
 build/
 .venv
+calibration/camera_calibration

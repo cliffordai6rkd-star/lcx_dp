@@ -131,6 +131,8 @@ class DataReplay:
                 with self._state_lock:
                     if self._data_save_dir is not None and success:
                         self._episode_writer.save_episode()
+                        while not self._episode_writer.is_available:
+                            time.sleep(0.001)
                         log.info(f'Please input y/n to save or delete the {self._episode_writer.episode_id}th recorded data')
                         self._state = ReplayState.WAITING_DATA_SAVING
                     else:
@@ -303,6 +305,8 @@ class DataReplay:
             cur_episode = self._episode_writer.episode_id
             episode_dir = os.path.join(self._task_dir, f"episode_{str(cur_episode).zfill(4)}")
             if os.path.exists(episode_dir):
+                while not self._episode_writer.is_available:
+                    time.sleep(0.001)
                 shutil.rmtree(episode_dir)
                 log.info(f'Deleting recorded robot data {episode_dir}')
             else: log.info(f'Recorded robot data {episode_dir} not exists!!!!')

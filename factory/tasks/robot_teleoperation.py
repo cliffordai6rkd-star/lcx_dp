@@ -227,8 +227,9 @@ class TeleoperationFactory:
                                 self._init_pose_rot_inv[key] = negate_pose(self._init_pose_rot[key])
                                 log.info(f"{'='*10} updated the robot neutral pose for {key}: {self._init_pose[key]} {'='*10} ")
                             if len(self._init_pose) == 0: break
-                            cur_ee_target = transform_pose(
-                                transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
+                            if not self._interface.require_axis_alignment():
+                                cur_ee_target = transform_pose(
+                                    transform_pose(self._init_pose_rot_inv[key], cur_ee_target), self._init_pose_rot[key])
                             ee_target[key] = transform_pose(self._init_pose[key], cur_ee_target)
                         elif interface_output_mode != "absolute":
                             raise ValueError(f"Teleoperation interface {interface_output_mode} is not supported")
@@ -489,8 +490,8 @@ class TeleoperationFactory:
             self._reset_arm_command = transform_pose(init_anchor, delta_pose)
         log.info(f'reset space: {self._reset_space}, command: {self._reset_arm_command}\
                  tool command: {self._reset_tool_command}')
-        self._robot_motion_system.reset_robot_system(self._reset_arm_command, self._reset_space,
-                                                        self._reset_tool_command)
+        self._robot_motion_system.reset_robot_system(
+            np.array(self._reset_arm_command), self._reset_space, self._reset_tool_command)
         if not self._robot_motion_system._use_traj_planner:
             self._robot_motion_system.clear_traj_buffer()
             self._robot_motion_system.wait_buffer_empty()

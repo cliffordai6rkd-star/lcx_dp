@@ -61,6 +61,7 @@ class PikaTracker(TeleoperationDeviceBase):
         elif not self._output_right:
             self._index = {"single": 0}
         self._position_scale = config.get("position_scale", 1.0)
+        self._init_tracker_robot_axis_alignment()
         
         # Initialize offset pose for relative positioning
         # self._init_pose = config.get('init_pose', None)
