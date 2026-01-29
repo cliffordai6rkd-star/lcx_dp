@@ -81,9 +81,9 @@ def main():
 
     while True:
         success, arm_target, tool_target = tracker.parse_data_2_robot_target(interface_mode)
-        success = int(success) > 0; raw = int(success)
+        raw = int(success); success = int(success) > 0;
         if raw == 0 and enabled:
-            log.info("CubeTracker target lost and disable")
+            log.info(f"CubeTracker target lost and disable due to success == {success} raw {raw}")
             enabled = False
             
         if success:
@@ -104,9 +104,9 @@ def main():
                 tracker_robot_trans = np.hstack(([0,0,0], cur_init_pose[3:]))
                 # 重要改动： ！！！！ @TODO: zyx （集成进teleop里面）
                 robot_tracker_trans = negate_pose(tracker_robot_trans)
-                # if not tracker._require_axis_alignment:
-                #     log.info(f'not require axis alignment')
-                #     value = transform_pose(transform_pose(robot_tracker_trans, value), tracker_robot_trans)
+                if not tracker._require_axis_alignment:
+                    # log.info(f'not require axis alignment')
+                    value = transform_pose(transform_pose(robot_tracker_trans, value), tracker_robot_trans)
                 value = transform_pose(cur_init_pose, value, True)
                 # log.info(f"init pose: {cur_init_pose}, diff: {value}")
 
@@ -114,11 +114,11 @@ def main():
             target_mocap = target_site_names[1]  # right-hand site name
             target_mocap = target_mocap.split("_")[0]
             if interface_mode == "absolute_delta":
-                world2target = transform_pose(world2base[0], value)
+                world2target = value
                 world2target = None if not enabled else world2target
             else:
                 world2target = value
-            if world2target:
+            if world2target is not None:
                 mujoco.set_target_mocap_pose(target_mocap, world2target)
 
             # --- Debug overlay on RGB frame from the tracker camera ---

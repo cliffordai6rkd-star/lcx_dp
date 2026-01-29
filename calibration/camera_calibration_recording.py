@@ -6,7 +6,7 @@ import os
 from pupil_apriltags import Detector
 
 # ----------------- 参数部分 -----------------
-serial_number = "338122303378"
+serial_number = "333422301209"
 save_path = "camera_calibration"
 cur_path = os.path.dirname(os.path.abspath(__file__))
 image_save_path = os.path.join(cur_path, save_path, "images")

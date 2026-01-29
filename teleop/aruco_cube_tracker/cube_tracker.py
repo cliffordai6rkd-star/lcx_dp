@@ -387,7 +387,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
                 transform_pose(self._cube_to_robot_pose, diff_pose),
                 self._robot_to_cube_pose,
             )
-            log.info(f'require axis alignment')
+            # log.info(f'require axis alignment')
         return diff_pose
 
     def print_data(self):
