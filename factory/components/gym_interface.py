@@ -385,7 +385,7 @@ class GymApi(gym.Env):
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
         # comment for testing only
-        # self._robot_motion.update_high_level_command(poses)
+        self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}

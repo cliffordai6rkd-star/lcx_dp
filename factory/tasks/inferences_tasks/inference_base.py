@@ -5,6 +5,8 @@ from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
 from teleop.aruco_cube_tracker.cube_tracker import CubePoseTracker
+from teleop.pika_tracker.pika_tracker import PikaTracker
+from teleop.XR.quest3.meta_quest3 import MetaQuest3
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
 from sshkeyboard import listen_keyboard, stop_listening
@@ -91,11 +93,16 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             self._infer_stats_saving_dir = os.path.join(cur_path, "../../..", self._infer_stats_saving_dir, now_json)
         
         # @TODO: zyx: model inference teleoperation intervention
+        self._ee_teleop_devives = {
+            "cube_tracker": CubePoseTracker,
+            "pika_tracker": PikaTracker,
+            "meta_quest3": MetaQuest3,
+        }
         self._teleoperation_cfg = config.get("tele_cfg", None)
         self._teleop_device_type = config.get("tele_device", "cube_tracker")
         self._intervention = False
         if self._teleoperation_cfg:
-            self._teleop_device = CubePoseTracker(self._teleoperation_cfg[self._teleop_device_type])
+            self._teleop_device = self._ee_teleop_devives[self._teleop_device_type](self._teleoperation_cfg[self._teleop_device_type])
             if not self._teleop_device.initialize():
                 raise ValueError(f'{self._teleop_device_type} failed to initialize!')
             self._intervention_init_anchor = {}
