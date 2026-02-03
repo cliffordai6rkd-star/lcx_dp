@@ -5,7 +5,7 @@ from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
 from teleop.aruco_cube_tracker.cube_tracker import CubePoseTracker
-from teleop.pika_tracker.pika_tracker import PikaTracker
+# from teleop.pika_tracker.pika_tracker import PikaTracker
 from teleop.XR.quest3.meta_quest3 import MetaQuest3
 from dataset.utils import ActionType, Action_Type_Mapping_Dict, ObservationType
 import threading, time, cv2, os, copy
@@ -95,7 +95,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         # @TODO: zyx: model inference teleoperation intervention
         self._ee_teleop_devives = {
             "cube_tracker": CubePoseTracker,
-            "pika_tracker": PikaTracker,
+            # "pika_tracker": PikaTracker,
             "meta_quest3": MetaQuest3,
         }
         self._teleoperation_cfg = config.get("tele_cfg", None)
@@ -389,12 +389,12 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._infer_stats[episode_id][ee_id] = []
                      
             self._episode_start = False; counter = 0
-            time.sleep(1.5)
-            # while not self._episode_start:
-            #     if counter < 5:
-            #         log.info(f'Please press s for start!!!!!!!!')
-            #         counter += 1
-            #     time.sleep(0.001)
+            time.sleep(0.5)
+            while not self._episode_start:
+                if counter < 5:
+                    log.info(f'Please press s for start!!!!!!!!')
+                    counter += 1
+                time.sleep(0.001)
             self._gym_robot.reset()
             self._gym_robot.set_init_pose()
             if self._teleoperation_cfg:

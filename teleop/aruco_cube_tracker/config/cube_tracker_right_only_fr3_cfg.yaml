@@ -22,7 +22,7 @@ cube_tracker:
   # Scale for translation in absolute_delta mode
   position_scale: 1.0
 
-  axis_alignment: true
+  axis_alignment: false
   # Axis mapping between cube frame and robot EE frame.
   # Use "+x/-x/+y/-y/+z/-z" to define forward/up for each frame.
   control_frame:
