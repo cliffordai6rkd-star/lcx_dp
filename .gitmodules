@@ -22,3 +22,6 @@
 [submodule "dependencies/BC_Policy"]
 	path = dependencies/BC_Policy
 	url = git@github.com:linkage-x/BC_Policy.git
+[submodule "dependencies/gen_con_sdk_python_release"]
+	path = dependencies/gen_con_sdk_python_release
+	url = git@github.com:linkage-x/gen_con_sdk_python_release.git

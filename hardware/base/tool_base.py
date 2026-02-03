@@ -99,7 +99,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
                 target = self._apply_binary_threshold(target)
                 self._tool_idle = False
                 success = self.set_hardware_command(target)
-                # print(f'incremental tool target: {target}')
+                # log.info(f'binary tool target: {target}')
                 self._tool_idle = True
             elif self._control_mode == ToolControlMode.INCREMENTAL:
                 success = self._handle_gripper_incremental_command(target)
