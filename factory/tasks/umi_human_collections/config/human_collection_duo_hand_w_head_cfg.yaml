@@ -1,0 +1,17 @@
+pika_config: !include teleop/pika_tracker/config/pika_as_human_tracker_w_head_cfg.yaml
+pika_mode: "absolute_delta"
+use_fisheye: false
+cameras:
+  - name: "left_hand"
+    type: "realsense_camera"
+    config: !include hardware/sensors/cameras/config/human_left_rs.yaml
+  - name: "right_hand"
+    type: "realsense_camera" 
+    config: !include hardware/sensors/cameras/config/human_right_rs.yaml
+  - name: "head"
+    type: "realsense_camera"
+    config: !include hardware/sensors/cameras/config/umi_head_rs.yaml
+
+collection_frequency: 30
+task_name: "duo_unitree_pick_n_place"
+use_mujoco: true

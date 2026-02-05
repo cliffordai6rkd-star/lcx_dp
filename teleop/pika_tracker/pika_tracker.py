@@ -51,6 +51,7 @@ class PikaTracker(TeleoperationDeviceBase):
         
         # Device configuration
         self._device_id: dict[str, str] = config["target_device"]  # Default tracker ID
+        self._tracker_offset: dict[str, bool] = config.get("tracker_pose_offset", None)
         self._readed_device_id = None
         self._output_left = config.get("output_left", True)
         self._output_right = config.get("output_right", True)
@@ -62,16 +63,7 @@ class PikaTracker(TeleoperationDeviceBase):
             self._index = {"single": 0}
         self._position_scale = config.get("position_scale", 1.0)
         self._init_tracker_robot_axis_alignment()
-        
-        # Initialize offset pose for relative positioning
-        # self._init_pose = config.get('init_pose', None)
-        # self._last_quat = [np.array([0,0,0,1]), np.array([0,0,0,1])]
-        # if not self._init_pose is None:
-        #     self._init_pose_rot = [self._init_pose["initial_pose_left"][3:], 
-        #                             self._init_pose["initial_pose_right"][3:]]
-        #     self._last_quat = self._init_pose_rot
-        #     self._init_pose_trans = [self._init_pose["initial_pose_left"][:3], 
-        #                             self._init_pose["initial_pose_right"][:3]]
+       
         self._device_enabled = False
         self._reset_pose_counter = 0
         
@@ -118,7 +110,9 @@ class PikaTracker(TeleoperationDeviceBase):
             # device id only contain hand infos
             for key, cur_uid in self._device_id.items():
                 if cur_uid:
-                    pose_offset[cur_uid] = True
+                    cur_pose_offset = True if not self._tracker_offset or \
+                        key not in self._tracker_offset else self._tracker_offset[key]
+                    pose_offset[cur_uid] = cur_pose_offset
         self._tracker = ViveTracker(pose_offset=pose_offset, use_uid=True)
         if not self._tracker.connect():
             raise ValueError(f"Failed to connect to HTC vive tracker!!!")
@@ -218,6 +212,7 @@ class PikaTracker(TeleoperationDeviceBase):
         tool_data = {}
         for key, sense in self._sense.items():
             if not sense:
+                tool_data[key] = np.array([-1.0, 0.0])
                 continue
             
             encoder = sense.get_encoder_data()["rad"]
@@ -285,20 +280,18 @@ class PikaTracker(TeleoperationDeviceBase):
             # tracker_robot_trans = convert_homo_2_7D_pose(self.T_TRACKER_HEAD)
             tracker_robot_trans = self._tracker_head_trans
             robot_tracker_trans = self._head_tracker_trans
-        # basis change
-        # robot_tracker_trans = negate_pose(tracker_robot_trans)
         res_pose = transform_pose(transform_pose(robot_tracker_trans, pose), tracker_robot_trans)
         basis_change_time = time.perf_counter() - start
         
         start1 = time.perf_counter()
-        if key != "head":
+        tracker_offset = True if not self._tracker_offset or \
+            key not in self._tracker_offset else self._tracker_offset[key]
+        if key != "head" and tracker_offset:
             # read pose init sync to x forward y left z up 
             static_rot_offset = np.array([0, 0, 1, 0])
             res_pose = self.apply_rotation_offset(res_pose, static_rot_offset)
-            # # apply rotation based on robot init pose
-            # res_pose = self.apply_init_offset(res_pose, self._index[key])
-
         rot_offset_time = time.perf_counter() - start1
+        
         total_time = time.perf_counter()-start
         # log.info(f'{key} pose porcess time: {(total_time)*1000.0:.2f}ms {basis_change_time/total_time*100:.2f}% {rot_offset_time/total_time*100:.2f}%')
         return res_pose
@@ -358,7 +351,6 @@ class PikaTracker(TeleoperationDeviceBase):
 
         total_time = time.perf_counter() - start
         # log.info(f'total data parse: {total_time*1000:.2f}ms read {read_time*1000:.2f}ms process {process_time*1000:.2f}ms sub process: {sub_process*1000:.2f}ms')
-        # log.info(f'total data parse: {total_time*1000:.2f}ms read {read_time/total_time*100:.2f}% process {process_time/total_time*100:.2f}% sub process: {sub_process/total_time*100:.2f}%')
         if mode == "absolute" or (mode == "absolute_delta" and self._device_enabled):
             return True, pose_target, tool_target
         else: return False, None, None
@@ -387,15 +379,6 @@ class PikaTracker(TeleoperationDeviceBase):
         # apply rotation offset
         pose[3:] = transform_quat(pose[3:], rot_offset)
         return pose
-    
-    def apply_init_offset(self, pose, id):
-        new_pose = pose
-        # basis convertion (mainly for rot)
-        if self._init_pose is not None:
-            init_rot = self._init_pose_rot[id]
-            # log.info(f'id: {id}, init rot: {init_rot}')
-            new_pose = self.apply_rotation_offset(new_pose, init_rot)
-        return new_pose
     
     def _get_diff_trans(self, cur_pose, index):
         diff_pose = pose_diff(cur_pose, self.INIT_TARGET_POSE[index])

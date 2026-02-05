@@ -39,7 +39,7 @@ reset_tool_command: [[1]]
 
 # [0.3, -0.5, 0.16026055, 0.7071068, 0, 0.7071068, 0]
 # [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
-reset_arm_command: [0.3, -0.5, 0.145026055, 0.7071068, 0, 0.7071068, 0]
+reset_arm_command: [0.3, -0.5, 0.146026055, 0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
 
 # reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
@@ -66,8 +66,8 @@ async_execution: false
 infer_frequency: 10
 
 # teleoperation intervention
-tele_cfg: !include teleop/aruco_cube_tracker/config/cube_tracker_right_only_fr3_cfg.yaml
-tele_device: "cube_tracker"
+# tele_cfg: !include teleop/aruco_cube_tracker/config/cube_tracker_right_only_fr3_cfg.yaml
+# tele_device: "cube_tracker"
 
 # for data saving 
 # data_save_path: "unitree_bread_picking_infer" # execution trajectory

@@ -17,6 +17,7 @@ import numpy as np
 from typing import Dict, Tuple, Optional
 import glog as log
 from pynput import keyboard
+from scipy.spatial.transform import Rotation as R
 
 # left_hand:
 #     cube_size: 8
@@ -55,8 +56,8 @@ class CubePoseTracker(TeleoperationDeviceBase):
     BASE_QUAT = [-0.3544481, -0.31213022, -0.60429962, 0.64168781]
     # init pose for absolute delta pose calculation, left, right, head; update during enable device
     INIT_TARGET_POSE = [[0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 1]]
-    WORLD_POSE = [None, None, None]
-    WORLD_BASIS_ANCHOR = {}; WORLD_BASIS_ANCHOR_INV = {}
+    # WORLD_POSE = [None, None, None]
+    # WORLD_BASIS_ANCHOR = {}; WORLD_BASIS_ANCHOR_INV = {}
     def __init__(self, config):
         # cube & marker related config
         all_cube_marker_ids: dict = config["all_cube_marker_ids"]
@@ -122,6 +123,7 @@ class CubePoseTracker(TeleoperationDeviceBase):
 
         # Position scale for absolute_delta
         self._position_scale = config.get("position_scale", 1.0)
+        self._rotation_enabled = config.get(f'rotation_enabled', None)
         self._require_axis_alignment = config.get(f'axis_alignment', False)
         # Optional axis mapping between cube frame and robot EE frame
         control_frame = config.get("control_frame", {})
@@ -309,6 +311,12 @@ class CubePoseTracker(TeleoperationDeviceBase):
             if mode == "absolute_delta" and self._device_enabled:
                 cur_pose = self._get_diff_trans(cur_pose, self._index[key])
                 cur_pose[:3] *= self._position_scale
+                if self._rotation_enabled and key in self._rotation_enabled:
+                    euler = R.from_quat(cur_pose[3:]).as_euler('xyz')
+                    for i, rotation_enable in enumerate(self._rotation_enabled[key]):
+                        if not rotation_enable:
+                            euler[i] = 0.0
+                    cur_pose[3:] = R.from_euler('xyz', euler).as_quat()
             pose_target[key] = cur_pose
             # Provide a tool vector compatible with teleop pipeline: [position_like, command_like, key_pressed]
             tool_target[key] = np.hstack((tool_data[key], copy.deepcopy(self._key_pressed)))
