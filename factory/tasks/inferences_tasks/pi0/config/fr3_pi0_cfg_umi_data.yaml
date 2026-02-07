@@ -39,7 +39,7 @@ reset_tool_command: [[1]]
 
 # [0.3, -0.5, 0.16026055, 0.7071068, 0, 0.7071068, 0]
 # [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
-reset_arm_command: [0.3, -0.5, 0.146026055, 0.7071068, 0, 0.7071068, 0]
+reset_arm_command: [0.3, -0.5, 0.145026055, 0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
 
 # reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
@@ -83,5 +83,5 @@ infer_frequency: 10
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "transfer the banana from the yellow plate into the white plate"
-tasks: "Pick up the bread on the right and place it on the white tray inside the container."
-# tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"
+# tasks: "Pick up the bread on the right and place it on the white tray inside the container."
+tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"

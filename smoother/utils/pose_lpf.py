@@ -28,6 +28,8 @@ class PoseLpf:
         alpha: Optional[float] = None,
         initial_pose: Optional[np.ndarray] = None,
         use_slerp: bool = True,
+        max_trans_speed: float = 1.0,
+        max_rot_speed_deg: float = 120.0,
     ) -> None:
         if alpha is None:
             if cutoff_hz is None or cutoff_hz <= 0:
@@ -44,8 +46,8 @@ class PoseLpf:
         self._use_slerp = use_slerp
         self._pose: Optional[np.ndarray] = None
         # Jump suppression: clamp per-step motion by max speeds
-        self._max_translation_speed = 1.0  # m/s
-        self._max_rotation_speed = np.deg2rad(120.0)  # rad/s
+        self._max_translation_speed = max_trans_speed  # m/s
+        self._max_rotation_speed = np.deg2rad(max_rot_speed_deg)  # rad/s
 
         if initial_pose is not None:
             self.reset(initial_pose)

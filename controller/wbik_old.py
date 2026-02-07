@@ -5,7 +5,7 @@ from controller.controller_base import ControllerBase
 import casadi
 import pinocchio.casadi as cpin
 import pinocchio as pin
-from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix
+from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix, convert_homo_2_7D_pose
 from controller.utils.weighted_moving_filter import WeightedMovingFilter
 import glog as log
 import numpy as np
@@ -18,8 +18,6 @@ class WholeBodyIk(ControllerBase):
         super().__init__(config, robot_model)
         self.tracking_frames = config["tracking_frames"]
         self.target_threshold = config.get("target_threshold", 8e-3)
-        self.rot_target_threshold = config.get("rot_target_threshold", 5e-3)
-        self.joint_state_threshold = config.get("joint_state_threshold", 2e-4)
         self._nullspace_tracking = config.get('nullspace_tracking', None)
         self.show_debug = config.get("show_debug", False)
         self.translation_weight = config["trans_weight"]
@@ -27,9 +25,6 @@ class WholeBodyIk(ControllerBase):
         self.nullspace_weight = config.get("nullspace_weight", 1.0)
         self.smooth_weight = config["smooth_weight"]
         self.regularization_weight = config["regularization_weight"]
-        self.solver_max_iter = config.get("max_iter", 50)
-        self.solver_tol = config.get("solver_tol", 1e-5)
-        self.acceptable_tol = config.get("acceptable_tol", 1e-4)
         self.filter = WeightedMovingFilter([1.0/8] * 8, self._robot_model.nq)
         
         # init of casadi opti problem
@@ -38,39 +33,6 @@ class WholeBodyIk(ControllerBase):
         # cache for reducing solution time
         self.previous_robot_position = None
         self.previous_solution = None
-        self.previous_targets = None
-        
-    @staticmethod
-    def _rotation_distance(R_a: np.ndarray, R_b: np.ndarray) -> float:
-        cos_theta = 0.5 * (np.trace(R_a @ R_b.T) - 1.0)
-        cos_theta = np.clip(cos_theta, -1.0, 1.0)
-        return float(np.arccos(cos_theta))
-    
-    def _is_target_updated(self, target_values: list[np.ndarray]) -> bool:
-        if self.previous_targets is None or len(self.previous_targets) != len(target_values):
-            return True
-        
-        for i, cur_target in enumerate(target_values):
-            prev_target = self.previous_targets[i]
-            track_cfg = self.tracking_frames[i]
-            if track_cfg["require_trans"] and track_cfg["require_rot"]:
-                trans_diff = np.linalg.norm(cur_target[:3, 3] - prev_target[:3, 3])
-                if trans_diff > self.target_threshold:
-                    return True
-                rot_diff = self._rotation_distance(cur_target[:3, :3], prev_target[:3, :3])
-                if rot_diff > self.rot_target_threshold:
-                    return True
-            elif track_cfg["require_trans"]:
-                if np.linalg.norm(cur_target - prev_target) > self.target_threshold:
-                    return True
-            elif track_cfg["require_rot"]:
-                rot_diff = self._rotation_distance(cur_target, prev_target)
-                if rot_diff > self.rot_target_threshold:
-                    return True
-        return False
-    
-    def _update_target_cache(self, target_values: list[np.ndarray]) -> None:
-        self.previous_targets = [np.array(value, copy=True) for value in target_values]
         
     def compute_controller(self, target, robot_state: RobotJointState | None = None):
         """
@@ -80,18 +42,21 @@ class WholeBodyIk(ControllerBase):
                     value: 7D pose, [x,y,z,qx,qy,qz,qw] 
             @return: return the actuated joint positions (dim: nv)
         """
-        if robot_state is None:
-            raise ValueError("robot_state should not be None for WholeBodyIk")
-        
         # init of the problem
-        init_q = np.asarray(robot_state._positions).flatten()
-        init_guess = self.previous_solution if self.previous_solution is not None else init_q
-        self.opti.set_initial(self.var_q, init_guess)
-        # pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
+        init_q = robot_state._positions
+        self.opti.set_initial(self.var_q, init_q)
+        
+        # if self.previous_robot_position is None or not np.allclose(init_q, self.previous_robot_position):
+        # log.info(f'Updated the kinematics!!!!')
+        pin.framesForwardKinematics(self.pin_model, self.pin_data, init_q)
+        pin.computeForwardKinematicsDerivatives(self.pin_model, self.pin_data, init_q, 
+                                    robot_state._velocities, robot_state._accelerations)
+            # self.previous_robot_position = init_q  
             
         # set parameter values
-        self.opti.set_value(self.parameters[0], init_guess)
+        self.opti.set_value(self.parameters[0], init_q)
 
+        target_updated = False
         target_values = []
         for i in range(len(target)):
             target_dict = target[i]
@@ -101,44 +66,47 @@ class WholeBodyIk(ControllerBase):
                 raise ValueError("target frame name is not matching: "
                                     f"expected: {self.tracking_frames[i]['name']}, actual: {frame_name}")
             
+            tracking_frame_name = self.tracking_frames[i]["name"]
+            cur_state = self._robot_model.get_frame_pose(tracking_frame_name, init_q, False, "single")
+            cur_state = convert_homo_2_7D_pose(cur_state)
             if self.tracking_frames[i]["require_trans"] and self.tracking_frames[i]["require_rot"]:
-                target_value = convert_7D_2_homo(value)
+                raw_value = value 
+                target_value = convert_7D_2_homo(raw_value)
             # @TODO: support only trans or only rot
             elif self.tracking_frames[i]["require_trans"]:
-                target_value = value[:3]
+                raw_value = value[:3]; cur_state = cur_state[:3]
+                target_value = raw_value
             elif self.tracking_frames[i]["require_rot"]:
-                target_value = convert_quat_to_rot_matrix(value[:4])
+                raw_value = value[:4]; cur_state = cur_state[3:]
+                target_value = convert_quat_to_rot_matrix(raw_value)
             target_values.append(target_value)
+            
+            if self.previous_solution is not None:
+                # {self.parameters[i + 1].shape}
+                diff = np.linalg.norm(cur_state - raw_value)
+                if diff > self.target_threshold:
+                    target_updated = True
+                # log.info(f'Target updated {target_updated} for {i}th target with diff {diff}')
         
         # update target to the optimization problem
+        # if target_updated or self.previous_solution is None:
         for i, cur_target in enumerate(target_values):
             self.opti.set_value(self.parameters[i+1], cur_target)
-        
-        target_updated = self._is_target_updated(target_values)
-        robot_state_updated = True
-        if self.previous_robot_position is not None:
-            robot_state_updated = np.linalg.norm(init_q - self.previous_robot_position) > self.joint_state_threshold
-        need_solve = self.previous_solution is None or target_updated or robot_state_updated
-        self.previous_robot_position = np.array(init_q, copy=True)
-        self._update_target_cache(target_values)
+        target_updated = True
 
         # solve optimization
         try:
-            if need_solve:
+            if target_updated or self.previous_solution is None:
                 start = time.perf_counter()
-                self.opti.solve()
-                solve_time = (time.perf_counter() - start) * 1000.0
+                soln = self.opti.solve()
+                solve_time = time.perf_counter() - start
                 # log.info(f'solve time: {solve_time*1000:.1f}ms')
-                q_target = np.asarray(self.opti.value(self.var_q)).flatten()
+                q_target = self.opti.value(self.var_q)
                 self.previous_solution = q_target
-                if self.show_debug:
-                    log.info(f"WBIK solve time: {solve_time:.3f}ms")
-            else:
-                q_target = self.previous_solution
+            else: q_target = self.previous_solution
             
             self.filter.add_data(q_target)
-            q_target = np.asarray(self.filter.filtered_data).flatten()
-            self.previous_solution = q_target
+            q_target = self.filter.filtered_data
             # tau_eff = self._robot_model.id(q_target, robot_state._velocities, np.zeros_like(q_target))
             # q_target = np.hstack((q_target, tau_eff))
             
@@ -150,12 +118,40 @@ class WholeBodyIk(ControllerBase):
             
             return True, q_target, ["position"]*len(target)
         except RuntimeError as e:
-            # Keep controller output continuous on solver hiccups.
-            fallback_q = self.previous_solution if self.previous_solution is not None else init_q
-            fallback_q = np.asarray(fallback_q).flatten()
-            if self.show_debug:
-                log.error(f"IK solve failed, using fallback joint target: {e}")
-            return True, fallback_q, ["position"]*len(target)
+            # print(f"ERROR in convergence{e}")
+            log.error(f"IK solve failed: {e}")
+
+            # ---- 关键：只用 debug.value / debug.show_infeasibilities ----
+            try:
+                q_dbg = self.opti.debug.value(self.var_q)
+                f_dbg = self.opti.debug.value(self.opti.f)
+                g_dbg = self.opti.debug.value(self.opti.g)
+                log.error(f"q_dbg: {q_dbg.T}")
+                log.error(f"f_dbg: {f_dbg}")
+                log.error(f"g has non-finite: {~np.isfinite(g_dbg).all()}")
+                self.opti.debug.show_infeasibilities()
+                log.error(f"trans_cost: {self.opti.debug.value(self.translation_cost)}")
+                log.error(f"rot_cost:   {self.opti.debug.value(self.rotation_cost)}")
+                log.error(f"smooth:     {self.opti.debug.value(self.smooth_cost)}")
+                log.error(f"reg:        {self.opti.debug.value(self.regularization_cost)}")
+                dq_trans = casadi.jacobian(self.translation_cost, self.var_q)
+                dq_rot   = casadi.jacobian(self.rotation_cost, self.var_q)
+                dq_smooth= casadi.jacobian(self.smooth_cost, self.var_q)
+                dq_reg   = casadi.jacobian(self.regularization_cost, self.var_q)
+
+                gt = self.opti.debug.value(dq_trans)
+                gr = self.opti.debug.value(dq_rot)
+                gs = self.opti.debug.value(dq_smooth)
+                gg = self.opti.debug.value(dq_reg)
+
+                log.error(f"grad trans finite? {np.isfinite(gt).all()}")
+                log.error(f"grad rot   finite? {np.isfinite(gr).all()}")
+                log.error(f"grad smooth finite? {np.isfinite(gs).all()}")
+                log.error(f"grad reg   finite? {np.isfinite(gg).all()}")
+            except Exception as ee:
+                log.error(f"debug dump failed: {ee}")
+            return False, None, "position"
+    
     
     def _init_casadi_problem(self):
         self.pin_model, self.pin_data = self._robot_model.get_pin_model_N_data()
@@ -220,7 +216,7 @@ class WholeBodyIk(ControllerBase):
         self.opti = casadi.Opti()
         # variables
         self.var_q = self.opti.variable(self._robot_model.nq)
-        # first parameters is the last q for smoothing
+        # first parameters is the last q
         self.parameters = [self.opti.parameter(self._robot_model.nq)]
         trans_params = []
         rot_params = []
@@ -257,11 +253,10 @@ class WholeBodyIk(ControllerBase):
         opts = {
             'ipopt':{
                 'print_level':0,
-                'max_iter':self.solver_max_iter,
-                'tol':self.solver_tol,
-                'acceptable_tol':self.acceptable_tol,
-                'warm_start_init_point':'yes',
+                'max_iter':50, # 增加最大迭代次数
+                'tol':1e-5,     # 更严格的收敛条件
                 # 以下参数可以删除
+                # 'acceptable_tol':1e-5, # 可接受的容差
                 # 'mu_strategy':'adaptive', # 自适应障碍参数
                 # 'hessian_approximation':'limited-memory', # 使用L-BFGS近似
                 # 'linear_solver':'mumps', # 更稳定的线性求解器， ma57 mumps
@@ -279,15 +274,15 @@ class WholeBodyIk(ControllerBase):
     
     def _rot_err(self, frame_name, variable, scalar = 1.0):
         frame_id = self._robot_model.frames_name2id[frame_name]
-        R = self.cdata.oMf[frame_id].rotation
-        Rd = variable[:3, :3]
-        # Stable SO(3) error to avoid NaN gradients from log3 around edge cases.
-        skew_err = Rd @ R.T - R @ Rd.T
-        return scalar * 0.5 * casadi.vertcat(skew_err[2, 1], skew_err[0, 2], skew_err[1, 0])
+        R_err = variable[:3, :3] @ self.cdata.oMf[frame_id].rotation.T
+        err = scalar * cpin.log3(R_err)
+        # R  = self.cdata.oMf[frame_id].rotation      # 当前 R
+        # Rd = variable[:3, :3]                       # 目标 Rd
+        # err = scalar * casadi.reshape(Rd - R, 9, 1)
+        return err
         
     def _nullspace_err(self, targets:list, variable, joint_ids:list, sclars:list):
         error = 0.0
         for i, target in enumerate(targets):
             error += sclars[i] * (target - variable[joint_ids[i]])
         return error
-    

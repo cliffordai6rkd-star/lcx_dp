@@ -443,7 +443,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 3.5
+                        exec_latency = 1.6
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         # log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')
