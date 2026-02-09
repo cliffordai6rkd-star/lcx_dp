@@ -182,24 +182,12 @@ def compute_pose_diff(pose1, pose2):
     """
     diff = np.zeros(6)
     diff[:3] = pose1[:3] - pose2[:3]
-    
-    quat_error = quaternion_error(pose1[3:], pose2[3:])
-    ori_error = np.array([quat_error[0], quat_error[1], quat_error[2]])
-    ori_error = 2.0 * np.sign(quat_error[3]) * ori_error
-    # @TODO: zyx: checking
-    
-    # norm = np.linalg.norm(ori_error)
-    # if norm < 1e-15:
-    #     ori_error = np.array([1, 0, 0])
-    # else:
-    #     ori_error = (1 / norm) * ori_error
-    # angle = 2 * np.arctan2(norm, quat_error[3])
-    # # angle = 2 * np.atan2(norm, quat_error[3])
-    # if (angle > np.pi):
-    #     angle -= 2 * np.pi
-    # ori_error = angle * ori_error
 
-    diff[3:] = ori_error
+    # Log-map orientation error: e_R = log(R_des * R_cur^T), returned as rotation vector.
+    q_des = normalize_quat(np.asarray(pose1[3:], dtype=np.float64))
+    q_cur = normalize_quat(np.asarray(pose2[3:], dtype=np.float64))
+    rot_error = R.from_quat(q_des) * R.from_quat(q_cur).inv()
+    diff[3:] = rot_error.as_rotvec()
     return diff
 
 def convert_rot_matrix_to_quat(rot_matrix):

@@ -1,5 +1,9 @@
 impedance:
   enable_gravity_compensation: true
+  enable_acceleration_feedforward: false
+  # acceleration_feedforward_gain: 1.0
+  # compensate_jdot_qdot: true
+  # max_task_acceleration: [2.0, 2.0, 2.0, 4.0, 4.0, 4.0]
   # stiffness: [100.0, 100.0, 100.0, 30, 30, 30]
   stiffness: [300.0, 300.0, 300.0, 15, 15, 15]
   # arm_joint_idxes: []

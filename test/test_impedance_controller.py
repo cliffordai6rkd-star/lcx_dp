@@ -1,19 +1,20 @@
 from simulation.mujoco.mujoco_sim import MujocoSim
 from controller.impedance_controller import ImpedanceController
+from hardware.base.utils import convert_homo_2_7D_pose
 from motion.pin_model import RobotModel
 import os 
 import yaml, time
 from cfg_handling import get_cfg
 
 def main():
-    impedance_config = "controller/config/impedance_fr3_cfg.yaml"
+    impedance_config = "controller/config/impedance_fr3_pika_ati_cfg.yaml"
     impedance_config = get_cfg(impedance_config)
-    model_config = "motion/config/robot_model_fr3_cfg.yaml"
-    model_config = get_cfg(model_config)
+    model_config = "motion/config/robot_model_fr3_pika_ati_cfg.yaml"
+    model_config = get_cfg(model_config)["fr3_pika_ati"]
     print(f'model: {model_config}')
     controller_config = impedance_config["impedance"]
     print(f'controller: {controller_config}')
-    mujoco_config = "simulation/config/mujoco_fr3_scene.yaml"
+    mujoco_config = "simulation/config/mujoco_fr3_pika_ati_torque.yaml"
     mujoco_config = get_cfg(mujoco_config)["mujoco"]
     print(f'mujoco: {mujoco_config}')
     
@@ -29,12 +30,16 @@ def main():
     while True:
         # get mocap target
         target_value = mujoco.get_site_pose(target_site, "xyzw")
-        target[model.ee_link] = target_value
-        cur_tcp = mujoco.get_tcp_pose()
+        target[model.ee_link[0]] = target_value
+        # print(f'target: {target}')
         joint_states = mujoco.get_joint_states()
+        cur_tcp = model.get_frame_pose(model.ee_link[0], 
+                            joint_states._positions, True)
+        cur_tcp = convert_homo_2_7D_pose(cur_tcp)
         mujoco.set_target_mocap_pose(tcp_mocap, cur_tcp)
-        success, joint_value, mode = impedance_controller.compute_controller(target, 
-                                                                             joint_states)
+        success, joint_value, mode = impedance_controller.compute_controller(
+                                                            target, joint_states)
+        # print(f'succ: {success} mode: {mode}')
         mujoco.set_joint_command([mode] * len(joint_value), joint_value)
         time.sleep(0.001)
         
