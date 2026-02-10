@@ -564,7 +564,7 @@ class MotionFactory:
                 
     def sim_visualize_targets(self, targets: dict[str, np.ndarray]):
         if not self._robot_system._use_simulation or not self._mocap_target_site:
-            log.info(f'{self._robot_system._use_simulation} {self._mocap_target_site}')
+            # log.info(f'{self._robot_system._use_simulation} {self._mocap_target_site}')
             return 
         
         for i, (key, cur_target) in enumerate(targets.items()):

@@ -72,8 +72,8 @@ def data_starisrics_report(data_number,valid_episode_number,empty_data_number,to
     
 if __name__ == "__main__":
 
-    data_dir = "dataset/data/0120_2_bread_picking_single_88"
-    start_episode = 2
+    data_dir = "dataset/data/0201_tube_insert_240ep"
+    start_episode = 73
     end_episode = 90
     fps = 60
     skip_step_nums = 2

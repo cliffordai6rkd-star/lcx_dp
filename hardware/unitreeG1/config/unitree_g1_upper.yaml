@@ -1,8 +1,8 @@
 unitree_g1:
   dof: [7, 7]  # Dual arm DOF configuration
-  network_interface: "enx6c1ff7662180"
+  network_interface: "enp5s0"
   enable_low_level: false
-  buffer_size: 2
+  buffer_size: 5
   control_frequency: 400
   update_frequency: 300
   ankle_mode: "pr" # pr or ab

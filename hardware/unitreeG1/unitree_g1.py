@@ -5,7 +5,7 @@ from collections import deque
 from scipy.interpolate import interp1d
 from hardware.base.utils import Buffer
 from hardware.base.arm import ArmBase
-from hardware.unitreeG1.consts import Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS, G1_WRIST_PITCH_MOTORS
+from hardware.unitreeG1.consts import Mode, G1JointIndex, G1_WRIST_MOTORS, G1_WEAK_MOTORS, G1_WRIST_PITCH_MOTORS, G1_ELBOW_MOTORS
 
 # Try to import unitree_sdk2py, fall back to mock if not available
 try:
@@ -144,21 +144,23 @@ class UnitreeG1(ArmBase):
         if self._enable_low_level:
             self._robot_id = self._leg_joints + self._waist_joints + self._robot_id
         
-        # self._kp_high = 300.0
-        # self._kd_high = 3.0
-        # self._kp_low = 120.0
-        # self._kd_low = 11.0
-        # self._kp_wrist = 70
-        # self._kd_wrist = 2.6
-        self._kp_wrist_pitch = 80
-        self._kd_wrist_pitch = 10.0
-
         self._kp_high = 300.0
         self._kd_high = 3.0
         self._kp_low = 80.0
-        self._kd_low = 13.0
-        self._kp_wrist = 40.0
-        self._kd_wrist = 7.5
+        self._kd_low = 3.0
+        self._kp_wrist = 50
+        self._kd_wrist = 2.0
+        self._kp_wrist_pitch = 60
+        self._kd_wrist_pitch = 3
+        self._kp_elbow = 60.0
+        self._kd_elbow = 2.5
+
+        # self._kp_high = 300.0
+        # self._kd_high = 3.0
+        # self._kp_low = 100.0
+        # self._kd_low = 15
+        # self._kp_wrist = 30
+        # self._kd_wrist = 1
         super().__init__(config)
         
     def initialize(self):
@@ -203,6 +205,9 @@ class UnitreeG1(ArmBase):
                 elif jid in G1_WRIST_PITCH_MOTORS:
                     self._low_cmd.motor_cmd[jid].kp = self._kp_wrist_pitch
                     self._low_cmd.motor_cmd[jid].kd = self._kd_wrist_pitch
+                elif jid in G1_ELBOW_MOTORS:
+                    self._low_cmd.motor_cmd[jid].kp = self._kp_elbow
+                    self._low_cmd.motor_cmd[jid].kd = self._kd_elbow
                 else:
                     self._low_cmd.motor_cmd[jid].kp = self._kp_low
                     self._low_cmd.motor_cmd[jid].kd = self._kd_low

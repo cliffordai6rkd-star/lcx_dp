@@ -2,6 +2,7 @@ import os
 import json
 import logging_mp
 import glog as log
+import numpy as np
 import time
 
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
@@ -34,9 +35,9 @@ class Reader:
 
 
 if __name__ == "__main__":
-    data_dir = "dataset/data/0128_1_bread_picking_row1_column2_90ep"
+    data_dir = "dataset/data/0127_2_umi_bread_picking_single_135ep"
     start_episode = 1
-    end_episode = 90
+    end_episode = 152
     start_time = time.perf_counter()
     episode_reader = Reader(task_dir=data_dir)
 

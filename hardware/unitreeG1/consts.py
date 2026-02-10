@@ -69,6 +69,11 @@ G1_WRIST_MOTORS = [
     G1JointIndex.RightWristYaw,
 ]
 
+G1_ELBOW_MOTORS = [
+    G1JointIndex.LeftElbow,
+    G1JointIndex.RightElbow,
+]
+
 G1_WRIST_PITCH_MOTORS = [
     G1JointIndex.LeftWristPitch,
     G1JointIndex.RightWristPitch,
