@@ -3,7 +3,7 @@ impedance:
   enable_acceleration_feedforward: true
   # acceleration_feedforward_gain: 1.0
   # max_task_acceleration: [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
-  stiffness: [300.0, 300.0, 300.0, 150, 150, 150]
+  stiffness: [300.0, 300.0, 300.0, 130, 130, 100]
   # stiffness: [2800.0, 2800.0, 2800.0, 650, 780, 450]
   damping_mode: "critical_task_inertia"
   # arm_joint_idxes: []
@@ -27,12 +27,13 @@ impedance:
   # velocity_hard_brake_gain: 40
   velocity_limits: [2.4, 2.4, 2.4, 2.4, 1.5, 1.5, 0.85]
   velocity_soft_margin_ratio: 0.2
-  velocity_soft_brake_gain: 2.0
-  velocity_hard_brake_gain: 10.0
+  velocity_soft_brake_gain: 2.0 # 1.0
+  velocity_hard_brake_gain: 10.0 # 5.0
   # joint_velocity_damping: 5.0
+  # joint_velocity_damping: [0,0,0,0,0.1,0.2,0.5]
 
   # final torque saturation
   saturation:
     min: [-38, -28, -25, -18, -6.5, -5, -5]
     max: [38, 28, 25, 18, 6.5, 5, 5]
-  delta_tau_max: 1.5
+  delta_tau_max: 1.5 # maybe decrease for stable

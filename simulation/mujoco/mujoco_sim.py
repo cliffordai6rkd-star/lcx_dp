@@ -46,6 +46,10 @@ class MujocoSim(SimBase):
         self._render_data = None                # Render-dedicated data copy for thread safety
         self._extra_render = config["extra_render"]
         self.use_custom_key_frame = config.get("use_custom_key_frame", False)
+        self._chunk_vis_slots = self._traj_max_len * 2
+        self._chunk_vis_lock = threading.Lock()
+        self._chunk_vis_data = {}
+        self._chunk_vis_enabled = False
         
         # sim state feedback
         self._ee_site_pose = None  # [x, y, z, qx, qy, qz, qw]
@@ -78,9 +82,9 @@ class MujocoSim(SimBase):
         with mujoco.viewer.launch_passive(self._model, self._data, show_right_ui=True) as viewer:
             # Enable site frame visualization.
             viewer.opt.frame = mujoco.mjtFrame.mjFRAME_SITE
-            for i in range(self._traj_max_len):
+            for i in range(self._chunk_vis_slots):
                 self._add_geometry(viewer, [0,0,0], i)
-            viewer.user_scn.ngeom = self._traj_max_len
+            viewer.user_scn.ngeom = self._chunk_vis_slots
             viewer.sync()
             self._last_viewer_time = time.perf_counter()
             counter = 0
@@ -412,7 +416,7 @@ class MujocoSim(SimBase):
                             start += len(tool_actuators)
                     log.info(f'init tool action from keyframe: {self._init_tool_action}')
                     self.set_tool_command(self._init_tool_action)
-        
+
         # model creation based on mujoco env config
         # env_cfg = self._config["env_config"]
         # env_template = self._config["env_template"]
@@ -493,12 +497,16 @@ class MujocoSim(SimBase):
     
     def render(self, viewer):
         """Render the current state of the simulation."""
+        if self._render_chunk_trajectory(viewer):
+            return
+
         # visualize the trajectory
         if len(self._visulize_traj_data) == 0:
             return 
         
         traj_data = self._visulize_traj_data.popleft()[:3]
         self._update_geometry_position(viewer, traj_data, self._cur_traj_index)
+        viewer.user_scn.geoms[self._cur_traj_index].rgba = np.array([1, 0, 0, 1])
         self._cur_traj_index += 1
         if self._cur_traj_index == self._traj_max_len:
             self._cur_traj_index = 0
@@ -507,14 +515,66 @@ class MujocoSim(SimBase):
         mujoco.mjv_initGeom(
                         viewer.user_scn.geoms[index],
                         type=mujoco.mjtGeom.mjGEOM_SPHERE,
-                        size=[0.016, 0, 0],
+                        size=[0.012, 0, 0],
                         pos=position,
                         mat=np.eye(3).flatten(),
-                        rgba=np.array([1, 0, 0, 1])
+                        rgba=np.array([0, 0, 0, 0])
                         )
     
     def _update_geometry_position(self, viewer, position, index: int):
         viewer.user_scn.geoms[index].pos = position
+
+    def set_chunk_trajectory(self, traj_by_arm: dict[str, np.ndarray]):
+        """Visualize one full chunk in MuJoCo with color-coded order."""
+        parsed = {}
+        if isinstance(traj_by_arm, dict):
+            for arm_key in ["single", "left", "right"]:
+                if arm_key not in traj_by_arm:
+                    continue
+                points = np.asarray(traj_by_arm[arm_key], dtype=np.float64)
+                if points.ndim == 1:
+                    points = points.reshape(1, -1)
+                if points.shape[0] == 0 or points.shape[1] < 3:
+                    continue
+                parsed[arm_key] = points[:self._traj_max_len, :3].copy()
+
+        with self._chunk_vis_lock:
+            self._chunk_vis_data = parsed
+            self._chunk_vis_enabled = len(parsed) > 0
+
+    def _render_chunk_trajectory(self, viewer):
+        with self._chunk_vis_lock:
+            enabled = self._chunk_vis_enabled
+            chunk_data = {
+                key: value.copy() for key, value in self._chunk_vis_data.items()
+            }
+
+        if not enabled:
+            return False
+
+        left_points = chunk_data.get("left", chunk_data.get("single"))
+        right_points = chunk_data.get("right", None)
+        arm_blocks = [("left", left_points, 0), ("right", right_points, self._traj_max_len)]
+
+        for arm_key, arm_points, offset in arm_blocks:
+            point_num = 0 if arm_points is None else arm_points.shape[0]
+            for i in range(self._traj_max_len):
+                geom_index = offset + i
+                if arm_points is None or i >= point_num:
+                    viewer.user_scn.geoms[geom_index].pos = np.array([0.0, 0.0, -10.0])
+                    viewer.user_scn.geoms[geom_index].rgba = np.array([0.0, 0.0, 0.0, 0.0])
+                    continue
+                viewer.user_scn.geoms[geom_index].pos = arm_points[i]
+                viewer.user_scn.geoms[geom_index].rgba = self._chunk_order_rgba(i, point_num, arm_key)
+        return True
+
+    def _chunk_order_rgba(self, index: int, total: int, arm_key: str):
+        t = 0.0 if total <= 1 else float(index) / float(total - 1)
+        if arm_key == "right":
+            # right arm: red -> yellow
+            return np.array([1.0, 0.2 + 0.8 * t, 0.1, 1.0])
+        # single/left arm: blue -> green
+        return np.array([0.1, 0.3 + 0.7 * t, 1.0 - 0.8 * t, 1.0])
         
     def set_target_mocap_rotation(self, mocap_name, quat, quat_seq="xyzw"):
         mocap_id = self._model.body(mocap_name).mocapid[0]

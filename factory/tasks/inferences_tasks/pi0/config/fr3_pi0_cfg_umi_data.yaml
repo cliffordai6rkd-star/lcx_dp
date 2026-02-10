@@ -63,6 +63,7 @@ num_episodes: 100
 max_timestamps: 6000
 action_weight_mode: "uniform"
 async_execution: false
+action_weight_gain: 0.01
 infer_frequency: 10
 
 # teleoperation intervention
@@ -71,7 +72,7 @@ infer_frequency: 10
 
 # for data saving 
 # data_save_path: "unitree_bread_picking_infer" # execution trajectory
-# save_chunk_dir: "unitree_bread_picking_infer/action_chunks_robot_wo_head_absolute" # model infer action chunks
+# save_chunk_dir: "fr3_bread_picking_infer/action_chunks_fr3_absolute_color" # model infer action chunks
 # model inference succ rate stats saving
 # infer_stats_saving_dir: "dataset/data/ifner_stats_bp_umi_fr3"
 
@@ -83,5 +84,5 @@ infer_frequency: 10
 # tasks: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
 # tasks: "pick up the kiwi fruit and place it into the red box"
 # tasks: "transfer the banana from the yellow plate into the white plate"
-# tasks: "Pick up the bread on the right and place it on the white tray inside the container."
-tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"
+tasks: "Pick up the bread on the right and place it on the white tray inside the container."
+# tasks: "Pick up the tube on the right tube rack and insert to the left tube rack"

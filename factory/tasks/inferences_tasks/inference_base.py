@@ -305,6 +305,73 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             if self._async_execution:
                 time.sleep(0.001)
 
+    def _visualize_chunk_in_sim(self, pred_action_chunk: np.ndarray, chunk_anchor=None):
+        try:
+            sim = self._gym_robot._robot_motion._robot_system._simulation
+        except Exception:
+            return
+        if sim is None or not hasattr(sim, "set_chunk_trajectory"):
+            return
+
+        traj_xyz = self._chunk_to_sim_xyz(pred_action_chunk, chunk_anchor)
+        if traj_xyz:
+            sim.set_chunk_trajectory(traj_xyz)
+
+    def _chunk_to_sim_xyz(self, pred_action_chunk: np.ndarray, chunk_anchor=None) -> dict[str, np.ndarray]:
+        if self._action_type not in [ActionType.END_EFFECTOR_POSE, ActionType.END_EFFECTOR_POSE_DELTA]:
+            return {}
+
+        ee_links = self._gym_robot._robot_motion.get_model_end_effector_link_list()
+        ee_keys = ["single"] if len(ee_links) == 1 else ["left", "right"]
+        if self._gym_robot._contain_head:
+            ee_keys.append("head")
+
+        if self._action_ori_type == "euler":
+            pose_dof = 6
+        elif self._action_ori_type == "6d_rotation":
+            pose_dof = 9
+        else:
+            pose_dof = 7
+
+        gripper_position_dof = self._tool_position_dof
+        sim_world2base = self._gym_robot._robot_motion._sim_world2base
+        init_pose = getattr(self._gym_robot, "_init_pose", {})
+        traj_points = {key: [] for key in ee_keys if key != "head"}
+
+        for row in pred_action_chunk:
+            action_index = 0
+            for j, key in enumerate(ee_keys):
+                index_r = action_index + pose_dof
+                if index_r > row.shape[0]:
+                    break
+                cur_arm_action = row[action_index:index_r].copy()
+                action_index = index_r + gripper_position_dof
+
+                if self._action_ori_type == "euler":
+                    cur_arm_action = np.hstack((cur_arm_action[:3], R.from_euler("xyz", cur_arm_action[3:6]).as_quat()))
+                elif self._action_ori_type == "6d_rotation":
+                    cur_arm_action = np.hstack((cur_arm_action[:3], rot6d_to_quat(cur_arm_action[3:9])))
+
+                if key == "head":
+                    continue
+
+                if self._chunk_anchor_mode and chunk_anchor is not None and key in chunk_anchor:
+                    cur_arm_action = transform_pose(chunk_anchor[key]["pose"], cur_arm_action)
+                if self._use_relative_pose and self._chunk_anchor_mode is None and key in init_pose:
+                    cur_arm_action = transform_pose(init_pose[key], cur_arm_action)
+
+                anchor_idx = 0 if len(sim_world2base) == 1 else j
+                if anchor_idx >= len(sim_world2base):
+                    continue
+                sim_pose = transform_pose(sim_world2base[anchor_idx], cur_arm_action)
+                traj_points[key].append(sim_pose[:3])
+
+        return {
+            key: np.asarray(points, dtype=np.float64)
+            for key, points in traj_points.items()
+            if len(points) > 0
+        }
+
     @abc.abstractmethod
     def policy_reset(self):
         # raise NotImplementedError
@@ -337,6 +404,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         query_frequency = 50; num_quries = 50
         origin_chunk_anchor_mode = self._chunk_anchor_mode; origin_action_ori_type = self._action_ori_type
         origin_use_relative_pose = self._use_relative_pose
+        execution_index_lock = threading.Lock()
         for episode_id in range(self._num_episodes):
             if self._quit: break
             
@@ -430,7 +498,11 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     chunk_shape = pred_action_chunk.shape[0]
                     # log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
                     if self._save_chunk_dir:
-                        self._action_chunk_writer.add_item(actions=pred_action_chunk)
+                        pred_imgs = {}
+                        for key, img in obs.items():
+                            if "color" in key: pred_imgs[key] = dict(data=img, time_stamp=0.0)
+                        self._action_chunk_writer.add_item(
+                            actions=pred_action_chunk, colors=pred_imgs)
                     # update chunk anchor
                     if self._chunk_anchor_mode:
                         # @TODO: sleep could be deleted
@@ -447,22 +519,25 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         # log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')
-                        if np.sum(is_new) == 0:
-                            log.warn(f'action chunk is old, execute the last action from chunk only')
-                            self._execution_index = np.array([chunk_shape - 1])
-                        else:
-                            self._execution_index = np.arange(chunk_shape)[is_new]
-                        log.info(f'exeution action index: {self._execution_index}')
-                        self._execution_index += t
-                            
-                        # smooth the entire action chunk before ensembling
-                        # pose_intep = PoseTrajectoryInterpolator()
+                        with execution_index_lock:
+                            if np.sum(is_new) == 0:
+                                log.warn(f'action chunk is old, execute the last action from chunk only')
+                                self._execution_index = np.array([chunk_shape - 1])
+                            else:
+                                self._execution_index = np.arange(chunk_shape)[is_new]
+                            log.info(f'exeution action index: {self._execution_index}')
+                            self._execution_index += t
+                    self._visualize_chunk_in_sim(pred_action_chunk, chunk_anchor)
+                    # smooth the entire action chunk before ensembling
+                    # pose_intep = PoseTrajectoryInterpolator()
                 
                 if self._action_aggregation is None:
+                    query_frequency = pred_action_chunk.shape[0]
                     self._action_aggregation = ActionAggregator(query_frequency=query_frequency,
                         chunk_size=chunk_shape, max_timestamps=self._max_timestamps,
                         action_size=pred_action_chunk.shape[1], k=self._weight_gain)
-                elif t % num_quries == 0:
+                    log.info(f'set the action aggregator with query frequency {query_frequency}, chunk size {chunk_shape}, action size {pred_action_chunk.shape[1]}')
+                if t % num_quries == 0:
                     # update action chunk
                     self._action_aggregation.add_action_chunk(t, pred_action_chunk)
 
@@ -493,7 +568,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                                 self._intervention_init_anchor[key] = ee_states[key]["pose"]
                                 self._tele_init_pose_rot[key] = np.hstack(([0,0,0], ee_states[key]["pose"][3:]))
                                 self._tele_init_pose_rot_inv[key] = negate_pose(self._tele_init_pose_rot[key])
-                                log.info(f'U111111t anchor for {key}')
+                                log.info(f'Update anchor for {key}')
                                 
                             # change the aggreation action array
                             if not self._teleop_device.require_axis_alignment():
@@ -506,16 +581,18 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # log.info(f'aggregated action: {aggregated_action}')
                     # smoothed action
                     
-                    need_execution = True if not self._use_relative_pose or self._intervention else self._execution_index[0] == cur_t
+                    with execution_index_lock:
+                        need_execution = True if not self._use_relative_pose else self._execution_index[0] == cur_t
                     if need_execution:
-                        if self._use_relative_pose and not self._intervention: self._execution_index = self._execution_index[1:]
+                        with execution_index_lock:
+                            if self._use_relative_pose and not self._intervention: self._execution_index = self._execution_index[1:]
                         convert_start = time.perf_counter()
                         gym_action = self.convert_to_gym_action_single_step(
                             aggregated_action, raw_action, chunk_anchor)
                         convert_time = time.perf_counter() - convert_start
                         step_start = time.perf_counter()
                         res = self._gym_robot.step(gym_action, True)
-                        if res[0] is not None:
+                        if res[0] is not None and not self._async_execution:
                             self.convert_from_gym_obs(res[0])
                         if self._intervention: self._chunk_anchor_mode = origin_chunk_anchor_mode
                         step_time = time.perf_counter() - step_start
