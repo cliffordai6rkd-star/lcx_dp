@@ -452,7 +452,7 @@ if __name__ == "__main__":
     #   img_endpoint="tcp://0.0.0.0:5556"
     #
     # 那客户端就写成：
-    SERVER_IP = "192.168.1.99"  # 或 192.168.x.x 等
+    SERVER_IP = "192.168.123.164"  # 或 192.168.x.x 等
     CTRL_PORT = 5555
     IMG_PORT = 5556
 

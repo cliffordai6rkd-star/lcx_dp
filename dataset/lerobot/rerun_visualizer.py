@@ -399,10 +399,10 @@ if __name__ == "__main__":
 
     # # TEST DATA OF data_dir
     # dataset/data/1212_duo_unitree_bread_n_picking——214ep dataset/data/1221_duo_unitree_bread_picking_human_114ep
-    data_dir = "/home/tele/Code/hph/HIROLRobotPlatform/dataset/data/bread_picking"
-    episode_data_number = 1
+    data_dir = "/mnt/nas/ZML/0118_position2_horizontal_bread_picking_single_human_68ep"
+    episode_data_number = 16
     fps = 100
-    skip_step_nums = 3
+    skip_step_nums = 2
     action_ori_type = "quaternion"
     episode_dir = f"episode_{str(episode_data_number).zfill(4)}"
     # umi_rotation_transform = {"right": [0.7071068, 0, 0.7071068, 0]}

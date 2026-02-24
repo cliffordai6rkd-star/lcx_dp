@@ -3,7 +3,7 @@ unitree_g1_only_upper:
   mesh_offset: "assets/unitree_g1"
   # ignore hand
   frames: ["pelvis", "left_ankle_roll_link", "right_ankle_roll_link",
-          "left_hip_pitch_link", "right_hip_pitch_link", "left_tcp",
+          "left_hip_pitch_link", "right_hip_pitch_link",
           "waist_yaw_link", "waist_roll_link", "right_tcp",
           "torso_link", "left_hand_palm_link", "right_hand_palm_link",
           "left_hand_thumb_2_link", "left_hand_middle_1_link",
@@ -11,7 +11,7 @@ unitree_g1_only_upper:
           "right_hand_middle_1_link", "right_hand_index_1_link"]
   # maybe we need to lock the hand related joint
   base_link: "pelvis"
-  ee_link: ["left_tcp", "right_tcp"]
+  ee_link: ["right_tcp"]
   fixed_base: true
   lock_joints:
     - base: "pelvis"
@@ -40,15 +40,11 @@ unitree_g1_only_upper:
       end: "right_hand_middle_1_link"
     - base: "right_hand_palm_link"
       end: "right_hand_index_1_link"
+    - base: "torso_link"
+      end: "left_hand_palm_link"
     
   # not finished
   tracking_frames:
-    - name: "left_hand_palm_link"
-      dim: [4, 4]
-      require_trans: true
-      trans_scalar: 1.0
-      require_rot: true
-      rot_scalar: 1.0
     - name: "right_hand_palm_link"
       dim: [4,4]
       require_trans: true

@@ -84,6 +84,7 @@ class UnitreeG1(ArmBase):
     def __init__(self, config):
         self._network_interface = config["network_interface"]
         self._enable_low_level = config.get(f'enable_low_level', False)
+        self._arm_key = config.get("arm_key", "all")
         self._control_frequency = config.get("control_frequency", 500)
         self._update_frequency = config.get("update_frequency", 500)
         self._ankle_mode = config.get('ankle_mode', "pr")
@@ -139,8 +140,11 @@ class UnitreeG1(ArmBase):
             G1JointIndex.RightHipPitch, G1JointIndex.RightHipRoll, G1JointIndex.RightHipYaw,
             G1JointIndex.RightKnee, right_ankle[0], right_ankle[1],
         ]
-        
-        self._robot_id = self._arm_joints
+
+        indices = [0, 14]
+        if self._arm_key != "all":        
+            indices = [0, 7] if self._arm_key == "left" else [7, 14]
+        self._robot_id = self._arm_joints[indices[0]:indices[1]] 
         if self._enable_low_level:
             self._robot_id = self._leg_joints + self._waist_joints + self._robot_id
         
@@ -150,17 +154,22 @@ class UnitreeG1(ArmBase):
         self._kd_low = 3.0
         self._kp_wrist = 50
         self._kd_wrist = 2.0
-        self._kp_wrist_pitch = 60
-        self._kd_wrist_pitch = 3
-        self._kp_elbow = 60.0
-        self._kd_elbow = 2.5
+        self._kp_wrist_pitch = 50
+        self._kd_wrist_pitch = 2
+        self._kp_elbow = 100.0
+        self._kd_elbow = 5
 
         # self._kp_high = 300.0
         # self._kd_high = 3.0
-        # self._kp_low = 100.0
-        # self._kd_low = 15
-        # self._kp_wrist = 30
-        # self._kd_wrist = 1
+        # self._kp_low = 80.0
+        # self._kd_low = 3.0
+        # self._kp_wrist = 40.0
+        # self._kd_wrist = 1.5
+        # self._kp_wrist_pitch = 40.0
+        # self._kd_wrist_pitch = 1.5
+        # self._kp_elbow = 80.0
+        # self._kd_elbow = 3
+
         super().__init__(config)
         
     def initialize(self):
@@ -219,7 +228,7 @@ class UnitreeG1(ArmBase):
                     self._low_cmd.motor_cmd[jid].kp = self._kp_high
                     self._low_cmd.motor_cmd[jid].kd = self._kd_high
             self._low_cmd.motor_cmd[jid].q = self._low_state.motor_state[jid].q
-            if update_init_position:
+            if update_init_position and i in self._robot_id:
                 self._init_joint_positions[i] = self._low_state.motor_state[jid].q
         log.info(f'Unitree G1 low command initialized to current state!!')
         

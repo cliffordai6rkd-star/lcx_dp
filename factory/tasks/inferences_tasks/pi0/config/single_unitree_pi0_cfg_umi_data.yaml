@@ -1,6 +1,6 @@
 # gym
 # robot + motion factory
-motion_config: !include factory/components/motion_configs/unitree_g1_upper.yaml
+motion_config: !include factory/components/motion_configs/single_unitree_g1_upper.yaml
 max_step_nums: 150 # for gym steps
 step_frequency: 20 # gym interface step calling freq
 action_type: "end_effector_pose"
@@ -10,19 +10,21 @@ action_orientation_type: "euler"
 observation_type: "ee_pose"
 img_resize_shape: [224, 224]
 contain_ft: false
-contain_head: true
+contain_head: false
 # relative delta
-chunk_action_mode: "relative"
-# use_relative_pose: true
+# chunk_action_mode: "relative"
+use_relative_pose: true
 is_debug: false
 
 # height_thresh: 0.02
-height_thresh: 0.01
+height_thresh: 0.02
 
+init_rotation_transfrom: [0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
-reset_arm_command: [0.28, 0.2, 0.15, 0, 0, 0, 1,
-                    0.28, -0.2, 0.15, 0, 0, 0, 1,]
-reset_tool_command: [[1], [1]]
+reset_arm_command: [0.2, -0.22, 0.16, 0, 0, 0, 1,]
+reset_tool_command: [[1]]
+
+# reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
 reset_arm_to_default: false
 
 tool_control_mode: "incremental"

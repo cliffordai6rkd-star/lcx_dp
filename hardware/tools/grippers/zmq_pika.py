@@ -15,6 +15,7 @@ class ZmqPika(ToolBase):
         self._server_ip = config["ip"]
         self._ctrl_port = config.get("port", 5555)
         self._update_frequency = config.get("update_frequency", 100.0)  # Hz
+        self._use_key = config.get("key", "all")
         self._max_distance = 90.0  # mm
         self._min_distance = 0.0   # mm
         
@@ -100,12 +101,17 @@ class ZmqPika(ToolBase):
             self._zmq_interface.set_gripper_command(command, key)
         
     def set_tool_command(self, target):
-        assert len(target) == 2, "ZMQ Pika gripper need to have two targets"
+        if self._use_key == "all":
+            assert len(target) == 2, f"ZMQ Pika gripper need to have two targets but get {len(target)} with {self._use_key}"
+        else: assert len(target) == 1
+        
         if isinstance(target, dict):
-            new_command = [target["left"], target["right"]]
+            if self._use_key == "all":
+                new_command = [target["left"], target["right"]]
+            else: new_command = [target["single"]]
         else: new_command = target
         
-        keys = ["left", "right"]
+        keys = ["left", "right"] if self._use_key == "all" else [self._use_key]
         for i, command in enumerate(new_command):
             with self._gripper_check_lock:
                 gripper_ok = self._gripper_ok[keys[i]]
@@ -136,7 +142,9 @@ class ZmqPika(ToolBase):
             return None
         
         with self._lock:
-            return copy.deepcopy(self._state)
+            if self._use_key == "all":
+                return copy.deepcopy(self._state)
+            else: return copy.deepcopy(self._state[self._use_key])
     
     def stop_tool(self):
         """Stop the gripper and clean up resources"""
@@ -154,5 +162,7 @@ class ZmqPika(ToolBase):
     
     def get_tool_type_dict(self):
         """Return tool type dictionary for framework compatibility"""
-        return {'left': self._tool_type, 'right': self._tool_type}
+        if self._use_key == "all":
+            return {'left': self._tool_type, 'right': self._tool_type}
+        else: return {'single': self._tool_type}
     

@@ -17,8 +17,8 @@ class WholeBodyIk(ControllerBase):
     def __init__(self, config, robot_model: RobotModel):
         super().__init__(config, robot_model)
         self.tracking_frames = config["tracking_frames"]
-        self.target_threshold = config.get("target_threshold", 8e-3)
-        self.rot_target_threshold = config.get("rot_target_threshold", 5e-3)
+        self.target_threshold = config.get("target_threshold", 1e-3)
+        self.rot_target_threshold = config.get("rot_target_threshold", 1e-3)
         self.joint_state_threshold = config.get("joint_state_threshold", 2e-4)
         self._nullspace_tracking = config.get('nullspace_tracking', None)
         self.show_debug = config.get("show_debug", False)
@@ -28,8 +28,8 @@ class WholeBodyIk(ControllerBase):
         self.smooth_weight = config["smooth_weight"]
         self.regularization_weight = config["regularization_weight"]
         self.solver_max_iter = config.get("max_iter", 50)
-        self.solver_tol = config.get("solver_tol", 1e-5)
-        self.acceptable_tol = config.get("acceptable_tol", 1e-4)
+        self.solver_tol = config.get("solver_tol", 1e-6)
+        self.acceptable_tol = config.get("acceptable_tol", 1e-5)
         self.filter = WeightedMovingFilter([1.0/8] * 8, self._robot_model.nq)
         
         # init of casadi opti problem

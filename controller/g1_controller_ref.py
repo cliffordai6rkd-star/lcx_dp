@@ -1,22 +1,19 @@
 import casadi                                                                       
-import meshcat.geometry as mg
+# import meshcat.geometry as mg
 import numpy as np
 import pinocchio as pin                             
 import time
 from pinocchio import casadi as cpin                
 from pinocchio.robot_wrapper import RobotWrapper    
-from pinocchio.visualize import MeshcatVisualizer   
+# from pinocchio.visualize import MeshcatVisualizer   
 import os
-import sys
 from enum import IntEnum
-from pick_tracker_fixed import PikaTracker
-parent2_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(parent2_dir)
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber, ChannelFactoryInitialize # dds
 from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_                                 # idl
 from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_
 from unitree_sdk2py.utils.crc import CRC
-from robot_control.utils.weighted_moving_filter import WeightedMovingFilter
+# from robot_control.utils.weighted_moving_filter import WeightedMovingFilter
+from controller.utils.weighted_moving_filter import WeightedMovingFilter
 kTopicLowCommand = "rt/lowcmd"
 kTopicLowState = "rt/lowstate"
 G1_29_Num_Motors = 35
@@ -46,16 +43,16 @@ class DataBuffer:
 
 
 class G1_29_ArmIK:
-    def __init__(self, Unit_Test = False, Visualization = False):
+    def __init__(self, urdf_path, use_tau=False, Unit_Test = False, Visualization = False):
         np.set_printoptions(precision=5, suppress=True, linewidth=200)
-
+        self.use_tau = use_tau
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('/home/moon/code/pika/teleop/pika_tracker/assets/g1/g1_body29_hand14.urdf', '/home/moon/code/pika/teleop/pika_tracker/assets/g1')
+            self.robot = pin.RobotWrapper.BuildFromURDF(urdf_path)
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('/home/moon/code/pika/teleop/pika_tracker/assets/g1/g1_body29_hand14.urdf', '/home/moon/code/pika/teleop/pika_tracker/assets/g1') # for test
+            self.robot = pin.RobotWrapper.BuildFromURDF(urdf_path) # for test
 
         self.mixed_jointsToLockIDs = [
                                         "left_hip_pitch_joint" ,
@@ -186,41 +183,41 @@ class G1_29_ArmIK:
         self.smooth_filter = WeightedMovingFilter(np.array([0.4, 0.3, 0.2, 0.1]), 14)
         self.vis = None
 
-        if self.Visualization:
-            # Initialize the Meshcat visualizer for visualization
-            self.vis = MeshcatVisualizer(self.reduced_robot.model, self.reduced_robot.collision_model, self.reduced_robot.visual_model)
-            self.vis.initViewer(open=True) 
-            self.vis.loadViewerModel("pinocchio") 
-            self.vis.displayFrames(True, frame_ids=[101, 102], axis_length = 0.15, axis_width = 5)
-            self.vis.display(pin.neutral(self.reduced_robot.model))
+        # if self.Visualization:
+        #     # Initialize the Meshcat visualizer for visualization
+        #     self.vis = MeshcatVisualizer(self.reduced_robot.model, self.reduced_robot.collision_model, self.reduced_robot.visual_model)
+        #     self.vis.initViewer(open=True) 
+        #     self.vis.loadViewerModel("pinocchio") 
+        #     self.vis.displayFrames(True, frame_ids=[101, 102], axis_length = 0.15, axis_width = 5)
+        #     self.vis.display(pin.neutral(self.reduced_robot.model))
 
-            # Enable the display of end effector target frames with short axis lengths and greater width.
-            frame_viz_names = ['L_ee_target', 'R_ee_target']
-            FRAME_AXIS_POSITIONS = (
-                np.array([[0, 0, 0], [1, 0, 0],
-                          [0, 0, 0], [0, 1, 0],
-                          [0, 0, 0], [0, 0, 1]]).astype(np.float32).T
-            )
-            FRAME_AXIS_COLORS = (
-                np.array([[1, 0, 0], [1, 0.6, 0],
-                          [0, 1, 0], [0.6, 1, 0],
-                          [0, 0, 1], [0, 0.6, 1]]).astype(np.float32).T
-            )
-            axis_length = 0.1
-            axis_width = 10
-            for frame_viz_name in frame_viz_names:
-                self.vis.viewer[frame_viz_name].set_object(
-                    mg.LineSegments(
-                        mg.PointsGeometry(
-                            position=axis_length * FRAME_AXIS_POSITIONS,
-                            color=FRAME_AXIS_COLORS,
-                        ),
-                        mg.LineBasicMaterial(
-                            linewidth=axis_width,
-                            vertexColors=True,
-                        ),
-                    )
-                )
+        #     # Enable the display of end effector target frames with short axis lengths and greater width.
+        #     frame_viz_names = ['L_ee_target', 'R_ee_target']
+        #     FRAME_AXIS_POSITIONS = (
+        #         np.array([[0, 0, 0], [1, 0, 0],
+        #                   [0, 0, 0], [0, 1, 0],
+        #                   [0, 0, 0], [0, 0, 1]]).astype(np.float32).T
+        #     )
+        #     FRAME_AXIS_COLORS = (
+        #         np.array([[1, 0, 0], [1, 0.6, 0],
+        #                   [0, 1, 0], [0.6, 1, 0],
+        #                   [0, 0, 1], [0, 0.6, 1]]).astype(np.float32).T
+        #     )
+        #     axis_length = 0.1
+        #     axis_width = 10
+        #     for frame_viz_name in frame_viz_names:
+        #         self.vis.viewer[frame_viz_name].set_object(
+        #             mg.LineSegments(
+        #                 mg.PointsGeometry(
+        #                     position=axis_length * FRAME_AXIS_POSITIONS,
+        #                     color=FRAME_AXIS_COLORS,
+        #                 ),
+        #                 mg.LineBasicMaterial(
+        #                     linewidth=axis_width,
+        #                     vertexColors=True,
+        #                 ),
+        #             )
+        #         )
     # If the robot arm is not the same size as your arm :)
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
         scale_factor = robot_arm_length / human_arm_length
@@ -236,9 +233,9 @@ class G1_29_ArmIK:
         self.opti.set_initial(self.var_q, self.init_data)
 
         # left_wrist, right_wrist = self.scale_arms(left_wrist, right_wrist)
-        if self.Visualization:
-            self.vis.viewer['L_ee_target'].set_transform(left_wrist)   # for visualization
-            self.vis.viewer['R_ee_target'].set_transform(right_wrist)  # for visualization
+        # if self.Visualization:
+        #     self.vis.viewer['L_ee_target'].set_transform(left_wrist)   # for visualization
+        #     self.vis.viewer['R_ee_target'].set_transform(right_wrist)  # for visualization
 
         self.opti.set_value(self.param_tf_l, left_wrist)
         self.opti.set_value(self.param_tf_r, right_wrist)
@@ -259,12 +256,15 @@ class G1_29_ArmIK:
 
             self.init_data = sol_q
 
-            sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
+            real_soln = sol_q
+            if self.use_tau:
+                sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
+                real_soln =np.hstack((real_soln, sol_tauff)) 
+                
+            # if self.Visualization:
+            #     self.vis.display(sol_q)  # for visualization
 
-            if self.Visualization:
-                self.vis.display(sol_q)  # for visualization
-
-            return sol_q, sol_tauff
+            return real_soln
         
         except Exception as e:
             print(f"ERROR in convergence, plotting debug info.{e}")
@@ -283,11 +283,12 @@ class G1_29_ArmIK:
             sol_tauff = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, sol_q, v, np.zeros(self.reduced_robot.model.nv))
 
             print(f"sol_q:{sol_q} \nmotorstate: \n{current_lr_arm_motor_q} \nleft_pose: \n{left_wrist} \nright_pose: \n{right_wrist}")
-            if self.Visualization:
-                self.vis.display(sol_q)  # for visualization
+            # if self.Visualization:
+            #     self.vis.display(sol_q)  # for visualization
 
             # return sol_q, sol_tauff
-            return current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)
+            if self.use_tau: current_lr_arm_motor_q = np.hstack((current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)))
+            return current_lr_arm_motor_q
 
 
 class G1_29_JointArmIndex(IntEnum):

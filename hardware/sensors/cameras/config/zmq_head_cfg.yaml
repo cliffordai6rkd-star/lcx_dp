@@ -1,5 +1,5 @@
 zmq_camera:
-  ip: "192.168.1.99"
+  ip: "192.168.123.164"
   cam_name: "head"
   port: 5556
   image_shape: [480, 640]

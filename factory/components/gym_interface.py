@@ -1,7 +1,7 @@
 from factory.components.robot_factory import RobotFactory
 from factory.components.motion_factory import MotionFactory
 from factory.tasks.inferences_tasks.utils.collision_avoidance import solve_table_collision, prevent_table_collision
-from hardware.base.utils import transform_pose, pose_diff
+from hardware.base.utils import transform_pose, pose_diff, transform_quat
 import glog as log
 import abc, time, os
 import gymnasium as gym
@@ -43,6 +43,10 @@ class GymApi(gym.Env):
         self._reset_arm_command = config.get("reset_arm_command", None)
         if self._reset_arm_command is not None: 
             self._reset_arm_command = np.array(self._reset_arm_command)
+        self._init_rot_trans = config.get("init_rotation_transfrom", None)
+        if self._init_rot_trans is not None:
+            log.info(f'init rot trans: {self._init_rot_trans}')
+            self._init_rot_trans = np.array(self._init_rot_trans)
         self._reset_tool_command = config.get("reset_tool_command", [[1]])
         self._reset_arm_to_default = config.get("reset_arm_to_default", False)
         self._is_debug = config.get("is_debug", False)
@@ -72,11 +76,16 @@ class GymApi(gym.Env):
     def set_init_pose(self):
         time.sleep(1.0)
         ee_states = self.get_ee_state()
-        for key, cur_ee_state in ee_states.items():
+        for i, (key, cur_ee_state) in enumerate(ee_states.items()):
             self._delta_action_target[key] = cur_ee_state["pose"]
             self._last_ee[key] = cur_ee_state["pose"]
             log.info(f'Updated delta action, {self._delta_action_target[key]} for {key}!!!')
-            self._init_pose[key] = cur_ee_state["pose"]
+            if self._reset_arm_command is not None and self._reset_space == "cartesian":
+                self._init_pose[key] = self._reset_arm_command[i*7:i*7+7]
+            else:
+                self._init_pose[key] = cur_ee_state["pose"]
+            if self._init_rot_trans is not None:
+                self._init_pose[key][3:] = transform_quat(self._init_pose[key][3:], self._init_rot_trans) 
             log.info(f'Updated init pose!!!')
             if self._use_relative_pose or self._chunk_anchor_mode:
                 # for action
@@ -129,11 +138,13 @@ class GymApi(gym.Env):
                 if self._use_relative_pose and self._chunk_anchor_mode is None:
                     # for relative pose action representation
                     cur_arm_action = transform_pose(self._init_pose[key], cur_arm_action)
-                
+                if self._init_rot_trans is not None:
+                    rot_offset = R.from_quat(self._init_rot_trans).inv().as_quat()
+                    cur_arm_action[3:] = transform_quat(cur_arm_action[3:], rot_offset)
                 # @TODO: desk collision avoidance, 厚度维35mm， 开合维100mm
                 # solve_table_collision(cur_arm_action, 0.1, 0.02, 35/1000.0)
                 if prevent_table_collision(cur_arm_action, self._collision_height_thresh):
-                    log.info(f'arm action z {cur_arm_action[2]} for {key} change to a thresh due to possible collision')
+                    log.warn(f'arm action z {cur_arm_action[2]} for {key} change to a thresh due to possible collision')
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
         else:

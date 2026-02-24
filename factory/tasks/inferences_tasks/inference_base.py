@@ -1,6 +1,6 @@
 import abc, json
 from factory.components.gym_interface import GymApi
-from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose, negate_pose, quat_to_rot6d
+from hardware.base.utils import ToolControlMode, rot6d_to_quat, transform_pose, negate_pose, quat_to_rot6d, transform_quat
 from factory.tasks.inferences_tasks.utils.display import display_images
 from factory.tasks.inferences_tasks.utils.plotter import AnimationPlotter
 from factory.tasks.inferences_tasks.utils.interpolation import PoseTrajectoryInterpolator
@@ -191,8 +191,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     cur_arm_action = cur_arm_action[:7]
                     cur_arm_action[3:] = rot6d_to_quat(rot_6d)
                 # obs anchor   
-                if self._chunk_anchor_mode:
-                    if ee_keys[j] == "head": continue
+                if self._chunk_anchor_mode and ee_keys[j] != "head":
                     assert chunk_anchor is not None
                     log.info(f'chunk anchor len: {chunk_anchor[ee_keys[j]]["pose"].shape}')
                     # cur_obs_anchor = chunk_anchor[j*(7+gripper_position_dof):j*(7+gripper_position_dof)+7]
@@ -223,7 +222,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 else: 
                     self._last_gripper_open[j] = False
                     self._gripper_close_times[j] += 1
-                    log.info(f'gripper close value {cur_tool_action[0]}. close time: {self._gripper_close_times[j]}')
+                    # log.info(f'gripper close value {cur_tool_action[0]}. close time: {self._gripper_close_times[j]}')
                 if self._gripper_close_times[j] == self._grasp_frame and self._infer_stats_saving_dir:
                     # 从开到闭合
                     self._infer_stats[len(self._infer_stats)-1][j].append(ee_states[ee_keys[j]]["pose"])
@@ -359,6 +358,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     cur_arm_action = transform_pose(chunk_anchor[key]["pose"], cur_arm_action)
                 if self._use_relative_pose and self._chunk_anchor_mode is None and key in init_pose:
                     cur_arm_action = transform_pose(init_pose[key], cur_arm_action)
+                if self._gym_robot._init_rot_trans is not None:
+                    rot_offset = R.from_quat(self._gym_robot._init_rot_trans).inv().as_quat()
+                    cur_arm_action[3:] = transform_quat(cur_arm_action[3:], rot_offset)
+                    # cur_arm_action[2] += 0.075
 
                 anchor_idx = 0 if len(sim_world2base) == 1 else j
                 if anchor_idx >= len(sim_world2base):
@@ -506,7 +509,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # update chunk anchor
                     if self._chunk_anchor_mode:
                         # @TODO: sleep could be deleted
-                        time.sleep(2.5)
+                        time.sleep(0.1)
                         chunk_anchor = self._gym_robot.get_ee_state()
                     if self._use_relative_pose:
                         # self._gym_robot.get_camera_infos()
@@ -515,7 +518,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             ) * infer_dt + obs_timestamp
                         # action timestamp check
                         # using 0.005 as the action execution latency
-                        exec_latency = 1.6
+                        exec_latency = 0.5
                         cur_time = time.perf_counter()
                         is_new = action_timestamps > (cur_time + exec_latency)
                         # log.info(f'action ts: {action_timestamps} {cur_time + exec_latency}')

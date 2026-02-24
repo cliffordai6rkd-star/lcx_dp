@@ -6,7 +6,8 @@ from motion.pin_model import RobotModel
 from motion.duo_model import DuoRobotModel
 from controller.controller_base import ControllerBase, IKController
 from controller.whole_body_ik import WholeBodyIk
-from controller.impedance_controller import ImpedanceController
+from controller.g1_controller import G1Controller
+from controller.impedance_controller import ImpedanceController 
 
 from controller.cartesian_impedance_controller import CartesianImpedanceController
 from controller.duo_controller import DuoController
@@ -73,6 +74,7 @@ class MotionFactory:
             'whole_body_ik': WholeBodyIk,
             'cartesian_impedance': CartesianImpedanceController,
             'duo_controller': DuoController,
+            'g1_ik': G1Controller,
         }
         self._trajectory_classes = {
             'cart_polynomial': CartessianTrajectory
@@ -425,8 +427,8 @@ class MotionFactory:
                         pose_error = compute_pose_diff(cur_tcp, np.array(arm_command[i*7:i*7+7]))
                         erros += np.linalg.norm(pose_error)
                     log.info(f'reset cartesian command error: {erros}')
-                    if erros < 0.35 or counter > 3500:
-                        if counter > 3500:
+                    if erros < 0.05 or counter > 500:
+                        if counter > 500:
                             log.warn(f'Break reset due to timeout')
                         break
                     time.sleep(0.001)

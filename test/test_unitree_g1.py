@@ -65,6 +65,7 @@ def test_hw_state_to_sim(
     g1_cfg_path = os.path.join(cur_path, '..', g1_cfg_path)
     mujoco_cfg = _load_subcfg(mujoco_cfg_path, ["mujoco"])
     g1_cfg = _load_subcfg(g1_cfg_path, ["unitree_g1", "unitreeG1", "g1"])
+    g1_cfg["actuate_motors"] = False
 
     sim = MujocoSim(mujoco_cfg)
     g1 = UnitreeG1(g1_cfg)

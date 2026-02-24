@@ -20,15 +20,20 @@ head_config: !include hardware/head/config/zmq_servo_head_cfg.yaml
 control_frequency: 300
 controller_type: "whole_body_ik"
 controller_config: !include controller/config/whole_body_ik_unitree_g1_upper.yaml
+# controller_type: "g1_ik"
+# controller_config: !include controller/config/g1_ik_unitree_g1_upper.yaml
 
 sensor_dicts:
   cameras:
     - name: "head"
       type: "zmq_camera"
       cfg: !include hardware/sensors/cameras/config/zmq_head_cfg.yaml
-    - name: "left_fisheye"
+    # - name: "left_fisheye"
+    #   type: "zmq_camera"
+    #   cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
+    - name: "right_hand"
       type: "zmq_camera"
-      cfg: !include hardware/sensors/cameras/config/zmq_left_fisheye_cfg.yaml
+      cfg: !include hardware/sensors/cameras/config/zmq_right_hand_cfg.yaml
     - name: "right_fisheye"
       type: "zmq_camera"
       cfg: !include hardware/sensors/cameras/config/zmq_right_fisheye_cfg.yaml
