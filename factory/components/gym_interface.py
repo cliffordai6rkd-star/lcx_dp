@@ -144,7 +144,7 @@ class GymApi(gym.Env):
                 # @TODO: desk collision avoidance, 厚度维35mm， 开合维100mm
                 # solve_table_collision(cur_arm_action, 0.1, 0.02, 35/1000.0)
                 if prevent_table_collision(cur_arm_action, self._collision_height_thresh):
-                    log.warn(f'arm action z {cur_arm_action[2]} for {key} change to a thresh due to possible collision')
+                    log.debug(f'arm action z {cur_arm_action[2]} for {key} change to a thresh due to possible collision')
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
         else:
@@ -396,7 +396,7 @@ class GymApi(gym.Env):
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
         # comment for testing only
-        self._robot_motion.update_high_level_command(poses)
+        # self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}

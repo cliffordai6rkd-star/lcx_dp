@@ -193,7 +193,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 # obs anchor   
                 if self._chunk_anchor_mode and ee_keys[j] != "head":
                     assert chunk_anchor is not None
-                    log.info(f'chunk anchor len: {chunk_anchor[ee_keys[j]]["pose"].shape}')
+                    log.warn(f'chunk anchor len: {chunk_anchor[ee_keys[j]]["pose"].shape}, {chunk_anchor[ee_keys[j]]["pose"]}')
                     # cur_obs_anchor = chunk_anchor[j*(7+gripper_position_dof):j*(7+gripper_position_dof)+7]
                     cur_obs_anchor = chunk_anchor[ee_keys[j]]["pose"]
                     cur_arm_action = transform_pose(cur_obs_anchor, cur_arm_action)
@@ -460,7 +460,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     self._infer_stats[episode_id][ee_id] = []
                      
             self._episode_start = False; counter = 0
-            time.sleep(0.5)
+            time.sleep(0.5); execution_t = 0
             while not self._episode_start:
                 if counter < 5:
                     log.info(f'Please press s for start!!!!!!!!')
@@ -499,7 +499,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     chunk_started = time.perf_counter()
                     pred_action_chunk = self.policy_prediction(obs) # [:query_frequency]
                     chunk_shape = pred_action_chunk.shape[0]
-                    # log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
+                    log.info(f'chunk shape: {pred_action_chunk.shape}, time: {1.0 / chunk_dt}Hz')
                     if self._save_chunk_dir:
                         pred_imgs = {}
                         for key, img in obs.items():
@@ -509,7 +509,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                     # update chunk anchor
                     if self._chunk_anchor_mode:
                         # @TODO: sleep could be deleted
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                         chunk_anchor = self._gym_robot.get_ee_state()
                     if self._use_relative_pose:
                         # self._gym_robot.get_camera_infos()
@@ -602,7 +602,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         
                     dt = time.perf_counter() - start_time
                     if dt < 1.0 / 60.0:
-                        sleep_time = (1.0 / 50) -  dt
+                        slteep_time = (1.0 / 50) -  dt
                         # time.sleep(0.4*sleep_time)
                         time.sleep(0.001)
                     else: 
@@ -623,15 +623,15 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                         execute_one_action(cur_t)
                 
                 if not self._async_execution:
-                    execute_one_action(t)
-                    t += 1
+                    execute_one_action(execution_t)
+                    execution_t += 1
                 else:
                     if async_execute_thread is not None and async_execute_thread.is_alive():
                         async_execute_thread.join()
                     
-                    async_execute_thread = threading.Thread(target=execute_chunk_action, args=(t,))
+                    async_execute_thread = threading.Thread(target=execute_chunk_action, args=(execution_t,))
                     async_execute_thread.start()
-                    t = t + query_frequency
+                    execution_t = execution_t + query_frequency
                     
                                 
     @abc.abstractmethod

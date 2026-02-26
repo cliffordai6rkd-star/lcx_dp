@@ -14,15 +14,15 @@ observation_type: "ee_pose"
 img_resize_shape: [224, 224]
 contain_ft: false
 # relative delta
-# chunk_action_mode: "relative"
-use_relative_pose: true
+chunk_action_mode: "relative"
+# use_relative_pose: true
 is_debug: false
 
 # collision related parameters
 tool_wdith: 0.1
 tool_thickness: 0.0255
-# height_thresh: 0.002
-height_thresh: 0.01
+# height_thresh: 0.01
+height_thresh: 0.05
 
 # reset_space: "joint"
 # z: 0.32969364
@@ -39,7 +39,8 @@ reset_tool_command: [[1]]
 
 # [0.3, -0.5, 0.16026055, 0.7071068, 0, 0.7071068, 0]
 # [0.5, -0.4, 0.1366055, 0.73920153, 0.02928333, 0.67255161, 0.01994781]
-reset_arm_command: [0.3, -0.5, 0.145026055, 0.7071068, 0, 0.7071068, 0]
+# absolute z: 0.145
+reset_arm_command: [0.3, -0.5, 0.165026055, 0.7071068, 0, 0.7071068, 0]
 reset_space: "cartesian"
 
 # reset_arm_command: [-2.6659410370890444, 1.6631760611636959, 1.1773280791774523, -2.671267167226573, -0.38004850108771543, 3.2228036774628266, -0.8396972389370242]
@@ -61,7 +62,7 @@ enable_hardware: true
 
 num_episodes: 100
 max_timestamps: 6000
-action_weight_mode: "uniform"
+action_weight_mode: "no"
 async_execution: false
 action_weight_gain: 0.01
 infer_frequency: 10

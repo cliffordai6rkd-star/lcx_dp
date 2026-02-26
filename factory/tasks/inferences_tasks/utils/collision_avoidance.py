@@ -24,8 +24,9 @@ def solve_table_collision(ee_pose, gripper_width, height_threshold,
     
 def prevent_table_collision(ee_pose, height_threshold):
     height = max(height_threshold, ee_pose[2])
+    res = ee_pose[2] < height_threshold
     ee_pose[2] = height
-    return ee_pose[2] < height_threshold
+    return res
 
 # def solve_sphere_collision(ee_poses, robots_config):
 #     num_robot = len(robots_config)
