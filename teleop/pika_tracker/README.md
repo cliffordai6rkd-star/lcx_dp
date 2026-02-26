@@ -20,6 +20,7 @@
         cd install/lib
         sudo chmod 777 survive-cli
         ./survive-cli --force-calibrate
+        ./survive-cli --globalscenesolver 0
     ```
     
 保证两个基站配置完成， 运行完校准文件后输出为以下内容才到：

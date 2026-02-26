@@ -172,7 +172,7 @@ def extract_pose_event(ev):
 
 # ----------------- live pose reader -----------------
 class PoseStream:
-    def __init__(self, tracker_substr="", maxlen=400):
+    def __init__(self, tracker_substr="", maxlen=200):
         self.ctx = make_ctx()
         self.tracker_substr = tracker_substr
         self.lock = threading.Lock()
