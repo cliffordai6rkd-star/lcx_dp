@@ -7,6 +7,10 @@ from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import ctypes
+import pysurvive, sys
+from pysurvive.pysurvive_generated import *
+import os
 
 # ----------------- math utils -----------------
 def normalize(v):
@@ -134,45 +138,72 @@ def calibrate_LH_to_world_with_inliers(floor_inliers, p0, p1):
     return build_T(R, t), n
 
 # ----------------- pysurvive adapter (best-effort) -----------------
-def make_ctx():
-    import pysurvive
-    for name in ["SimpleContext", "SurviveSimpleContext", "Context", "SurviveContext"]:
-        if hasattr(pysurvive, name):
-            return getattr(pysurvive, name)()
-    raise RuntimeError("Cannot find a suitable pysurvive context class. Check your bindings/examples.")
+def make_ctx(extra_survive_args=None):
+    extra_survive_args = extra_survive_args or []
 
-def poll_event(ctx):
-    for fn in ["poll", "Poll", "poll_next_event", "NextEvent"]:
-        if hasattr(ctx, fn):
-            return getattr(ctx, fn)()
-    raise RuntimeError("Cannot find an event polling method on context.")
+    argv = ["calib_py"] + sys.argv[1:]
+    if "--globalscenesolver" not in argv:
+        argv += ["--globalscenesolver", "0"]
 
-def extract_pose_event(ev):
+    argv += extra_survive_args
+    return pysurvive.SimpleContext(argv)
+
+def _as_array3(v):
+    # 1) indexable
+    try:
+        return np.array([v[0], v[1], v[2]], dtype=float)
+    except Exception:
+        pass
+    # 2) has x/y/z
+    if all(hasattr(v, a) for a in ("x","y","z")):
+        return np.array([v.x, v.y, v.z], dtype=float)
+    if all(hasattr(v, a) for a in ("X","Y","Z")):
+        return np.array([v.X, v.Y, v.Z], dtype=float)
+
+    # 3) ctypes: try to read raw memory as 3 floats
+    try:
+        buf = ctypes.string_at(ctypes.addressof(v), ctypes.sizeof(v))
+        arr = np.frombuffer(buf, dtype=np.float32)
+        if arr.size >= 3:
+            return arr[:3].astype(float)
+    except Exception:
+        pass
+    raise RuntimeError(f"Cannot parse vec3 from type {type(v)}")
+
+def _as_quat4(q):
+    try:
+        return np.array([q[0], q[1], q[2], q[3]], dtype=float)
+    except Exception:
+        pass
+    if all(hasattr(q, a) for a in ("w","x","y","z")):
+        return np.array([q.w, q.x, q.y, q.z], dtype=float)
+    if all(hasattr(q, a) for a in ("W","X","Y","Z")):
+        return np.array([q.W, q.X, q.Y, q.Z], dtype=float)
+    try:
+        buf = ctypes.string_at(ctypes.addressof(q), ctypes.sizeof(q))
+        arr = np.frombuffer(buf, dtype=np.float32)
+        if arr.size >= 4:
+            return arr[:4].astype(float)
+    except Exception:
+        pass
+    return None  # rotation optional
+
+def extract_pos_from_updated(updated):
     """
-    Returns dict { key: str, pos: (3,) }
+    updated: object with Pose() -> tuple(len=2), tuple[0] is struct_LinmathPose
+    Returns pos(3,), quat_wxyz(4,) or None
     """
-    if ev is None:
-        return None
+    pt = updated.Pose()
+    pose = pt[0] if isinstance(pt, tuple) else pt  # struct_LinmathPose
 
-    pose = getattr(ev, "pose", None) or getattr(ev, "Pose", None)
-    if pose is None:
-        return None
+    pos = _as_array3(pose.Pos)
+    quat = _as_quat4(pose.Rot)  # may be None if fails
 
-    pose = np.array(pose, dtype=float).reshape(-1)
-    if pose.size < 3:
-        return None
-
-    pos = pose[0:3]
-
-    name = getattr(ev, "object", None) or getattr(ev, "name", None) or getattr(ev, "obj_name", None)
-    serial = getattr(ev, "serial", None) or getattr(ev, "device_serial", None)
-
-    key = serial or name or "unknown"
-    return {"key": str(key), "pos": pos}
+    return pos, quat
 
 # ----------------- live pose reader -----------------
 class PoseStream:
-    def __init__(self, tracker_substr="", maxlen=200):
+    def __init__(self, tracker_substr="", maxlen=400):
         self.ctx = make_ctx()
         self.tracker_substr = tracker_substr
         self.lock = threading.Lock()
@@ -183,20 +214,22 @@ class PoseStream:
         self.thread.start()
 
     def _run(self):
-        while self.running:
-            ev = poll_event(self.ctx)
-            pe = extract_pose_event(ev)
-            if pe is None:
-                time.sleep(0.001)
+        while self.running and self.ctx.Running():
+            updated = self.ctx.NextUpdated()
+            if not updated:
                 continue
 
-            self.seen[pe["key"]] = self.seen.get(pe["key"], 0) + 1
-            if self.tracker_substr and self.tracker_substr not in pe["key"]:
+            # key = updated.Name()   # 通常是 "T20" 之类（在你的 log 里就是 T20）
+            key = str(simple_serial_number(updated.ptr), 'utf-8')
+            self.seen[key] = self.seen.get(key, 0) + 1
+
+            if self.tracker_substr and self.tracker_substr not in key:
                 continue
+
+            pos, quat = extract_pos_from_updated(updated)
 
             with self.lock:
-                self.buf.append((time.time(), pe["pos"].copy(), pe["key"]))
-            time.sleep(0.001)
+                self.buf.append((time.time(), pos.copy(), key))
 
     def stop(self):
         self.running = False
@@ -247,7 +280,7 @@ def autoscale(ax, pts, margin=0.2):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true", help="List tracker keys seen (5s)")
-    ap.add_argument("--tracker-serial", type=str, default="", help="Substring to select tracker (serial/name)")
+    ap.add_argument("--tracker-serial", type=str, default="LHR-0DFD738C", help="Substring to select tracker (serial/name)")
     ap.add_argument("--out", type=str, default="config/T_W_LH.json")
     ap.add_argument("--still-speed", type=float, default=0.02, help="m/s threshold considered STILL")
     ap.add_argument("--ransac-thresh", type=float, default=0.01, help="RANSAC inlier threshold (m)")
@@ -453,8 +486,11 @@ def main():
                 "tracker_key": hist[-1][2],
                 "notes": "W: origin=P0 on floor; +X is P0->P1 projection on floor; +Z is floor normal (from RANSAC inliers)."
             }
-
-            with open(args.out, "w") as f:
+            
+            cur_dir = os.path.dirname(os.path.abspath(__file__))
+            out_path = os.path.join(cur_dir, args.out)
+            # os.makedirs(out_path, exist_ok=True)
+            with open(out_path, "w") as f:
                 json.dump(out, f, indent=2)
 
             print(f"Saved {args.out}")
