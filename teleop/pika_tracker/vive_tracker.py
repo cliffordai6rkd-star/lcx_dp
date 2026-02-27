@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import threading
 import time
@@ -107,7 +108,7 @@ class PysurviveTrackerReader:
             self._latest_poses.clear()
 
     def _worker(self) -> None:
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set() and self._context_running():
             try:
                 updated = self._next_updated()
                 if updated is None:
@@ -126,15 +127,34 @@ class PysurviveTrackerReader:
                 logger.exception("pysurvive polling loop error: %s", exc)
                 time.sleep(max(self._poll_interval, 0.01))
 
+    def _context_running(self) -> bool:
+        if self._context is None:
+            return False
+        running_fn = getattr(self._context, "Running", None)
+        if not callable(running_fn):
+            return True
+        try:
+            return bool(running_fn())
+        except Exception:
+            return True
+
     def _create_context(self) -> Any:
-        for cls_name in ("SimpleContext", "SurviveSimpleContext", "Context", "SurviveContext"):
+        default_argv = ["vive_tracker_py"] + self._args
+        if "--globalscenesolver" not in default_argv:
+            default_argv += ["--globalscenesolver", "0"]
+
+        for cls_name in ("SimpleContext", "SurviveSimpleContext"):
             cls = getattr(pysurvive, cls_name, None)
             if cls is None:
                 continue
             try:
-                return cls(self._args) if self._args else cls()
+                return cls(default_argv)
             except TypeError:
-                return cls()
+                pass
+            try:
+                return cls(self._args)
+            except TypeError:
+                pass
         raise RuntimeError("Cannot find a compatible pysurvive context class")
 
     def _next_updated(self) -> Any:
@@ -146,106 +166,80 @@ class PysurviveTrackerReader:
             if fn is not None:
                 return fn()
 
-        for fn_name in ("poll", "Poll", "poll_next_event", "NextEvent"):
-            fn = getattr(self._context, fn_name, None)
-            if fn is not None:
-                return fn()
-
-        raise RuntimeError("No polling method found on pysurvive context")
+        raise RuntimeError("No func method found on pysurvive context update")
 
     def _extract_pose(self, updated: Any) -> Optional[Tuple[str, np.ndarray]]:
-        # Typical pysurvive object path: updated.Pose() -> (pose_data, timestamp)
+        # pysurvive path used by calibration_world_frame.py:
+        # updated.Pose() -> (struct_LinmathPose, timestamp)
         pose_fn = getattr(updated, "Pose", None)
         if callable(pose_fn):
             pose_obj = pose_fn()
-            pose_data, _ = self._split_pose_obj(pose_obj)
+            # pose_data, _ = self._split_pose_obj(pose_obj)
+            pose_data, time_stamp = pose_obj
             if pose_data is None:
                 return None
-
-            pos = getattr(pose_data, "Pos", None)
-            rot = getattr(pose_data, "Rot", None)
-            if pos is None or rot is None or len(pos) < 3 or len(rot) < 4:
+            pos = self._as_array3(getattr(pose_data, "Pos", None))
+            if pos is None:
                 return None
+            rot = self._as_quat4(getattr(pose_data, "Rot", None))
+            if rot is None:
+                return None 
 
             uid = self._device_uid(updated)
-            tracker_pose = np.array(
-                [
-                    float(pos[0]),
-                    float(pos[1]),
-                    float(pos[2]),
-                    float(rot[1]),
-                    float(rot[2]),
-                    float(rot[3]),
-                    float(rot[0]),
-                ],
-                dtype=np.float64,
-            )
+            # quaternion to xyzw
+            tracker_pose = np.array([pos[0], pos[1], pos[2],
+                rot[1], rot[2], rot[3], rot[0],], dtype=np.float64)
             return uid, tracker_pose
-
-        # Event path fallback: event.pose may contain [x, y, z, ...]
-        event_pose = getattr(updated, "pose", None) or getattr(updated, "Pose", None)
-        if event_pose is None:
+        raise ValueError(f'Could not extract pose from update')
+    
+    def _as_array3(self, value: Any) -> Optional[np.ndarray]:
+        if value is None:
             return None
 
-        if hasattr(event_pose, "__iter__"):
-            arr = list(event_pose)
-            if len(arr) < 3:
-                return None
-            uid = self._device_uid(updated)
-            quat = [0.0, 0.0, 0.0, 1.0]
-            if len(arr) >= 7:
-                quat = [float(arr[3]), float(arr[4]), float(arr[5]), float(arr[6])]
-            tracker_pose = np.array(
-                [float(arr[0]), float(arr[1]), float(arr[2]), quat[0], quat[1], quat[2], quat[3]],
-                dtype=np.float64,
-            )
-            return uid, tracker_pose
+        try:
+            return np.array([value[0], value[1], value[2]], dtype=np.float64)
+        except Exception as e:
+            raise ValueError(f'Cannot convert pysurvive pose to position {e}')
 
-        return None
+    def _as_quat4(self, value: Any) -> Optional[np.ndarray]:
+        if value is None:
+            return None
 
-    def _split_pose_obj(self, pose_obj: Any) -> Tuple[Optional[Any], float]:
-        if pose_obj is None:
-            return None, time.time()
+        try:
+            # pysurvive quaternion order is wxyz
+            return np.array([value[0], value[1], value[2], value[3]], dtype=np.float64)
+        except Exception as e:
+            raise ValueError(f'Cannot convert pysurvive pose to rotation quaternion {e}')
 
-        if isinstance(pose_obj, (tuple, list)):
-            if len(pose_obj) >= 2:
-                return pose_obj[0], float(pose_obj[1])
-            if len(pose_obj) == 1:
-                return pose_obj[0], time.time()
+    # def _split_pose_obj(self, pose_obj: Any) -> Tuple[Optional[Any], float]:
+    #     if pose_obj is None:
+    #         return None, time.time()
 
-        return pose_obj, time.time()
+    #     if isinstance(pose_obj, (tuple, list)):
+    #         if len(pose_obj) >= 2:
+    #             try:
+    #                 ts = float(pose_obj[1])
+    #             except Exception:
+    #                 ts = time.time()
+    #             return pose_obj[0], ts
+    #         if len(pose_obj) == 1:
+    #             return pose_obj[0], time.time()
+
+    #     return pose_obj, time.time()
 
     def _device_uid(self, updated: Any) -> str:
         if _simple_serial_number is not None and hasattr(updated, "ptr"):
             try:
                 uid = _simple_serial_number(updated.ptr)
                 if isinstance(uid, (bytes, bytearray)):
+                    print(f"Got bytes uid: {uid}")
                     return uid.decode("utf-8", errors="ignore")
                 if uid:
-                    return str(uid)
-            except Exception:
-                pass
-
-        for attr_name in ("serial", "device_serial", "uid", "UID", "name", "obj_name"):
-            value = getattr(updated, attr_name, None)
-            if value:
-                if isinstance(value, (bytes, bytearray)):
-                    return value.decode("utf-8", errors="ignore")
-                return str(value)
-
-        for method_name in ("SerialNumber", "UID", "Name"):
-            fn = getattr(updated, method_name, None)
-            if callable(fn):
-                try:
-                    value = fn()
-                    if isinstance(value, (bytes, bytearray)):
-                        value = value.decode("utf-8", errors="ignore")
-                    if value:
-                        return str(value)
-                except Exception:
-                    pass
-
-        return f"unknown_{id(updated)}"
+                    print(f"Got uid: {uid}")
+                    return str(uid, 'utf-8')
+            except Exception as e:
+                raise ValueError(f"Cannot extract device uid from pysurvive update: {e}")
+        raise ValueError("No valid device uid found")
 
     def __enter__(self) -> "PysurviveTrackerReader":
         self.start()
@@ -262,11 +256,140 @@ class ViveTracker(PysurviveTrackerReader):
     """Backward-friendly class name."""
 
 
+def _quat_xyzw_to_rotmat(qx: float, qy: float, qz: float, qw: float) -> np.ndarray:
+    quat = np.array([qx, qy, qz, qw], dtype=np.float64)
+    norm = float(np.linalg.norm(quat))
+    if norm < 1e-12:
+        return np.eye(3, dtype=np.float64)
+    x, y, z, w = quat / norm
+    return np.array(
+        [
+            [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - z * w), 2.0 * (x * z + y * w)],
+            [2.0 * (x * y + z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * w)],
+            [2.0 * (x * z - y * w), 2.0 * (y * z + x * w), 1.0 - 2.0 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _set_3d_axis_limits(ax: Any, points: np.ndarray) -> None:
+    if points.size == 0:
+        center = np.zeros(3, dtype=np.float64)
+        span = 1.0
+    else:
+        lo = points.min(axis=0)
+        hi = points.max(axis=0)
+        center = (lo + hi) / 2.0
+        span = max(float(np.max(hi - lo)), 0.4) + 0.2
+    half = span / 2.0
+    ax.set_xlim(center[0] - half, center[0] + half)
+    ax.set_ylim(center[1] - half, center[1] + half)
+    ax.set_zlim(center[2] - half, center[2] + half)
+    ax.set_box_aspect((1.0, 1.0, 1.0))
+
+
+def _run_visualizer(reader: ViveTracker, uid: str, hz: float, axis_length: float) -> None:
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.animation import FuncAnimation
+    except Exception as exc:  # pragma: no cover - optional runtime dependency
+        raise RuntimeError("matplotlib is required for --viz mode") from exc
+
+    fig = plt.figure("Vive Tracker Pose Visualizer")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_zlabel("Z (m)")
+    ax.set_title("Tracker Pose (position + orientation)")
+    status_text = ax.text2D(0.02, 0.98, "", transform=ax.transAxes, va="top")
+    artists: list[Any] = []
+
+    def _clear_artists() -> None:
+        while artists:
+            artist = artists.pop()
+            try:
+                artist.remove()
+            except Exception:
+                pass
+
+    def _get_pose_items() -> list[Tuple[str, np.ndarray]]:
+        if uid:
+            pose = reader.get_pose_by_uid(uid)
+            if pose is None:
+                return []
+            return [(uid, pose)]
+        return sorted(reader.get_pose_dict().items(), key=lambda item: item[0])
+
+    axis_colors = ("tab:red", "tab:green", "tab:blue")
+
+    def _update(_frame: int) -> list[Any]:
+        _clear_artists()
+        pose_items = _get_pose_items()
+
+        if not pose_items:
+            status_text.set_text("No tracker pose yet")
+            _set_3d_axis_limits(ax, np.empty((0, 3), dtype=np.float64))
+            return [status_text]
+
+        all_points: list[np.ndarray] = []
+        for idx, (tracker_uid, pose) in enumerate(pose_items):
+            pos = np.asarray(pose[:3], dtype=np.float64)
+            rot = _quat_xyzw_to_rotmat(
+                float(pose[3]),
+                float(pose[4]),
+                float(pose[5]),
+                float(pose[6]),
+            )
+            all_points.append(pos)
+
+            marker = ax.scatter(
+                [pos[0]],
+                [pos[1]],
+                [pos[2]],
+                s=32,
+                color=f"C{idx % 10}",
+            )
+            artists.append(marker)
+            label = ax.text(pos[0], pos[1], pos[2], tracker_uid, fontsize=8)
+            artists.append(label)
+
+            for axis_idx, color in enumerate(axis_colors):
+                end = pos + rot[:, axis_idx] * axis_length
+                line = ax.plot(
+                    [pos[0], end[0]],
+                    [pos[1], end[1]],
+                    [pos[2], end[2]],
+                    color=color,
+                    linewidth=2.0,
+                )[0]
+                artists.append(line)
+                all_points.append(end)
+
+        stacked = np.vstack(all_points) if all_points else np.empty((0, 3), dtype=np.float64)
+        _set_3d_axis_limits(ax, stacked)
+        status_text.set_text(
+            f"tracked={len(pose_items)} | axis colors: X=red, Y=green, Z=blue"
+        )
+        return artists + [status_text]
+
+    interval_ms = max(int(1000.0 / max(hz, 1e-6)), 10)
+    animation = FuncAnimation(fig, _update, interval=interval_ms, blit=False, cache_frame_data=False)
+    _ = animation  # keep reference to avoid GC
+    plt.show()
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description="Test realtime Vive tracker reader")
     parser.add_argument("--uid", type=str, default="", help="Only print pose for this uid")
     parser.add_argument("--hz", type=float, default=20.0, help="Print frequency")
     parser.add_argument("--poll-interval", type=float, default=0.001, help="Background poll interval")
+    parser.add_argument("--viz", action="store_true", help="Show realtime 3D pose visualization")
+    parser.add_argument(
+        "--viz-axis-length",
+        type=float,
+        default=0.08,
+        help="Length (meters) of orientation axes in visualization",
+    )
     parser.add_argument(
         "--survive-arg",
         action="append",
@@ -280,22 +403,26 @@ def _main() -> None:
 
     print("ViveTracker test started. Press Ctrl+C to stop.")
     try:
-        while True:
-            if args.uid:
-                pose = reader.get_pose_by_uid(args.uid)
-                if pose is None:
-                    print(f"[uid={args.uid}] no pose yet")
+        if args.viz:
+            print("Visualization mode enabled. Close the plot window to stop.")
+            _run_visualizer(reader, uid=args.uid, hz=args.hz, axis_length=max(args.viz_axis_length, 1e-4))
+        else:
+            while True:
+                if args.uid:
+                    pose = reader.get_pose_by_uid(args.uid)
+                    if pose is None:
+                        print(f"[uid={args.uid}] no pose yet")
+                    else:
+                        print(f"[uid={args.uid}] {np.array2string(pose, precision=6, suppress_small=True)}")
                 else:
-                    print(f"[uid={args.uid}] {np.array2string(pose, precision=6, suppress_small=True)}")
-            else:
-                pose_dict = reader.get_pose_dict()
-                if not pose_dict:
-                    print("no tracker pose yet")
-                else:
-                    print(f"tracked={len(pose_dict)}")
-                    for uid, pose in pose_dict.items():
-                        print(f"  {uid}: {np.array2string(pose, precision=6, suppress_small=True)}")
-            time.sleep(sleep_dt)
+                    pose_dict = reader.get_pose_dict()
+                    if not pose_dict:
+                        print("no tracker pose yet")
+                    else:
+                        print(f"tracked={len(pose_dict)}")
+                        for uid, pose in pose_dict.items():
+                            print(f"  {uid}: {np.array2string(pose, precision=6, suppress_small=True)}")
+                time.sleep(sleep_dt)
     except KeyboardInterrupt:
         print("\nStopping ViveTracker test...")
     finally:

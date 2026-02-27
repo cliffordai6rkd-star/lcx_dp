@@ -527,6 +527,8 @@ def main():
         # W live point
         if T_W_LH is not None:
             pw = apply_T(T_W_LH, p)
+            # if at floor origin -> green else red
+            col = "g" if np.linalg.norm(pw) < 0.013 else "r"
             w_point.set_data([pw[0]], [pw[1]])
             w_point.set_3d_properties([pw[2]])
             w_point.set_color(col)
@@ -542,6 +544,7 @@ def main():
             f"Tracker={key} | speed={speed:.4f} m/s | {'STILL' if still else 'MOVING'}"
             f" | floor={len(floor_pts)} P0={len(p0_samples)} P1={len(p1_samples)}"
             f" | calibrated={'YES' if T_W_LH is not None else 'NO'}{inlier_info}"
+            f"With LH WORLD extrinsic tranform | floor world frame color representation: green -> near the world origin else red"
         )
 
         pts_lh = []
