@@ -10,6 +10,9 @@ import time
 from typing import Any, Dict, Iterable, Optional, Tuple
 import argparse
 import numpy as np
+import sys, os, json
+from hardware.base.utils import transform_pose, transform_quat
+from scipy.spatial.transform import Rotation as R
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +37,9 @@ class PysurviveTrackerReader:
 
     def __init__(
         self,
-        args: Optional[Iterable[str]] = None,
         poll_interval: float = 0.001,
         auto_start: bool = False,
     ) -> None:
-        self._args = list(args) if args else []
         self._poll_interval = max(float(poll_interval), 0.0)
 
         self._lock = threading.RLock()
@@ -139,23 +140,13 @@ class PysurviveTrackerReader:
             return True
 
     def _create_context(self) -> Any:
-        default_argv = ["vive_tracker_py"] + self._args
-        if "--globalscenesolver" not in default_argv:
-            default_argv += ["--globalscenesolver", "0"]
+        extra_survive_args = []
+        argv = sys.argv[1:]
+        if "--globalscenesolver" not in argv:
+            argv += ["--globalscenesolver", "0"]
 
-        for cls_name in ("SimpleContext", "SurviveSimpleContext"):
-            cls = getattr(pysurvive, cls_name, None)
-            if cls is None:
-                continue
-            try:
-                return cls(default_argv)
-            except TypeError:
-                pass
-            try:
-                return cls(self._args)
-            except TypeError:
-                pass
-        raise RuntimeError("Cannot find a compatible pysurvive context class")
+        argv += extra_survive_args
+        return pysurvive.SimpleContext(argv)
 
     def _next_updated(self) -> Any:
         if self._context is None:
@@ -169,12 +160,9 @@ class PysurviveTrackerReader:
         raise RuntimeError("No func method found on pysurvive context update")
 
     def _extract_pose(self, updated: Any) -> Optional[Tuple[str, np.ndarray]]:
-        # pysurvive path used by calibration_world_frame.py:
-        # updated.Pose() -> (struct_LinmathPose, timestamp)
         pose_fn = getattr(updated, "Pose", None)
         if callable(pose_fn):
             pose_obj = pose_fn()
-            # pose_data, _ = self._split_pose_obj(pose_obj)
             pose_data, time_stamp = pose_obj
             if pose_data is None:
                 return None
@@ -211,32 +199,11 @@ class PysurviveTrackerReader:
         except Exception as e:
             raise ValueError(f'Cannot convert pysurvive pose to rotation quaternion {e}')
 
-    # def _split_pose_obj(self, pose_obj: Any) -> Tuple[Optional[Any], float]:
-    #     if pose_obj is None:
-    #         return None, time.time()
-
-    #     if isinstance(pose_obj, (tuple, list)):
-    #         if len(pose_obj) >= 2:
-    #             try:
-    #                 ts = float(pose_obj[1])
-    #             except Exception:
-    #                 ts = time.time()
-    #             return pose_obj[0], ts
-    #         if len(pose_obj) == 1:
-    #             return pose_obj[0], time.time()
-
-    #     return pose_obj, time.time()
-
     def _device_uid(self, updated: Any) -> str:
         if _simple_serial_number is not None and hasattr(updated, "ptr"):
             try:
                 uid = _simple_serial_number(updated.ptr)
-                if isinstance(uid, (bytes, bytearray)):
-                    print(f"Got bytes uid: {uid}")
-                    return uid.decode("utf-8", errors="ignore")
-                if uid:
-                    print(f"Got uid: {uid}")
-                    return str(uid, 'utf-8')
+                return str(uid, "utf-8")
             except Exception as e:
                 raise ValueError(f"Cannot extract device uid from pysurvive update: {e}")
         raise ValueError("No valid device uid found")
@@ -256,22 +223,7 @@ class ViveTracker(PysurviveTrackerReader):
     """Backward-friendly class name."""
 
 
-def _quat_xyzw_to_rotmat(qx: float, qy: float, qz: float, qw: float) -> np.ndarray:
-    quat = np.array([qx, qy, qz, qw], dtype=np.float64)
-    norm = float(np.linalg.norm(quat))
-    if norm < 1e-12:
-        return np.eye(3, dtype=np.float64)
-    x, y, z, w = quat / norm
-    return np.array(
-        [
-            [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - z * w), 2.0 * (x * z + y * w)],
-            [2.0 * (x * y + z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * w)],
-            [2.0 * (x * z - y * w), 2.0 * (y * z + x * w), 1.0 - 2.0 * (x * x + y * y)],
-        ],
-        dtype=np.float64,
-    )
-
-
+###################### for main entry test ######################
 def _set_3d_axis_limits(ax: Any, points: np.ndarray) -> None:
     if points.size == 0:
         center = np.zeros(3, dtype=np.float64)
@@ -288,7 +240,7 @@ def _set_3d_axis_limits(ax: Any, points: np.ndarray) -> None:
     ax.set_box_aspect((1.0, 1.0, 1.0))
 
 
-def _run_visualizer(reader: ViveTracker, uid: str, hz: float, axis_length: float) -> None:
+def _run_visualizer(reader: ViveTracker, uid: str, hz: float, axis_length: float, T_W_LH:None, R_offset: None) -> None:
     try:
         import matplotlib.pyplot as plt
         from matplotlib.animation import FuncAnimation
@@ -333,13 +285,12 @@ def _run_visualizer(reader: ViveTracker, uid: str, hz: float, axis_length: float
 
         all_points: list[np.ndarray] = []
         for idx, (tracker_uid, pose) in enumerate(pose_items):
+            if T_W_LH is not None:
+                pose = transform_pose(T_W_LH, pose)
+                if R_offset is not None:
+                    pose[3:] = transform_quat(R_offset, pose[3:])
             pos = np.asarray(pose[:3], dtype=np.float64)
-            rot = _quat_xyzw_to_rotmat(
-                float(pose[3]),
-                float(pose[4]),
-                float(pose[5]),
-                float(pose[6]),
-            )
+            rot = R.from_quat(pose[3:]).as_matrix()
             all_points.append(pos)
 
             marker = ax.scatter(
@@ -380,7 +331,8 @@ def _run_visualizer(reader: ViveTracker, uid: str, hz: float, axis_length: float
 
 def _main() -> None:
     parser = argparse.ArgumentParser(description="Test realtime Vive tracker reader")
-    parser.add_argument("--uid", type=str, default="", help="Only print pose for this uid")
+    parser.add_argument("--uid", type=str, default="LHR-0DFD738C", help="Only print pose for this uid")
+    parser.add_argument("--out", type=str, default="config/T_W_LH.json")
     parser.add_argument("--hz", type=float, default=20.0, help="Print frequency")
     parser.add_argument("--poll-interval", type=float, default=0.001, help="Background poll interval")
     parser.add_argument("--viz", action="store_true", help="Show realtime 3D pose visualization")
@@ -399,13 +351,37 @@ def _main() -> None:
     args = parser.parse_args()
 
     sleep_dt = 1.0 / max(args.hz, 1e-6)
-    reader = ViveTracker(args=args.survive_arg, poll_interval=args.poll_interval, auto_start=True)
+    reader = ViveTracker(poll_interval=args.poll_interval, auto_start=True)
+    T_W_LH = None; R_offset = None
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    out_path = args.out if os.path.isabs(args.out) else os.path.join(cur_dir, args.out)
 
-    print("ViveTracker test started. Press Ctrl+C to stop.")
+    # If a previous calibration exists, load it as the current extrinsic.
+    if os.path.isfile(out_path):
+        try:
+            with open(out_path, "r") as f:
+                loaded = json.load(f)
+            loaded_T = np.asarray(loaded.get("T_W_LH"), dtype=float)
+            loaded_R = np.asarray(loaded.get("rotation_offset"))
+            if loaded_T.shape == (4, 4):
+                T_W_LH = loaded_T
+                pose_extrinsic = np.zeros(7)
+                pose_extrinsic[:3] = T_W_LH[:3, 3]
+                pose_extrinsic[3:] = R.from_matrix(T_W_LH[:3, :3]).as_quat()
+                T_W_LH = pose_extrinsic
+                print(f"Loaded existing T_W_LH from: {out_path} with 7D repre: {T_W_LH}")
+            else:
+                print(f"[warn] {out_path} has invalid T_W_LH shape: {loaded_T.shape}, expected (4, 4)")
+            if loaded_R.shape[-1] == 4:
+                R_offset = loaded_R 
+        except Exception as e:
+            print(f"[warn] Failed to load existing extrinsic from {out_path}: {e}")
+
+    print(f"ViveTracker test started with extrinsic {T_W_LH}, {R_offset}. Press Ctrl+C to stop.")
     try:
         if args.viz:
             print("Visualization mode enabled. Close the plot window to stop.")
-            _run_visualizer(reader, uid=args.uid, hz=args.hz, axis_length=max(args.viz_axis_length, 1e-4))
+            _run_visualizer(reader, uid=args.uid, hz=args.hz, axis_length=max(args.viz_axis_length, 1e-4), T_W_LH=T_W_LH, R_offset=R_offset)
         else:
             while True:
                 if args.uid:
@@ -413,6 +389,8 @@ def _main() -> None:
                     if pose is None:
                         print(f"[uid={args.uid}] no pose yet")
                     else:
+                        if T_W_LH is not None:
+                            pose = transform_pose(T_W_LH, pose)
                         print(f"[uid={args.uid}] {np.array2string(pose, precision=6, suppress_small=True)}")
                 else:
                     pose_dict = reader.get_pose_dict()
@@ -421,6 +399,8 @@ def _main() -> None:
                     else:
                         print(f"tracked={len(pose_dict)}")
                         for uid, pose in pose_dict.items():
+                            if T_W_LH is not None:
+                                pose = transform_pose(T_W_LH, pose)
                             print(f"  {uid}: {np.array2string(pose, precision=6, suppress_small=True)}")
                 time.sleep(sleep_dt)
     except KeyboardInterrupt:

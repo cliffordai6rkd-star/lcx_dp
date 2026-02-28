@@ -55,5 +55,11 @@
     7.914191268497288e-06
   ],
   "tracker_key": "LHR-0DFD738C",
-  "notes": "W: origin=P0 on floor; +X is P0->P1 projection on floor; +Z is floor normal (from RANSAC inliers)."
+  "notes": "W: origin=P0 on floor; +X is P0->P1 projection on floor; +Z is floor normal (from RANSAC inliers).",
+  "rotation_offset": [
+    -0.6997952584332602,
+    -0.7143256938369875,
+    0.0035123634791026583,
+    -0.0036142359391431477
+  ]
 }

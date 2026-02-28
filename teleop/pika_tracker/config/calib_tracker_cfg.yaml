@@ -1,0 +1,6 @@
+trackers:
+  - uid: "LHR-E9789F55" # unitree head tracker
+    calib_path: !include teleop/pika_tracker/config/T_W_LH.json
+    translation_offset: [0.08, 0, 0]
+reading_loop_s: 0.005
+timeout: 5
