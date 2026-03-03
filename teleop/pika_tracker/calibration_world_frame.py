@@ -109,10 +109,11 @@ def ransac_plane(points, thresh=0.01, iters=500, min_inliers=12, refine=True, se
 
     return n, d, inliers
 
-def calibrate_LH_to_world_with_inliers(floor_inliers, p0, p1):
+def calibrate_LH_to_world_with_inliers(floor_inliers, p0, p1, pz):
     """
     floor_inliers: (M,3) in LH frame, M>=3
     p0, p1: (3,) in LH frame (means of samples)
+    pz: (3,) in LH frame, a point sampled above the floor plane
     Build W s.t. origin=P0, +X along P0->P1 (projected to floor), +Z floor normal.
     """
     # Floor normal from inliers
@@ -121,6 +122,14 @@ def calibrate_LH_to_world_with_inliers(floor_inliers, p0, p1):
     X = Pin - c
     _, _, Vt = np.linalg.svd(X, full_matrices=False)
     n = normalize(Vt[-1])
+
+    # Plane fitting only determines the normal up to a sign. Use a sampled
+    # point above the floor to keep +Z in W on the physically upward side.
+    signed_height = float(np.dot(np.asarray(pz, dtype=float) - c, n))
+    if abs(signed_height) < 1e-3:
+        raise ValueError("Pz is too close to the floor plane; cannot determine +Z direction reliably.")
+    if signed_height < 0:
+        n = -n
 
     # Align normal to +Z
     R_floor = rot_from_a_to_b(n, np.array([0,0,1.0]))
@@ -168,7 +177,7 @@ def _as_array3(v):
 
 def _as_quat4(q):
     try:
-        return np.array([q[0], q[1], q[2], q[3]], dtype=float)
+        return np.array([q[1], q[2], q[3], q[0]], dtype=float)
     except Exception:
         pass
     if all(hasattr(q, a) for a in ("w","x","y","z")):
@@ -202,6 +211,8 @@ class PoseStream:
     def __init__(self, tracker_substr="", maxlen=400):
         self.ctx = make_ctx()
         self.tracker_substr = tracker_substr
+        self._quat_offset = SciR.from_quat(np.array([0.7071068, 0.7071068, 0, 0]))
+        self._negate_quat_offset = self._quat_offset.inv()
         self.lock = threading.Lock()
         self.buf = deque(maxlen=maxlen)  # (t, pos, quat_wxyz key)
         self.seen = {}
@@ -223,6 +234,10 @@ class PoseStream:
                 continue
 
             pos, quat = extract_pos_from_updated(updated)
+            # @TODO: need to test
+            rot = SciR.from_quat(quat)
+            rot = self._negate_quat_offset * rot * self._quat_offset
+            quat = rot.as_quat()
 
             with self.lock:
                 self.buf.append((time.time(), pos.copy(), quat.copy(), key))
@@ -314,7 +329,7 @@ def rot_offset_from_history(
         return None, {"reason": "history too short"}
 
     t_now = history[-1][0]
-    seg = [(t, p, q_wxyz, k) for (t, p, q_wxyz, k) in history if (t_now - t) <= window_s]
+    seg = [(t, p, q_xyzw, k) for (t, p, q_xyzw, k) in history if (t_now - t) <= window_s]
     if len(seg) < 10:
         return None, {"reason": "not enough samples in window"}
 
@@ -328,9 +343,9 @@ def rot_offset_from_history(
     # 从 seg 中取 quat，变成 W<-tracker
     # seg 里的 quat 是 wxyz（libsurvive），先转 xyzw
     quats_xyzw = []
-    for (_, _, q_wxyz, _) in seg:
-        q_wxyz = np.asarray(q_wxyz, dtype=np.float64)
-        q_xyzw = np.array([q_wxyz[1], q_wxyz[2], q_wxyz[3], q_wxyz[0]], dtype=np.float64)
+    for (_, _, q_xyzw, _) in seg:
+        # q_wxyz = np.asarray(q_wxyz, dtype=np.float64)
+        # q_xyzw = np.array([q_wxyz[1], q_wxyz[2], q_wxyz[3], q_wxyz[0]], dtype=np.float64)
 
         # 这里假设 libsurvive 给的是 LH<-tracker 旋转（常见），则 W<-tracker = (W<-LH)*(LH<-tracker)
         R_W_LH = SciR.from_matrix(T_W_LH[:3, :3])
@@ -390,7 +405,8 @@ def save_R_tracker_tool_into_out(out_path: str, rotation_offset, key: str = "rot
             data = {"_warning": f"Failed to parse existing JSON; backup attempted to {bak}. Error: {e}"}
 
     # Merge / append new field
-    data[key] = rotation_offset.tolist()  # xyzw
+    if not isinstance(rotation_offset, list):
+        data[key] = rotation_offset.tolist()  # xyzw
 
     # Write back
     with open(out_path, "w") as f:
@@ -403,7 +419,7 @@ def main():
     ap.add_argument("--list", action="store_true", help="List tracker keys seen (5s)")
     ap.add_argument("--calib_rot_offset", action="store_true", help="Calibration tracker offset")
     ap.add_argument("--tracker-serial", type=str, default="LHR-0DFD738C", help="Substring to select tracker (serial/name)")
-    ap.add_argument("--out", type=str, default="config/T_W_LH.json")
+    ap.add_argument("--out", type=str, default="configs/T_W_LH.json")
     ap.add_argument("--still-speed", type=float, default=0.02, help="m/s threshold considered STILL")
     ap.add_argument("--ransac-thresh", type=float, default=0.01, help="RANSAC inlier threshold (m)")
     ap.add_argument("--ransac-iters", type=int, default=500)
@@ -429,6 +445,7 @@ def main():
     floor_pts = []
     p0_samples = []
     p1_samples = []
+    pz_samples = []
     T_W_LH = None; rot_offset = None
     ransac_inlier_mask = None
 
@@ -474,16 +491,18 @@ def main():
     lh_out_sc   = ax1.scatter([], [], [], s=18, marker="x")  # RANSAC outliers
     lh_p0_sc    = ax1.scatter([], [], [], s=30, marker="x")
     lh_p1_sc    = ax1.scatter([], [], [], s=30, marker="x")
+    lh_pz_sc    = ax1.scatter([], [], [], s=30, marker="^")
 
     # samples (W)
     w_floor_sc  = ax2.scatter([], [], [], s=12)
     w_out_sc    = ax2.scatter([], [], [], s=18, marker="x")
     w_p0_sc     = ax2.scatter([], [], [], s=30, marker="x")
     w_p1_sc     = ax2.scatter([], [], [], s=30, marker="x")
+    w_pz_sc     = ax2.scatter([], [], [], s=30, marker="^")
 
     status_text = fig.text(0.02, 0.95, "", fontsize=11)
     fig.text(0.02, 0.02,
-             "Keys: f=floor  0=P0  1=P1  c=compute+save  r=reset  q/ESC=quit",
+             "Keys: f=floor  0=P0  1=P1  z=Pz-above-floor  c=compute+save  r=reset  q/ESC=quit",
              fontsize=10)
 
     def refresh_samples():
@@ -517,6 +536,12 @@ def main():
         else:
             lh_p1_sc._offsets3d = ([], [], [])
 
+        if len(pz_samples) > 0:
+            P = np.vstack(pz_samples)
+            lh_pz_sc._offsets3d = (P[:,0], P[:,1], P[:,2])
+        else:
+            lh_pz_sc._offsets3d = ([], [], [])
+
         # W
         if T_W_LH is not None:
             if len(floor_pts) > 0:
@@ -540,14 +565,20 @@ def main():
                 w_p1_sc._offsets3d = (P[:,0], P[:,1], P[:,2])
             else:
                 w_p1_sc._offsets3d = ([],[],[])
+            if len(pz_samples) > 0:
+                P = np.vstack([apply_T(T_W_LH, p) for p in pz_samples])
+                w_pz_sc._offsets3d = (P[:,0], P[:,1], P[:,2])
+            else:
+                w_pz_sc._offsets3d = ([],[],[])
         else:
             w_floor_sc._offsets3d = ([],[],[])
             w_out_sc._offsets3d   = ([],[],[])
             w_p0_sc._offsets3d    = ([],[],[])
             w_p1_sc._offsets3d    = ([],[],[])
+            w_pz_sc._offsets3d    = ([],[],[])
 
     def on_key(event):
-        nonlocal T_W_LH, floor_pts, p0_samples, p1_samples, ransac_inlier_mask
+        nonlocal T_W_LH, floor_pts, p0_samples, p1_samples, pz_samples, ransac_inlier_mask
         key = event.key
 
         if key in ["q", "escape"]:
@@ -575,8 +606,11 @@ def main():
         elif key == "1":
             p1_samples.append(p)
             print(f"P1[{len(p1_samples)}] = {p}")
+        elif key == "z":
+            pz_samples.append(p)
+            print(f"Pz[{len(pz_samples)}] = {p}")
         elif key == "r":
-            floor_pts, p0_samples, p1_samples = [], [], []
+            floor_pts, p0_samples, p1_samples, pz_samples = [], [], [], []
             T_W_LH = None
             ransac_inlier_mask = None
             print("Reset all samples and calibration.")
@@ -587,10 +621,14 @@ def main():
             if len(p0_samples) < 10 or len(p1_samples) < 10:
                 print("Need >= 10 samples each for P0 and P1 (recommend 20-50).")
                 return
+            if len(pz_samples) < 10:
+                print("Need >= 10 samples for Pz above the floor plane (recommend 20-50).")
+                return
 
             floor_arr = np.vstack(floor_pts)
             p0 = np.mean(np.vstack(p0_samples), axis=0)
             p1 = np.mean(np.vstack(p1_samples), axis=0)
+            pz = np.mean(np.vstack(pz_samples), axis=0)
 
             # RANSAC filter
             n, d, inliers = ransac_plane(
@@ -605,7 +643,16 @@ def main():
             ransac_inlier_mask = inliers
 
             # Build transform using inliers
-            T_W_LH, n_ref = calibrate_LH_to_world_with_inliers(floor_in, p0, p1)
+            try:
+                T_W_LH, n_ref = calibrate_LH_to_world_with_inliers(
+                    floor_in,
+                    p0,
+                    p1,
+                    pz,
+                )
+            except ValueError as e:
+                print(f"[warn] Failed to determine +Z direction: {e}")
+                return
 
             # quality metrics
             dist_in = np.abs(floor_in @ n + d)
@@ -613,20 +660,23 @@ def main():
 
             p0_std = np.std(np.vstack(p0_samples), axis=0).tolist()
             p1_std = np.std(np.vstack(p1_samples), axis=0).tolist()
+            pz_std = np.std(np.vstack(pz_samples), axis=0).tolist()
 
             out = {
                 "T_W_LH": T_W_LH.tolist(),
-                "floor_normal_LH": normalize(n).tolist(),
+                "floor_normal_LH": n_ref.tolist(),
                 "plane_rmse_m_inliers": plane_rmse,
                 "ransac_thresh_m": args.ransac_thresh,
                 "ransac_inliers": int(inliers.sum()),
                 "ransac_total": int(len(inliers)),
                 "P0_mean_LH": p0.tolist(),
                 "P1_mean_LH": p1.tolist(),
+                "Pz_mean_LH": pz.tolist(),
                 "P0_std_m": p0_std,
                 "P1_std_m": p1_std,
-                "tracker_key": hist[-1][2],
-                "notes": "W: origin=P0 on floor; +X is P0->P1 projection on floor; +Z is floor normal (from RANSAC inliers)."
+                "Pz_std_m": pz_std,
+                "tracker_key": hist[-1][3],
+                "notes": "W: origin=P0 on floor; +X is P0->P1 projection on floor; +Z is the floor normal oriented toward the sampled Pz point above the floor."
             }
             
             out_dir = os.path.dirname(out_path)
@@ -638,7 +688,7 @@ def main():
             print(f"Saved {out_path}")
             print(f"RANSAC inliers: {int(inliers.sum())}/{len(inliers)}  thresh={args.ransac_thresh} m")
             print(f"plane_rmse_m(inliers)={plane_rmse:.6f}  (good: <0.003~0.005 if stable)")
-            print(f"P0_std_m={p0_std}  P1_std_m={p1_std}  (good: each axis <0.002~0.005)")
+            print(f"P0_std_m={p0_std}  P1_std_m={p1_std}  Pz_std_m={pz_std}  (good: each axis <0.002~0.005)")
 
         refresh_samples()
 
@@ -705,7 +755,7 @@ def main():
 
         status_text.set_text(
             f"Tracker={key} | speed={speed:.4f} m/s | {'STILL' if still else 'MOVING'}"
-            f" | floor={len(floor_pts)} P0={len(p0_samples)} P1={len(p1_samples)}"
+            f" | floor={len(floor_pts)} P0={len(p0_samples)} P1={len(p1_samples)} Pz={len(pz_samples)}"
             f" | calibrated={'YES' if T_W_LH is not None else 'NO'}{inlier_info}"
             f" | With LH WORLD extrinsic tranform - floor world frame color representation: green -> near the world origin else red, error: {error}"
         )
@@ -714,6 +764,7 @@ def main():
         pts_lh.extend(floor_pts)
         pts_lh.extend(p0_samples)
         pts_lh.extend(p1_samples)
+        pts_lh.extend(pz_samples)
         pts_lh.append(p)
         autoscale(ax1, pts_lh, margin=0.2)
 

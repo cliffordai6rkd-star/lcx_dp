@@ -18,21 +18,16 @@ class _TrackerCalibration:
     pose_extrinsic: Optional[np.ndarray] = None  # 7D [x, y, z, qx, qy, qz, qw]
     rotation_offset: Optional[np.ndarray] = None  # 4D [qx, qy, qz, qw]
     translation_offset: Optional[np.ndarray] = None  # 3D in calibrated world frame
-    use_realtive: bool = False # whether position x&y calculated by relative
-
+    use_relative: bool = False # whether position x&y calculated by relative
 
 class CalibrateTracker:
     def __init__(self, config):
-        if isinstance(config, str):
-            config = dynamic_load_yaml(config)
-        if not isinstance(config, Mapping):
-            raise TypeError(f"config must be dict-like or yaml path, got {type(config)}")
-
         self._config = dict(config)
         poll_interval = float(self._config.get("reading_loop_s", self._config.get("poll_interval", 0.001)))
         auto_start = bool(self._config.get("auto_start", False))
         self.vive_tracker = ViveTracker(poll_interval=poll_interval, auto_start=auto_start)
         self._tracker_timout = config.get("timeout", 5.0)
+        self._z_offset = config.get("z_offset", None)
 
         self._calibration_by_uid: Dict[str, _TrackerCalibration] = {}
         self._tracker_cfg = config["trackers"]
@@ -40,7 +35,7 @@ class CalibrateTracker:
         self._relative_anchor = None
         
         self._is_initialized = False
-        self._is_initialized = self.iniialize()
+        self._is_initialized = self.initialize()
         if not self._is_initialized:
             raise ValueError(f'Calibration tracker init failed')
 
@@ -80,26 +75,25 @@ class CalibrateTracker:
                     else: raise ValueError(f"[warn] {value} has invalid rot offset shape: {loaded_rot_offset.shape}, expected (4,)")
                 elif 'translation_offset' in key:
                     cur_calib_param.translation_offset = value
-                elif 'use_realtive' in key:
-                    cur_calib_param.use_realtive = value
+                elif 'use_relative' in key:
+                    cur_calib_param.use_relative = value
                     if value: self._use_relative = True
                 self._calibration_by_uid[cur_uid] = cur_calib_param
 
-        if self.vive_tracker.is_running():
-            time_start = time.perf_counter()
-            while time.perf_counter() - time_start < self._tracker_timout:
-                if all(uid in self.vive_tracker.get_uids() for uid in self._calibration_by_uid.keys()):
-                    return True
+        time_start = time.perf_counter()
+        while time.perf_counter() - time_start < self._tracker_timout:
+            if all(uid in self.vive_tracker.get_uids() for uid in self._calibration_by_uid.keys()):
+                return True
         log.warn(f'Vive tracker could not get all uids {self._calibration_by_uid.keys()}, readed uids: {self.vive_tracker.get_uids()}')
         return False
 
     def _on_key_press(self, key):
         try:
-            if key.char == 'i' and not self._device_enabled:
+            if key.char == 'i' and not self._key_pressed:
                 self._relative_anchor = self.get_pose_dict(disable_realtive=True)
                 self._key_pressed = True
                 log.info(f'Calibrated Vive enabled!!!')
-            elif key.char == 'u' and self._device_enabled:
+            elif key.char == 'u':
                 self._key_pressed = False
                 log.info(f'Calibrated Vive disabled!!!')
         except AttributeError:
@@ -132,20 +126,22 @@ class CalibrateTracker:
 
     def _apply_calibration(self, uid: str, raw_pose: np.ndarray, disable_realtive=False) -> np.ndarray:
         uid_cali = self._calibration_by_uid.get(uid)
+        if uid_cali is None: return None
         pose = np.asarray(raw_pose, dtype=np.float64)
 
         pose = transform_pose(uid_cali.pose_extrinsic, pose)
         pose[3:] = transform_quat(uid_cali.rotation_offset, pose[3:])
+        if self._z_offset is not None: pose[2] += self._z_offset
         if uid_cali.translation_offset is not None:
             trans_pose_offset = np.array([0,0,0,0,0,0,1])
             trans_pose_offset[:3] = uid_cali.translation_offset
             pose = transform_pose(pose, trans_pose_offset)
         if disable_realtive: return pose
 
-        # relative calculation
+        # relative calculation @TODO: more precise rule
         if self._use_relative and self._relative_anchor is None:
             return None
-        if self._calibration_by_uid[uid].use_realtive:
-            pose[:2] -= self._relative_anchor[uid]
+        if self._calibration_by_uid[uid].use_relative:
+            pose[:2] -= self._relative_anchor[uid][:2]
         return pose
     

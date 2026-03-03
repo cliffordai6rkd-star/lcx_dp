@@ -76,8 +76,7 @@ class DasController(ToolBase):
         while not self._gripper_state_updated:
             time.sleep(0.001)
             if time.perf_counter() - start_time > 2.0:
-                log.warn("DasController did not receive encoder data within timeout")
-                break
+                raise ValueError("DasController did not receive encoder data within timeout")
 
         log.info(f"DasController initialized successfully on {self._serial_port}")
         return True
@@ -147,16 +146,18 @@ def main():
                 f"target={target_scaled*controller._max_distance:.4f}m "
                 f"raw target={target_scaled}"
             )
+        # time.sleep(0.5)
         
         
     config = {
         "serial_port": "/dev/ttyUSB0",
         # "baudrate": 
-        "update_frequency": 200,
-        "grasp_threshold": 0.01, # 1cm
+        "update_frequency": 50,
+        "grasp_threshold": 0.05, # 1cm
         "control_mode": "binary",
         "binary_threshold": 0.5,
-        "step_size": 0.6
+        "step_size": 0.6,
+        "initial_position": 0.5
     }
 
     try:
