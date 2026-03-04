@@ -138,7 +138,7 @@ class CalibrateTracker:
             pose = transform_pose(pose, trans_pose_offset)
         if disable_realtive: return pose
 
-        # relative calculation @TODO: more precise rule
+        # relative calculation
         if self._use_relative and self._relative_anchor is None:
             return None
         if self._calibration_by_uid[uid].use_relative:
