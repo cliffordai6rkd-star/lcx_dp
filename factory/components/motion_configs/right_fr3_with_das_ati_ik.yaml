@@ -1,0 +1,56 @@
+# usage platform
+use_hardware: true
+use_simulation: true
+
+robot: "fr3"
+robot_config: !include hardware/fr3/config/right_fr3_cfg.yaml
+gripper: "pika_gripper"
+gripper_config: !include hardware/tools/grippers/config/right_das_controller_cfg.yaml
+
+use_smoother: true
+smoother_type: "ruckig" #critical_damped
+smoother_config: !include smoother/config/smoother_config_fr3_.yaml
+# Async control configuration
+# This creates true decoupling between low-freq planning and high-freq control
+async_control_frequency: 1000.0 # Async thread sends commands at this rate (Hz)
+auto_enable_async_control: true # Auto-enable async mode on initialization (new!)
+
+# sensor infos
+sensor_dicts:
+  cameras:
+    - name: "right"
+      type: "realsense_camera"
+      cfg: !include hardware/sensors/cameras/config/right_das_right_cfg.yaml
+    - name: "left"
+      type: "opencv_camera"
+      cfg: !include hardware/sensors/cameras/config/right_das_left_cfg.yaml
+    - name: "mid"
+      type: "opencv_camera"
+      cfg: !include hardware/sensors/cameras/config/right_das_mid_cfg.yaml
+  # ft_sensors:
+  #   - name: "ee_ft"
+  #     type: "ati_ft"
+  #     cfg: !include hardware/sensors/ft_sensor/config/right_ati_cfg.yaml
+
+control_frequency: 300
+# controller_type: "ik"
+# controller_config: !include controller/config/ik_fr3_pika_ati_cfg.yaml
+controller_type: "whole_body_ik"
+controller_config: !include controller/config/wbik_fr3_pika_ati_cfg.yaml
+
+model_type: "model"
+model_config:
+  name: "fr3_pika_ati"
+  cfg: !include motion/config/robot_model_fr3_pika_ati_cfg.yaml
+
+use_trajectory_planner: false
+buffer_type: "buffer"
+trajectory_planner_type: "cart_polynomial"
+plan_type: "cartesian"
+trajectory_config: !include trajectory/config/cartesian_polynomial_traj_cfg.yaml
+traj_frequency: 450
+
+simulation: "mujoco"
+simulation_config: !include simulation/config/mujoco_fr3_pika_ati_posi.yaml
+target_site_name: ["target_site"]
+tcp_visualization_site: ["TCP_site"]
