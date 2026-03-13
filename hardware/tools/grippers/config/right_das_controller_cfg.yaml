@@ -6,4 +6,4 @@ das_controller:
 
   # binary incremental
   control_mode: "incremental"
-  step_size: 0.3
+  step_size: 0.6

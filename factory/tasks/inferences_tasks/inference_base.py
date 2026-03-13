@@ -69,6 +69,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         self._weight_gain = config.get("action_weight_gain", 0.01)
         self._action_aggregation = None
         self._execution_interruption = False
+        self._step_execute = False
         self._async_execution = config.get("async_execution", False)
         
         # display
@@ -204,7 +205,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             if ee_keys[j] == "head": continue # skip head tool assignment
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -594,6 +595,10 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                             aggregated_action, raw_action, chunk_anchor)
                         convert_time = time.perf_counter() - convert_start
                         step_start = time.perf_counter()
+                        # log.warn(f'Waiting for g to execute current step!!!')
+                        # while not self._step_execute:
+                        #     time.sleep(0.001)
+                        # self._step_execute = False
                         res = self._gym_robot.step(gym_action, True)
                         if res[0] is not None and not self._async_execution:
                             self.convert_from_gym_obs(res[0])
@@ -678,4 +683,6 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
             log.info(f'Cur user feedback for last episode inference is {self._user_feedback}')
         elif self._waiting_infer_stats and key == 'p':
             self._waiting_infer_stats = False
+        elif key == 'g':
+            self._step_execute = True
             

@@ -196,8 +196,8 @@ class TeleoperationFactory:
             cur_tcp_pose = {}
             for i, cur_ee_link in enumerate(self.ee_link):
                 key = self._robot_index[i] if len(self._robot_index) > 1 else self._robot_index[0]
-                # log.info(f"{i}th robot key {key}, ee key: {self._ee_index[i]}, link {cur_ee_link}")
                 cur_tcp_pose[self._ee_index[i]] = self._robot_motion_system.get_frame_pose(cur_ee_link, key)
+                # log.info(f"{i}th robot key {key}, ee key: {self._ee_index[i]}, link {cur_ee_link}, pose: {cur_tcp_pose[self._ee_index[i]]}")
             self._robot_motion_system.sim_visualize_tcp(cur_tcp_pose)
             tcp_time = time.perf_counter() - start
 
@@ -490,6 +490,8 @@ class TeleoperationFactory:
             self._reset_arm_command = transform_pose(init_anchor, delta_pose)
         log.info(f'reset space: {self._reset_space}, command: {self._reset_arm_command}\
                  tool command: {self._reset_tool_command}')
+        if self._reset_space == "cartesian" and self._reset_arm_command is not None:
+            self._robot_motion_system.sim_visualize_targets(dict(single=self._reset_arm_command[:7]))
         self._robot_motion_system.reset_robot_system(
             np.array(self._reset_arm_command), self._reset_space, self._reset_tool_command)
         if not self._robot_motion_system._use_traj_planner:

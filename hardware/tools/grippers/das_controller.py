@@ -105,13 +105,16 @@ class DasController(ToolBase):
         if not self._is_initialized:
             log.warn("DasController is not initialized")
             return
-
-        target = float(np.clip(command, 0.0, 1.0))
+        
+        target = np.clip(command, 0.0, 1.0)
+        if target.ndim != 0: target = target[0]
+        target = float(target)
         target_distance = self._min_distance + target * (self._max_distance - self._min_distance)
 
         if self._last_command_distance is not None and np.isclose(
             target_distance, self._last_command_distance, rtol=0.001, atol=1e-4
         ):
+            log.warn(f'auto return {target_distance}, last{self._last_command_distance}')
             return
 
         try:
@@ -150,11 +153,11 @@ def main():
         
         
     config = {
-        "serial_port": "/dev/ttyUSB0",
+        "serial_port": "/dev/ttyUSB81",
         # "baudrate": 
         "update_frequency": 50,
         "grasp_threshold": 0.05, # 1cm
-        "control_mode": "binary",
+        "control_mode": "incremental",
         "binary_threshold": 0.5,
         "step_size": 0.6,
         "initial_position": 0.5

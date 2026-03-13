@@ -10,7 +10,7 @@ inteface_output_mode: "relative"
 # teleoperation used parameter
 # if you are using mujoco simulation target instead of teleoperation device,
 # set use_simulation_target as true
-use_simulation_target: true
+use_simulation_target: false
 teleoperation_loop_time: 0.005
 # aync_save_ft: false
 # random_reset_cartesian_space:
@@ -25,7 +25,7 @@ teleoperation_loop_time: 0.005
 #     - [-0.3, -0.087]
 #     - [0.0, 0.0]
 reset_space: "cartesian"
-reset_arm_command: [0.5, -0.28, 0.15826055, 0.7071068, 0, 0.7071068, 0]
+reset_arm_command: [0.05327496, -0.54249998, 0.27038416, 0.71930346, -0.00634366, 0.69465178, 0.00460363]
 
 # data collection related
 # save_path_prefix: "peg_in_hole"

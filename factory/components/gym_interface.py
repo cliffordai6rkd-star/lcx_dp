@@ -143,8 +143,9 @@ class GymApi(gym.Env):
                     cur_arm_action[3:] = transform_quat(cur_arm_action[3:], rot_offset)
                 # @TODO: desk collision avoidance, 厚度维35mm， 开合维100mm
                 # solve_table_collision(cur_arm_action, 0.1, 0.02, 35/1000.0)
+                raw_z = cur_arm_action[2]
                 if prevent_table_collision(cur_arm_action, self._collision_height_thresh):
-                    log.debug(f'arm action z {cur_arm_action[2]} for {key} change to a thresh due to possible collision')
+                    log.warn(f'arm action z {cur_arm_action[2]}, and raw z {raw_z} for {key} change to a thresh due to possible collision')
                 execute_arm_action = np.hstack((execute_arm_action, cur_arm_action))
             self.set_ee_pose(execute_arm_action)
         else:
@@ -310,6 +311,7 @@ class GymApi(gym.Env):
                 raise ValueError(f'Cur {self._obs_type} do not get ee states!!!')
         ee_check.remove(ObservationType.DELTA_END_EFFECTOR_POSE)
         tools_dict = self.get_tool_state()
+        # log.info(f'tool dict: {tools_dict}')
         ft_dict = self.get_ft_infos()
         # log.info(f'ft dict: {ft_dict}, obs type: {self._obs_type}, contain ft: {self._contain_ft}')
         
@@ -331,7 +333,7 @@ class GymApi(gym.Env):
                     raise ValueError(f'The obs contain ft {self._contain_ft} with obs type {self._obs_type} need ft data from hardware!!!')
                 obs_state[key] = np.hstack((obs_state[key], ft_dict[key]))
             # tool state
-            if self._obs_type == ObservationType.MASK:
+            if self._obs_type != ObservationType.MASK:
                 # @Note: for umi data, you always collecting 0-1 state
                 tool_state = tools_dict[key]["position"] / self._tool_state_max
                 obs_state[key] = np.hstack((obs_state[key], tool_state))
@@ -396,7 +398,7 @@ class GymApi(gym.Env):
                     break
         self._robot_motion.update_execute_hardware(self._use_hardware)
         # comment for testing only
-        # self._robot_motion.update_high_level_command(poses)
+        self._robot_motion.update_high_level_command(poses)
         # visual for targets
         visual_targets = {}
         key = {"single":[0,7]} if len(poses) <= 7 else {"left":[0,7], "right":[7,14]}

@@ -144,6 +144,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             """
             while True:
                 position_diff = target - current_position
+                # log.info(f'diff info {target} {current_position} {position_diff}')
                 if abs(position_diff) < 1e-3:
                     break
                 
@@ -161,6 +162,7 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
                 self._current_position_scaled = new_position
                 
                 # Execute hardware command
+                # log.info(f'hw command target {new_position}')
                 set_hardware_command(new_position)
                 
                 # Wait for next move based on frequency

@@ -12,6 +12,7 @@ from hardware.fr3.franka_hand import FrankaHand
 from hardware.unitreeG1.unitree_g1 import UnitreeG1
 from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.tools.grippers.pika_gripper import PikaGripper
+from hardware.tools.grippers.das_controller import DasController
 from hardware.duo_tool import DuoTool
 from hardware.tools.grippers.zmq_pika import ZmqPika
 from hardware.head.servo_head_zmq import ZmqDynamixelHead
@@ -101,6 +102,7 @@ class RobotFactory:
             'dex3_hand': Dex3Hand,
             'pika_gripper': PikaGripper,
             'zmq_pika_gripper': ZmqPika,
+            'das_controller': DasController,
         }
         
         self._head_classes = {

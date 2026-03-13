@@ -4,7 +4,7 @@ use_simulation: true
 
 robot: "fr3"
 robot_config: !include hardware/fr3/config/right_fr3_cfg.yaml
-gripper: "pika_gripper"
+gripper: "das_controller"
 gripper_config: !include hardware/tools/grippers/config/right_das_controller_cfg.yaml
 
 use_smoother: true
@@ -18,15 +18,15 @@ auto_enable_async_control: true # Auto-enable async mode on initialization (new!
 # sensor infos
 sensor_dicts:
   cameras:
-    - name: "right"
-      type: "realsense_camera"
-      cfg: !include hardware/sensors/cameras/config/right_das_right_cfg.yaml
-    - name: "left"
-      type: "opencv_camera"
-      cfg: !include hardware/sensors/cameras/config/right_das_left_cfg.yaml
     - name: "mid"
       type: "opencv_camera"
       cfg: !include hardware/sensors/cameras/config/right_das_mid_cfg.yaml
+    - name: "left"
+      type: "opencv_camera"
+      cfg: !include hardware/sensors/cameras/config/right_das_left_cfg.yaml
+    - name: "right"
+      type: "opencv_camera"
+      cfg: !include hardware/sensors/cameras/config/right_das_right_cfg.yaml
   # ft_sensors:
   #   - name: "ee_ft"
   #     type: "ati_ft"

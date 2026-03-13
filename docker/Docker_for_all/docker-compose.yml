@@ -14,7 +14,8 @@ services:
       # 使用以下指令来排查： ls -la /tmp/.docker.xauth和xauth -f /tmp/.docker.xauth list
     volumes:
       - ../../:/workspace
-      - /mnt/nas/ZML:/mnt/nas/ZML
+      # - /mnt/nas/ZML:/mnt/nas/ZML
+      - $HOME/Code/das-traj-generation/data:/workspace/das_data
       # - $HOME/Code/hirol:/home/teleophost/zyx
       # - $HOME/.ssh/id_rsa:/home/teleophost/.ssh/id_rsa
       # - $HOME/.ssh/id_rsa.pub:/home/teleophost/.ssh/id_rsa.pub

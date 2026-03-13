@@ -416,7 +416,7 @@ class MotionFactory:
                 self.wait_buffer_empty()
                 log.info('Trajectory buffer has all been consumed for cartesian space reset!!!')
                 self.set_next_pose_target(arm_command)
-                time.sleep(2.0); counter = 0
+                counter = 0
                 # @TODO: wait until tcp reach the target
                 while True:
                     self.set_next_pose_target(arm_command)
@@ -427,8 +427,8 @@ class MotionFactory:
                         pose_error = compute_pose_diff(cur_tcp, np.array(arm_command[i*7:i*7+7]))
                         erros += np.linalg.norm(pose_error)
                     log.info(f'reset cartesian command error: {erros}')
-                    if erros < 0.05 or counter > 500:
-                        if counter > 500:
+                    if erros < 0.05 or counter > 5000:
+                        if counter > 5000:
                             log.warn(f'Break reset due to timeout')
                         break
                     time.sleep(0.001)
