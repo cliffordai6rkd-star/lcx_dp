@@ -9,7 +9,10 @@ from dataset.lerobot.data_process import EpisodeWriter
 import os, threading, time
 import glog as log
 import cv2
+import yaml
+import copy
 
+from simulation.mujoco.mujoco_sim import MujocoSim
 class RobotAgnosticCollection:
     def __init__(self, config):
         self._camera_classes = {
@@ -37,12 +40,12 @@ class RobotAgnosticCollection:
 
     def _keyboard_on_press(self, key):
         if key == "r":
-            self._enable_recording = not self._enable_recording
-            if self._enable_recording and self.data_recorder is None:
+            cur_enable_recording = not self._enable_recording
+            if cur_enable_recording and self.data_recorder is None:
                 os.makedirs(self._output_path, exist_ok=True)
-                log.info(f"{'='*15}Build data recoreder at {self._output_path}{'='*15}")
                 self.data_recorder = EpisodeWriter(task_dir=self._output_path, rerun_log=False,)
-            if self._enable_recording:
+                log.info(f"{'='*15}Build data recoreder at {self._output_path}{'='*15}")
+            if cur_enable_recording:
                 if not self.data_recorder.create_episode():
                     log.warn("Episode write failed to create a episode for recording data!!!!")
                 else:
@@ -51,6 +54,7 @@ class RobotAgnosticCollection:
                 self.data_recorder.save_episode()
                 time.sleep(0.5)
                 log.info(f"{'='*15}Data recorder stoped recording the episode data!!!!{'='*15}")
+            self._enable_recording = cur_enable_recording
         if key == "q":
             log.info("Quit the collection process!!!")
             if self._enable_recording:
@@ -173,7 +177,7 @@ class RobotAgnosticCollection:
             if not isinstance(pose, list):
                 ee_states[pose_key] = dict(pose=pose.tolist(), time_stamp=time.perf_counter())
 
-        ee_tools = self._on_tool(tools)
+        ee_tools = self._on_tool(tools,ee_states)
         return ee_states, ee_tools
 
     def collect_data(self):

@@ -1,6 +1,6 @@
 motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
 
-task_data_dir: "dataset/data/1021_insert_tube_fr3_pika_150eps"
+task_data_dir: "dataset/data/duo_unitree_pick_n_place"
 action_prediction_step: 4
 # skip_steps: 2
 # end_effector_pose_delta

@@ -1,17 +1,17 @@
 
 robot:
-  name: "fr3"  #dual_fr3
-  model_path: "assets/franka_fr3/fr3_pika_ati.xml"  #dual_fr3_pika_ati.xml
+  name: "dual_fr3"  #dual_fr3
+  model_path: "assets/franka_fr3/dual_fr3_pika_ati.xml"  #dual_fr3_pika_ati.xml
   initial_position: [0.0, 0.0, -10]
   initial_orientation: [1.0, 0.0, 0.0, 0.0]
   fix_base: true
 
 scene_objects:
-  - name: "0"
-    model_path: "assets/scene_objects/bread_picking/bread_picking_scene.xml"
-    initial_position: [0.28, -0.295, 0.214]
-    initial_orientation: [0,0,0,1]  # 0.7071, -0.7071, 0.0, 0.0
-    fix_base: true  # table is fixed to ground
+  # - name: "0"
+  #   model_path: "assets/scene_objects/bread_picking/bread_picking_scene.xml"
+  #   initial_position: [0.28, -0.295, 0.214]
+  #   initial_orientation: [0,0,0,1]  # 0.7071, -0.7071, 0.0, 0.0
+  #   fix_base: true  # table is fixed to ground
   
   # Mocap objects for teleoperation visualization
   - name: "targetH"

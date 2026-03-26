@@ -62,11 +62,6 @@ class PikaTracker(TeleoperationDeviceBase):
         elif not self._output_right:
             self._index = {"single": 0}
         self._position_scale = config.get("position_scale", 1.0)
-        self._init_tracker_robot_axis_alignment()
-       
-        self._device_enabled = False
-        self._reset_pose_counter = 0
-        
         # head info
         self._head_info = config.get('head', None)
         if self._head_info: self._index["head"] = 2
@@ -76,8 +71,13 @@ class PikaTracker(TeleoperationDeviceBase):
         else: 
             self.T_TRACKER_HEAD = np.array(self.T_TRACKER_HEAD)
             log.info(f'T tracker head: {self.T_TRACKER_HEAD}')
-        
+
         super().__init__(config)
+        self._init_tracker_robot_axis_alignment()
+       
+        self._device_enabled = False
+        self._reset_pose_counter = 0
+        
     
     def _update_tracker_uid(self):
         vive_tracker_device_names = self._tracker.get_devices()

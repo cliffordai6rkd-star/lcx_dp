@@ -35,7 +35,7 @@ class Reader:
 
 
 if __name__ == "__main__":
-    data_dir = "dataset/data/0127_2_umi_bread_picking_single_135ep"
+    data_dir = "dataset/data/0318_duo_unitree_move_basket_51ep"
     start_episode = 1
     end_episode = 152
     start_time = time.perf_counter()

@@ -4,7 +4,7 @@ import glog as log
 import os
 import yaml
 import copy
-
+import time
 class UmiCollection(RobotAgnosticCollection):
     def __init__(self, config):
         super().__init__(config)
@@ -19,7 +19,7 @@ class UmiCollection(RobotAgnosticCollection):
     def create_umi_system(self):
         self.create_system()
         
-    def _on_tool(self, tools):
+    def _on_tool(self, tools, ee_states):
         ee_tools = {}
         for tool_key, tool in tools.items():
             if tool_key not in ee_states:

@@ -2,7 +2,7 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 import time, cv2
 import numpy as np
 
-host = "192.168.35.213" 
+host = "192.168.100.39" 
 port = 8000
 api_key = None
 pi0_policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -11,9 +11,9 @@ print(f"Server metadata: {pi0_policy.get_server_metadata()}")
 
 fake_obs = {
     "state": np.ones(23),
-    "right_color": np.ones((480, 640, 3), dtype=np.uint8),
+    "right_hand_color": np.ones((480, 640, 3), dtype=np.uint8),
     "right_fisheye_color": np.ones((480, 640, 3), dtype=np.uint8),
-    # "head_color": np.zeros((480, 640, 3), dtype=np.uint8),
+    "head_color": np.zeros((480, 640, 3), dtype=np.uint8),
     "task": "hello, who you are!!!"
 }
 
