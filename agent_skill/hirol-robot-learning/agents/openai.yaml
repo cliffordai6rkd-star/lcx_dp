@@ -1,4 +1,0 @@
-interface:
-  display_name: "HIROL Robot Learning"
-  short_description: "Debug and extend the HIROL robot-learning platform"
-  default_prompt: "Use $hirol-robot-learning to debug or extend this HIROL robot-learning project."

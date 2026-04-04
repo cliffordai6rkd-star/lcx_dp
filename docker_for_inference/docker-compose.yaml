@@ -1,0 +1,54 @@
+name: lcx-dp-inference
+
+services:
+  dp_inference:
+    build:
+      context: ..
+      dockerfile: docker_for_inference/Dockerfile
+    image: lcx-dp:inference
+    user: "0:0"
+    working_dir: /workspace/HirolPlatform
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+    ipc: host
+    shm_size: 8gb
+    network_mode: host
+    privileged: true
+    environment:
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: ${XAUTHORITY:-$HOME/.Xauthority}
+      MUJOCO_GL: osmesa
+      MPLCONFIGDIR: /tmp/matplotlib
+      WANDB_DIR: /workspace/wandb
+      DP_HIROL_PATH: /workspace/dp_hirol-main
+      PYTHONPATH: /workspace/HirolPlatform:/workspace/dp_hirol-main:/workspace
+      http_proxy:
+      https_proxy:
+      no_proxy:
+    volumes:
+      - ..:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-$HOME/.Xauthority}:ro
+      - /dev:/dev
+      - /dev/bus/usb:/dev/bus/usb
+      - /sys/bus/usb:/sys/bus/usb:ro
+      - /sys/class/input:/sys/class/input:ro
+      - /var/run/dbus:/var/run/dbus
+      - /run/dbus:/run/dbus
+    devices:
+      - /dev:/dev
+      - /dev/bus/usb:/dev/bus/usb
+      - /dev/input:/dev/input
+    gpus: all
+    group_add:
+      - "plugdev"
+      - "input"
+      - "dialout"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, graphics, display, utility, video, compute]

@@ -1,8 +1,0 @@
-dex3_hand:
-  network_interface: "eth0"
-  hand_prefix: "left"
-
-  control_mode: "retarget"
-  hand_model: !include motion/config/robot_model_cfg_left_dex3.yaml
-  controller: !include controller/config/whole_body_ik_left_dex3.yaml
-  

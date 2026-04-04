@@ -1,9 +1,0 @@
-das_controller:
-  serial_port: "/dev/ttyUSB81" # 对齐绑定的serial端口号
-  update_frequency: 50
-  grasp_threshold: 0.05 # 1cm
-  initial_position: 0.5
-
-  # binary incremental
-  control_mode: "incremental"
-  step_size: 0.6

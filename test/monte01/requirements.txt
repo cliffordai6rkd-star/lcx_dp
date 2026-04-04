@@ -1,5 +1,0 @@
-glog
-mujoco
-xarm-python-sdk
-opencv-python
-numpy==1.26.4

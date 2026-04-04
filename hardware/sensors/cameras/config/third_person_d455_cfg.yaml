@@ -1,8 +1,0 @@
-realsense_camera:
-  image_shape: [480, 640]
-  fps: 60
-  # 338122303378 333422301209
-  serial_number: "338122303378"
-  contain_depth: true
-  contain_imu: false
-

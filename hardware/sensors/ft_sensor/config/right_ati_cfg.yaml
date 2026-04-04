@@ -1,5 +1,0 @@
-ati_ft:
-  ip: "192.168.1.130"
-  test_times: 3000
-  async_save: true
-  save_freq: 200

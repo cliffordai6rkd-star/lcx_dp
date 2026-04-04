@@ -1,4 +1,0 @@
-pyyaml
-glog
-mujoco
-numpy==1.26.4
