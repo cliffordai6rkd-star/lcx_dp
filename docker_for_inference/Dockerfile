@@ -11,7 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/opt/venv
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:${PATH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
@@ -52,13 +53,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION}-dev \
     python${PYTHON_VERSION}-tk \
     python${PYTHON_VERSION}-venv \
-    && python${PYTHON_VERSION} -m ensurepip --upgrade \
-    && python${PYTHON_VERSION} -m pip install --no-cache-dir uv \
     && rm -rf /var/lib/apt/lists/*
 
-RUN uv venv --python python${PYTHON_VERSION} ${VIRTUAL_ENV}
-
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+RUN python${PYTHON_VERSION} -m venv ${VIRTUAL_ENV}
+RUN python -m pip install --upgrade pip
 
 WORKDIR /build
 
@@ -66,22 +64,19 @@ COPY dp_hirol-main /build/dp_hirol-main
 COPY HirolPlatform /build/HirolPlatform
 COPY docker_for_inference /build/docker_for_inference
 
+ENV PIP_CONSTRAINT=/build/docker_for_inference/pip_build_constraints.txt
+
 WORKDIR /build/dp_hirol-main
 
-# gym==0.21.0 ships legacy metadata rejected by pip>=24.1.
-RUN uv pip install -r requirements/uv-pip-bootstrap.txt
-RUN python -m pip install --no-build-isolation gym==0.21.0
-RUN uv pip install --index-strategy unsafe-best-match --build-constraints requirements/uv-build-constraints.txt -r requirements/uv-common.txt
-RUN uv pip install --index-strategy unsafe-best-match --build-constraints requirements/uv-build-constraints.txt -r /build/docker_for_inference/dp_runtime_requirements.txt
-RUN uv pip install .
+RUN python -m pip install -r /build/docker_for_inference/dp_inference_requirements.txt
+RUN python -m pip install -r /build/docker_for_inference/dp_runtime_requirements.txt
+RUN python -m pip install cmake==3.24.3
+RUN python -m pip install -r /build/docker_for_inference/hirol_inference_requirements.txt
+RUN if [ -f /build/docker_for_inference/vendor/dm_robotics_panda/setup.py ]; then python -m pip install -e /build/docker_for_inference/vendor/dm_robotics_panda; fi
+RUN if [ -f /build/docker_for_inference/vendor/pika_sdk/setup.py ]; then python -m pip install -e /build/docker_for_inference/vendor/pika_sdk; fi
+RUN python -m pip install .
 
 WORKDIR /build
-
-# Install only the extra runtime pieces needed by the Hirol inference chain.
-RUN uv pip install -r /build/docker_for_inference/hirol_inference_requirements.txt
-RUN if [ -f /build/docker_for_inference/vendor/dm_robotics_panda/setup.py ]; then uv pip install -e /build/docker_for_inference/vendor/dm_robotics_panda; fi
-RUN if [ -f /build/docker_for_inference/vendor/pika_sdk/setup.py ]; then uv pip install -e /build/docker_for_inference/vendor/pika_sdk; fi
-RUN uv pip install -e /build/HirolPlatform
 
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-runtime-ubuntu${UBUNTU_VERSION} AS runtime
 
@@ -98,6 +93,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
+    ca-certificates \
     && add-apt-repository -y ppa:deadsnakes/ppa \
     && apt-get update && apt-get install -y --no-install-recommends \
     bash \
@@ -109,12 +105,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgtk-3-0 \
     libosmesa6 \
-    libpoco-dev \
     libsm6 \
     libusb-1.0-0 \
     libxext6 \
     libxrender1 \
-    libyaml-cpp-dev \
     patchelf \
     python${PYTHON_VERSION} \
     python${PYTHON_VERSION}-tk \
@@ -124,7 +118,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /build /workspace
+COPY dp_hirol-main /workspace/dp_hirol-main
+COPY HirolPlatform /workspace/HirolPlatform
+COPY docker_for_inference /workspace/docker_for_inference
 
 ENV DP_HIROL_PATH=/workspace/dp_hirol-main \
     PYTHONPATH=/workspace/HirolPlatform:/workspace/dp_hirol-main:/workspace \
