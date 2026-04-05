@@ -1,0 +1,61 @@
+tasks:
+- id: 0
+  name: "Insert Tube"
+  save_path_prefix: "insert_tube"
+  task_description: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
+  task_description_goal: "transfer the tube from the upper-left position to the lower-right hole of the same rack"
+  task_description_step: |
+    step1: locate the tube at the upper-left of the tube rack.
+    step2: pick up the tube.
+    step3: move to the lower-right hole of the rack.
+    step4: insert the tube into the hole.
+
+
+- id: 1
+  name: "Stack blocks"
+  save_path_prefix: "block_stacking"
+  task_description: "stack colored blocks in the order: red -> blue -> yellow"
+  task_description_goal: "build a tower by stacking blocks in the correct color sequence"
+  task_description_step: |
+    step1: locate the red block on the table.
+    step2: pick up the red block and place it at the stacking position.
+    step3: locate the blue block on the table.
+    step4: pick up the blue block and place it on top of the red block.
+    step5: locate the yellow block on the table.
+    step6: pick up the yellow block and place it on top of the blue block.
+    step7: verify the tower is stable with the order: red -> blue -> yellow.
+
+
+- id: 2
+  name: "Pick and Place"
+  save_path_prefix: "pick_and_place"
+  task_description: "pick up the object and place it in the bucket"
+  task_description_goal: "grasp the object and accurately put it in the bucket"
+  task_description_step: |
+    step1: locate the object on the table.
+    step2: pick up the object.
+    step3: place it in the bucket.
+
+
+- id: 3
+  name: "Insert Pinboard"
+  save_path_prefix: "insert_pinboard"
+  task_description: "Pick up the pinboard and insert it into the base"
+  task_description_goal: "Insert the pinboard into the base"
+  task_description_step: |
+    step1: Find the Pinboard on the table and pick it up.
+    step2: Go to the location of the base.
+    step3: Insert the pinboard in the base.
+    step4: Rise up.
+
+
+- id: 4
+  name: "Discern Target"
+  save_path_prefix: "discern_target"
+  task_description: "find the target and discern it"
+  task_description_goal: "discern the target"
+  task_description_step: |
+    step1: Find the target on the table.
+    step2: Adjust the actuator's posture.
+    step3: Discern the target.
+    

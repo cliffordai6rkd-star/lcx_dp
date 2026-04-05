@@ -1,0 +1,29 @@
+<mujoco model="insert_tube_tube">
+  <compiler angle="radian" meshdir="." autolimits="true" convexhull="true"/>
+
+  <asset>
+    <mesh name="tube" file="tube.stl" scale="1 1 1"/>
+    <mesh name="case" file="case.stl" scale="1 1 1"/>
+  </asset>
+
+  <option sdf_iterations="10" sdf_initpoints="40"/>
+
+  <worldbody>
+    <body name="tube_body">
+      <inertial pos="0 0 0" mass="0.05" diaginertia="0.0001 0.0001 0.0001"/>
+
+      <!-- Tube mesh with collision enabled using convex hull -->
+      <geom type="mesh" mesh="tube" pos="0 0 0" rgba="1 1 1 0.8"
+            contype="1"
+            conaffinity="1"
+            friction="0.2 0.05 0.0001"
+            condim="3"
+            solref="0.002 1"
+            solimp="0.95 0.99 0.001"/>
+
+      <!-- Case visual only -->
+      <geom type="mesh" rgba="0 0 1 1" mesh="case"
+            contype="0" conaffinity="0" group="0"/>
+    </body>
+  </worldbody>
+</mujoco>

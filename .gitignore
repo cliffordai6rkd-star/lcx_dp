@@ -53,3 +53,25 @@ docker_for_inference/vendor/*
 dp_output/
 *.ckpt
 wandb/
+
+# nested repo content we only want as source/config, not generated data or heavy assets
+dp_hirol-main/data/
+dp_hirol-main/data_converter/.bench_*
+dp_hirol-main/docker/*.tar
+dp_hirol-main/docker/*.tar.gz
+dp_hirol-main/docker/*.tgz
+dp_hirol-main/**/*.zip
+dp_hirol-main/**/*.mp4
+dp_hirol-main/**/*.h5
+dp_hirol-main/**/*.bin
+dp_hirol-main/**/*.wandb
+HirolPlatform/**/*.stl
+HirolPlatform/**/*.STL
+HirolPlatform/**/*.obj
+HirolPlatform/**/*.mtl
+HirolPlatform/**/*.dae
+HirolPlatform/**/*.png
+HirolPlatform/**/*.jpg
+HirolPlatform/**/*.jpeg
+HirolPlatform/das_data/
+HirolPlatform/dataset/
