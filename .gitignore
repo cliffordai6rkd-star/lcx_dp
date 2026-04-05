@@ -40,3 +40,16 @@ dataset/lerobot.zip
 build/
 .venv
 calibration/camera_calibration
+
+# docker_for_inference build artifacts and local SDK payloads
+docker_for_inference/*.tar
+docker_for_inference/*.tar.gz
+docker_for_inference/*.tgz
+docker_for_inference/*.zip
+docker_for_inference/vendor/*
+!docker_for_inference/vendor/.gitkeep
+
+# local inference / training outputs
+dp_output/
+*.ckpt
+wandb/
