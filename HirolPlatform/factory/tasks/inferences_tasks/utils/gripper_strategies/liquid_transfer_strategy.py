@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 倒水任务夹爪控制策略
 检测到闭合操作后，保持夹爪闭合直到episode结束

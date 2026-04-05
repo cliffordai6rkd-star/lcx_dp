@@ -53,6 +53,7 @@ class MockControllers:
     JointPosition = MockJointPosition
     IntegratedVelocity = MockIntegratedVelocity
     PureTorque = MockPureTorque
+    AppliedTorque = MockPureTorque
 
 
 class MockPanda:

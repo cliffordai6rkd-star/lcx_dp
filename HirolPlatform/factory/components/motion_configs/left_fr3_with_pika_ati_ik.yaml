@@ -42,7 +42,7 @@ model_config:
   name: "fr3_pika_ati"
   cfg: !include motion/config/robot_model_fr3_pika_ati_cfg.yaml
 
-use_trajectory_planner: false
+use_trajectory_planner: true
 buffer_type: "buffer"
 trajectory_planner_type: "cart_polynomial"
 plan_type: "cartesian"

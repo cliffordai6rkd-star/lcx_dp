@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 from factory.components.gym_interface import GymApi
 from hardware.base.utils import ToolControlMode
@@ -72,11 +74,14 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
     @staticmethod
     def _normalize_action_type(action_type: ActionType) -> ActionType:
         command_to_state = {
-            ActionType.COMMAND_JOINT_POSITION: ActionType.JOINT_POSITION,
-            ActionType.COMMAND_JOINT_POSITION_DELTA: ActionType.JOINT_POSITION_DELTA,
-            ActionType.COMMAND_END_EFFECTOR_POSE: ActionType.END_EFFECTOR_POSE,
-            ActionType.COMMAND_END_EFFECTOR_POSE_DELTA: ActionType.END_EFFECTOR_POSE_DELTA,
+             ActionType.COMMAND_JOINT_POSITION: ActionType.JOINT_POSITION,
+             ActionType.COMMAND_END_EFFECTOR_POSE: ActionType.END_EFFECTOR_POSE,
         }
+        if hasattr(ActionType, "COMMAND_JOINT_POSITION_DELTA"):
+            command_to_state[ActionType.COMMAND_JOINT_POSITION_DELTA] = ActionType.JOINT_POSITION_DELTA
+        if hasattr(ActionType, "COMMAND_END_EFFECTOR_POSE_DELTA"):
+            command_to_state[ActionType.COMMAND_END_EFFECTOR_POSE_DELTA] = ActionType.END_EFFECTOR_POSE_DELTA
+
         return command_to_state.get(action_type, action_type)
         
     def update_plotter(self, state, action):

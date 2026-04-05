@@ -8,8 +8,8 @@
 # robot + motion factory
 motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
 max_step_nums: 150
-action_type: "joint_position"
-action_orientation_type: "euler"
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
 observation_type: "joint_position_ee_pose"
 contain_ft: false
 use_relative_pose: false
@@ -31,10 +31,18 @@ enable_hardware: true
 is_debug: false
 
 # rollout / execution
-num_episodes: 45
+num_episodes: 20
 max_timestamps: 1500
-execution_chunk_steps: 4
-infer_frequency: 10
+# execution_chunk_steps: 4
+
+  # - n_action_steps = 8
+  # - 安全条件大致是：
+  #   query_frequency <= 8
+  #   int(50 / infer_frequency) <= 8
+  # - 也就是：
+  #   infer_frequency >= 6.25
+
+infer_frequency: 7
 action_weight_mode: "no"
 action_weight_gain: 0.01
 async_execution: false
@@ -45,18 +53,18 @@ display_window_name: "dp ddim inference full"
 enable_plotting: false
 
 # image preprocessing
-image_width: 128
-image_height: 128
+image_width: 192
+image_height: 192
 # image_size: [128, 128]
 
 # diffusion policy model configuration
-checkpoint_path: "dp_output/checkpoint/latest.ckpt"
+checkpoint_path: "../dp_output/checkpoint/latest.ckpt"
 seed: 42
 device: "cuda"
 
 # inference scheduler
 inference_scheduler_type: "ddim"   # "ddim" or "ddpm"
-ddim_inference_steps: 16
+ddim_inference_steps: 8
 ddim_eta: 0.0
 num_train_timesteps: 100
 

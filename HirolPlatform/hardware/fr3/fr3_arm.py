@@ -18,6 +18,15 @@ import time
 from scipy.spatial.transform import Rotation as R
 import glog as log
 
+
+def _resolve_controller(name: str, *fallback_names: str):
+    for candidate in (name, *fallback_names):
+        controller_cls = getattr(controllers, candidate, None)
+        if controller_cls is not None:
+            return controller_cls
+    return None
+
+
 class Fr3Arm(ArmBase):
     def __init__(self, config):
         self._ip = config["ip"]
@@ -36,6 +45,9 @@ class Fr3Arm(ArmBase):
         self._fr3_state_update_flag = False
         self._thread_running = True
         self._recovery_occurred = False  # Track if recovery happened
+        self._joint_position_controller_cls = _resolve_controller("JointPosition")
+        self._velocity_controller_cls = _resolve_controller("IntegratedVelocity")
+        self._torque_controller_cls = _resolve_controller("PureTorque", "AppliedTorque")
         
         # init
         super().__init__(config)
@@ -74,19 +86,21 @@ class Fr3Arm(ArmBase):
             self._fr3_robot.stop_controller()
         
         if self._control_mode is None:
-            self._panda_py_controller = controllers.JointPosition()
+            if self._joint_position_controller_cls is None:
+                raise AttributeError("panda_py.controllers is missing JointPosition")
+            self._panda_py_controller = self._joint_position_controller_cls()
             self._control_mode = "position"
 
         # pandapy low level controller parameters
         if not self._damping is None and \
-            not isinstance(self._panda_py_controller, controllers.PureTorque): 
+            not isinstance(self._panda_py_controller, self._torque_controller_types): 
             self._panda_py_controller.set_damping(self._damping)
         if not self._stiffness is None and \
-            not isinstance(self._panda_py_controller, controllers.PureTorque):
+            not isinstance(self._panda_py_controller, self._torque_controller_types):
             self._panda_py_controller.set_stiffness(self._stiffness)
         if not self._filter_coefficient is None and \
-            not isinstance(self._panda_py_controller, controllers.IntegratedVelocity) and \
-            not isinstance(self._panda_py_controller, controllers.PureTorque):
+            not isinstance(self._panda_py_controller, self._velocity_controller_types) and \
+            not isinstance(self._panda_py_controller, self._torque_controller_types):
             self._panda_py_controller.set_filter(self._filter_coefficient)
         # controller start
         with self._controller_lock:
@@ -143,11 +157,19 @@ class Fr3Arm(ArmBase):
                 self.stop_controller()
             
             if mode == 'position':
-                self._panda_py_controller = controllers.JointPosition()
+                if self._joint_position_controller_cls is None:
+                    raise AttributeError("panda_py.controllers is missing JointPosition")
+                self._panda_py_controller = self._joint_position_controller_cls()
             elif mode == 'velocity':
-                self._panda_py_controller = controllers.IntegratedVelocity()
+                if self._velocity_controller_cls is None:
+                    raise AttributeError("panda_py.controllers is missing IntegratedVelocity")
+                self._panda_py_controller = self._velocity_controller_cls()
             elif mode == 'torque':
-                self._panda_py_controller = controllers.PureTorque()
+                if self._torque_controller_cls is None:
+                    raise AttributeError(
+                        "panda_py.controllers is missing both PureTorque and AppliedTorque"
+                    )
+                self._panda_py_controller = self._torque_controller_cls()
             else:
                 log.warn(f"Unsupported control mode: {mode}")
                 return False
@@ -302,6 +324,18 @@ class Fr3Arm(ArmBase):
         
         self._fr3_robot.get_robot().set_collision_behavior(torque_min, torque_max,
             torque_min, torque_max, force_min, force_max, force_min, force_max)
+
+    @property
+    def _torque_controller_types(self):
+        if self._torque_controller_cls is None:
+            return tuple()
+        return (self._torque_controller_cls,)
+
+    @property
+    def _velocity_controller_types(self):
+        if self._velocity_controller_cls is None:
+            return tuple()
+        return (self._velocity_controller_cls,)
         
 
 if __name__ == '__main__':

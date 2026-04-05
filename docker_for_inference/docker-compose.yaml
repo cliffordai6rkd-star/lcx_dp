@@ -9,12 +9,13 @@ services:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.9}
         HOST_UID: ${UID:-1000}
         HOST_GID: ${GID:-1000}
-        PANDA_PY_INSTALL_MODE: ${PANDA_PY_INSTALL_MODE:-auto}
+        PANDA_PY_INSTALL_MODE: ${PANDA_PY_INSTALL_MODE:-source}
         PANDA_PY_VERSION: ${PANDA_PY_VERSION:-0.8.1}
+        LIBFRANKA_VERSION: ${LIBFRANKA_VERSION:-0.15.3}
+        PANDA_PY_GIT_REF: ${PANDA_PY_GIT_REF:-v0.8.1}
     image: lcx-dp:inference
     user: teleophost
-    working_dir: /workspace/HirolPlatform
-    command: ["tail", "-f", "/dev/null"]
+    command: ["bash", "-lc", "cd /workspace/HirolPlatform && tail -f /dev/null"]
     stdin_open: true
     tty: true
     network_mode: host

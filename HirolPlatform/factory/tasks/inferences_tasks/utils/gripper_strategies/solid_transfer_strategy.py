@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 固体转移任务夹爪控制策略
 夹爪全程保持闭合状态

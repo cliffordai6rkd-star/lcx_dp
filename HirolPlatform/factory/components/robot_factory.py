@@ -4,6 +4,7 @@ from hardware.base.utils import ToolType
 from hardware.base.camera import CameraBase
 from hardware.base.ft import FTBase
 from simulation.base.sim_base import SimBase
+import importlib
 from hardware.fr3.fr3_arm import Fr3Arm
 from hardware.duo_arm import DuoArm
 from hardware.agibot_g1.agibot_g1 import AgibotG1
@@ -16,16 +17,8 @@ from hardware.unitreeG1.unitree_g1 import UnitreeG1
 from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.tools.grippers.pika_gripper import PikaGripper
 from hardware.duo_tool import DuoTool
-from hardware.base.camera import CameraBase
-from hardware.sensors.cameras.realsense_camera import RealsenseCamera
-from hardware.sensors.cameras.opencv_camera import OpencvCamera
-from hardware.sensors.cameras.agibot_cameras import AgibotCamera
-from hardware.sensors.cameras.ros2_camera import Ros2Camera
 from hardware.sensors.ft_sensor.ati_ft import AtiFt
-from hardware.sensors.cameras.network_camera import NetworkCamera
 from hardware.base.tactile_base import TactileBase
-from hardware.sensors.paxini_tactile.paxini_serial_sensor import PaxiniSerialSensor
-from hardware.sensors.paxini_tactile.paxini_network_sensor import PaxiniNetworkSensor
 import threading
 import time, copy
 from hardware.base.utils import object_class_check
@@ -48,6 +41,17 @@ class RobotFactory:
     _tool: ToolBase
     _simulation: SimBase
     _smoother: Optional[SmootherBase]
+    _OPTIONAL_CAMERA_IMPORTS = {
+        'realsense_camera': ('hardware.sensors.cameras.realsense_camera', 'RealsenseCamera'),
+        'opencv_camera': ('hardware.sensors.cameras.opencv_camera', 'OpencvCamera'),
+        'agibot_camera': ('hardware.sensors.cameras.agibot_cameras', 'AgibotCamera'),
+        'ros2_camera': ('hardware.sensors.cameras.ros2_camera', 'Ros2Camera'),
+        'network_camera': ('hardware.sensors.cameras.network_camera', 'NetworkCamera'),
+    }
+    _OPTIONAL_TACTILE_IMPORTS = {
+        'paxini_serial_sensor': ('hardware.sensors.paxini_tactile.paxini_serial_sensor', 'PaxiniSerialSensor'),
+        'paxini_network_sensor': ('hardware.sensors.paxini_tactile.paxini_network_sensor', 'PaxiniNetworkSensor'),
+    }
     
     def __init__(self, config):
         self._config = config
@@ -96,16 +100,16 @@ class RobotFactory:
         }
         
         self._camera_classes = {
-            'realsense_camera': RealsenseCamera,
-            'opencv_camera': OpencvCamera,
-            'agibot_camera': AgibotCamera,
-            'ros2_camera': Ros2Camera,
-            'network_camera': NetworkCamera,
+            'realsense_camera': None,
+            'opencv_camera': None,
+            'agibot_camera': None,
+            'ros2_camera': None,
+            'network_camera': None,
         }
         
         self._tactile_classes = {
-            'paxini_serial_sensor': PaxiniSerialSensor,
-            'paxini_network_sensor': PaxiniNetworkSensor,
+            'paxini_serial_sensor': None,
+            'paxini_network_sensor': None,
         }
         
         self._ft_classes = {
@@ -121,6 +125,13 @@ class RobotFactory:
             'adaptive_critical_damped': AdaptiveCriticalDampedSmoother,
             'ruckig': RuckigSmoother
         }
+
+    def _resolve_optional_class(self, object_type: str, registry: dict, import_map: dict):
+        if registry[object_type] is None:
+            module_name, class_name = import_map[object_type]
+            module = importlib.import_module(module_name)
+            registry[object_type] = getattr(module, class_name)
+        return registry[object_type]
     
     def create_robot_system(self):
         # platforms
@@ -157,7 +168,12 @@ class RobotFactory:
                                 log.error(f"ValueError")
                                 raise ValueError
                             cur_sensor_type = sensor_info['type']
-                            sensor_obj = sensor_class_mapping[sensor_type][cur_sensor_type](sensor_info['cfg'][cur_sensor_type])
+                            sensor_class = sensor_class_mapping[sensor_type][cur_sensor_type]
+                            if sensor_type == 'cameras':
+                                sensor_class = self._resolve_optional_class(
+                                    cur_sensor_type, self._camera_classes, self._OPTIONAL_CAMERA_IMPORTS
+                                )
+                            sensor_obj = sensor_class(sensor_info['cfg'][cur_sensor_type])
                             sensors_objects.append({'name': sensor_info['name'], 'object': sensor_obj})
                             log.info(f"Add one hw {possible_sensor_name_mapping[sensor_type]} {sensor_info['name']}")
                             log.info(f"cur {possible_sensor_name_mapping[sensor_type]}: {sensor_info['cfg'][cur_sensor_type]}")
@@ -184,7 +200,10 @@ class RobotFactory:
                         config_key = 'paxini_serial_sensor' if 'serial' in tactile_type else 'paxini_network_sensor'
                         tactile_config = tactile_info_item['cfg'][config_key]
                         
-                        tactile_sensor = self._tactile_classes[tactile_type](tactile_config)
+                        tactile_class = self._resolve_optional_class(
+                            tactile_type, self._tactile_classes, self._OPTIONAL_TACTILE_IMPORTS
+                        )
+                        tactile_sensor = tactile_class(tactile_config)
                         tactile_objects.append({'name': tactile_info_item['name'], 'object': tactile_sensor})
                         log.info(f"Added tactile sensor: {tactile_info_item['name']}")
                         num_tactile += 1

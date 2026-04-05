@@ -5,7 +5,7 @@ fr3:
   # if impedance set damping [0]*7
   # damping: [0, 0, 0, 0, 0, 0, 0]
   stiffness: [300, 300, 300, 300, 100, 100, 100]
-  filter_coeff: 1.0
+  filter_coeff: 0.6
   # default threshold parameters
   # {{10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}},
   # {{10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}},

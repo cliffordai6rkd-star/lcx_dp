@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 抓放任务夹爪控制策略
 适用于插孔任务和叠方块任务，依赖ACT模型输出控制夹爪开闭

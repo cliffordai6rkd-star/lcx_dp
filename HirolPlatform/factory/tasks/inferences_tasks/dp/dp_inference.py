@@ -69,6 +69,7 @@ log.info("Successfully imported diffusion_policy modules")
 
 class DP_Inferencer(InferenceBase):
     def __init__(self, config: Dict[str, Any]) -> None:
+        self._start_event = threading.Event()
         super().__init__(config)
         
         seed = config["seed"]
@@ -105,46 +106,69 @@ class DP_Inferencer(InferenceBase):
             result = self._dp_policy.predict_action(obs)  #这里的self._policy是load_dp_model加载出来的
         return result['action'][0][:self._n_action_steps].detach().cpu().numpy()
     
-    # 推理控制实现    
-    def start_inference(self) -> None:
-        """Main inference loop following PI0 pattern."""
-        execution_thread = None
-        for episode_num in range(self._num_episodes):
-            if self._quit:
-                break
+    def _keyboard_on_press(self, key: str) -> None:
+      if key == 's':
+          log.info("Start command received")
+          self._start_event.set()
+          return
+
+      if key == 'q':
+          self._start_event.set()
+          super()._keyboard_on_press(key)
+          return
+
+      super()._keyboard_on_press(key)
+    
+    # # 推理控制实现    
+    # def start_inference(self) -> None:
+    #     """Main inference loop following PI0 pattern."""
+    #     execution_thread = None
+    #     for episode_num in range(self._num_episodes):
+    #         if self._quit:
+    #             break
                 
-            self._gym_robot.reset()
-            self.policy_reset()
-            self._obs_queue.clear()
-            self._status_ok = True
-            self._last_gripper_open = [True, True]
-            log.info(f'Starting episode {episode_num}')
+    #         self._gym_robot.reset()
+    #         self.policy_reset()
+    #         self._obs_queue.clear()
+    #         self._status_ok = True
+    #         self._last_gripper_open = [True, True]
+    #         log.info(f'Starting episode {episode_num}')
             
-            while self._status_ok:
-                with timer("gym_obs", "dp_inferencer"):
-                    dp_obs = self.convert_from_gym_obs()
-                with timer("dp_inference_time", "dp_inferencer"):
-                    with torch.no_grad():
-                        start_time = time.perf_counter()
-                        action_np = self.policy_prediction(dp_obs)
-                        log.info(f'infer used time: {time.perf_counter() - start_time}s')
-                        log.info(f'dp result action: {action_np.shape}')
+    #         while self._status_ok:
+    #             with timer("gym_obs", "dp_inferencer"):
+    #                 dp_obs = self.convert_from_gym_obs()
+    #             with timer("dp_inference_time", "dp_inferencer"):
+    #                 with torch.no_grad():
+    #                     start_time = time.perf_counter()
+    #                     action_np = self.policy_prediction(dp_obs)
+    #                     log.info(f'infer used time: {time.perf_counter() - start_time}s')
+    #                     log.info(f'dp result action: {action_np.shape}')
                         
-            # 得到dp action
+    #         # 得到dp action
                 
-                if execution_thread and execution_thread.is_alive():
-                    self._execution_interruption = True
-                    execution_thread.join()
-                    self._execution_interruption = False
+    #             if execution_thread and execution_thread.is_alive():
+    #                 self._execution_interruption = True
+    #                 execution_thread.join()
+    #                 self._execution_interruption = False
                     
-                def multi_step_tasks():
-                    with timer("gym_step", "pi0_inferencer"):
-                        self.convert_to_gym_action(action_np)
+    #             def multi_step_tasks():
+    #                 with timer("gym_step", "pi0_inferencer"):
+    #                     # 执行整个chunk
+    #                     self.convert_to_gym_action(action_np)  
                             
-                execution_thread = threading.Thread(target=multi_step_tasks)
-                execution_thread.start()
-                if not self._async_execution:
-                    execution_thread.join()
+    #             execution_thread = threading.Thread(target=multi_step_tasks)
+    #             execution_thread.start()
+    #             if not self._async_execution:
+    #                 execution_thread.join()
+    def start_inference(self) -> None:
+        log.info("Initialization done. Press 's' to start inference, 'q' to quit.")
+        while not self._quit and not self._start_event.is_set():
+          time.sleep(0.05)
+
+        if self._quit:
+          return
+        
+        self.start_common_inference()
 
     # 获取gym格式的obs 转换成dp需要的torch.Tensor格式的obs
     def convert_from_gym_obs(self, gym_obs = None) -> Dict[str, torch.Tensor]:
@@ -154,7 +178,7 @@ class DP_Inferencer(InferenceBase):
             Dict containing DP-formatted observations as tensors
         """
         # 父类在inference_base里定义了convert_from_gym_obs方法，返回gym_obs的字典格式，包含state、colors
-        gym_obs = super().convert_from_gym_obs(gym_obs = None) 
+        gym_obs = super().convert_from_gym_obs(gym_obs = gym_obs) 
         # 取出gym_obs里的colors？？？
         self.image_display(gym_obs)
         
@@ -304,7 +328,7 @@ class DP_Inferencer(InferenceBase):
             else:
                 policy.num_inference_steps = min(70, getattr(policy, 'num_inference_steps', 16))
 
-            policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
+            # policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
             log.info(f'DP model num infer steps: {policy.num_inference_steps}, n action steps: {policy.n_action_steps}')
 
         log.info("DP model loaded successfully")
