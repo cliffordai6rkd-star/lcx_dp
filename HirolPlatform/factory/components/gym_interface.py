@@ -369,9 +369,6 @@ def main():
     config = dynamic_load_yaml(args.config)
     
     fr3_gym = GymApi(config)    # Extract components
-            temp_joint_posi = np.hstack((temp_joint_posi, cur_state))
-            # Combine state components
-            state_components = np.hstack((state_components, cur_state))
     i = 0
     # position_test = [0.013841196342567696, -0.5922128618960336, -0.023749771665655426, -2.4364204955424196, -0.016736788670502524, 1.921816076394133, 0.7890845040801358] # measure 
     position_test = [-0.17956917997172686, 0.31556980687824737, 

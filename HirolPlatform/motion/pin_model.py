@@ -5,7 +5,10 @@ import os
 import glog as log
 import numpy as np
 import casadi
-import pinocchio.casadi as cpin
+try:
+    import pinocchio.casadi as cpin
+except ImportError:
+    cpin = None
 from motion.model_base import ModelBase
 from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix
 
@@ -105,6 +108,11 @@ class RobotModel(ModelBase):
                     
         # init ik casadi optimization
         if self.tracking_frames is not None:
+            if cpin is None:
+                raise ImportError(
+                    "pinocchio.casadi is required when tracking_frames is configured. "
+                    "Install a Pinocchio build with CasADi bindings."
+                )
             self._init_casadi_problem()
             
     def get_pin_model_N_data(self):

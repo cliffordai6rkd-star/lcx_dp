@@ -6,8 +6,6 @@ import threading
 import time
 from typing import Union, Dict, List
 from hardware.base.utils import ToolState, ToolControlMode, ToolType
-from motion.pin_model import RobotModel
-from controller.whole_body_ik import WholeBodyIk
 
 class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
     def __init__(self, config):
@@ -31,6 +29,8 @@ class ToolBase(abc.ABC, metaclass=abc.ABCMeta):
             
         # retarget control config
         if self._control_mode == ToolControlMode.HAND_RETARGET:
+            from motion.pin_model import RobotModel
+            from controller.whole_body_ik import WholeBodyIk
             self._model = RobotModel(config=config["hand_model"])
             self._wbik = WholeBodyIk(config=config["controller"]["whole_body_ik"],
                                      robot_model=self._model)

@@ -3,7 +3,10 @@ from __future__ import annotations
 from motion.pin_model import RobotModel
 from controller.controller_base import ControllerBase
 import casadi
-import pinocchio.casadi as cpin
+try:
+    import pinocchio.casadi as cpin
+except ImportError:
+    cpin = None
 import pinocchio as pin
 from hardware.base.utils import RobotJointState, convert_7D_2_homo, convert_quat_to_rot_matrix
 from controller.utils.weighted_moving_filter import WeightedMovingFilter
@@ -12,6 +15,10 @@ import glog as log
 
 class WholeBodyIk(ControllerBase):
     def __init__(self, config, robot_model: RobotModel):
+        if cpin is None:
+            raise ImportError(
+                "WholeBodyIk requires pinocchio.casadi, but it is not available in this environment."
+            )
         super().__init__(config, robot_model)
         self.tracking_frames = config["tracking_frames"]
         self._nullspace_tracking = config.get('nullspace_tracking', None)

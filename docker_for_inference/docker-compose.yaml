@@ -2,11 +2,15 @@ name: lcx-dp-inference
 
 services:
   dp_inference:
-    # build:
-    #   context: ..
-    #   dockerfile: docker_for_inference/Dockerfile
-    #   args:
-    #     PYTHON_VERSION: "3.10"
+    build:
+      context: ..
+      dockerfile: docker_for_inference/Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.9}
+        HOST_UID: ${UID:-1000}
+        HOST_GID: ${GID:-1000}
+        PANDA_PY_INSTALL_MODE: ${PANDA_PY_INSTALL_MODE:-auto}
+        PANDA_PY_VERSION: ${PANDA_PY_VERSION:-0.8.1}
     image: lcx-dp:inference
     user: teleophost
     working_dir: /workspace/HirolPlatform
@@ -22,7 +26,7 @@ services:
       MPLCONFIGDIR: /tmp/matplotlib
       WANDB_DIR: /workspace/wandb
       DP_HIROL_PATH: /workspace/dp_hirol-main
-      PYTHONPATH: /opt/openrobots/lib/python3.10/site-packages:/workspace/HirolPlatform:/workspace/dp_hirol-main:/workspace
+      PYTHONPATH: /workspace/HirolPlatform:/workspace/dp_hirol-main:/workspace
       http_proxy:
       https_proxy:
       no_proxy:

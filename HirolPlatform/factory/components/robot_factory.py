@@ -16,7 +16,6 @@ from hardware.unitreeG1.unitree_g1 import UnitreeG1
 from hardware.unitreeG1.Dex3_Hand import Dex3Hand
 from hardware.tools.grippers.pika_gripper import PikaGripper
 from hardware.duo_tool import DuoTool
-from simulation.mujoco.mujoco_sim import MujocoSim
 from hardware.base.camera import CameraBase
 from hardware.sensors.cameras.realsense_camera import RealsenseCamera
 from hardware.sensors.cameras.opencv_camera import OpencvCamera
@@ -114,7 +113,7 @@ class RobotFactory:
         }
         
         self._simulation_classes = {
-            'mujoco': MujocoSim
+            'mujoco': None
         }
         
         self._smoother_classes = {
@@ -193,6 +192,9 @@ class RobotFactory:
                         self._sensors['tactile'] = tactile_objects
                 
         if self._use_simulation:
+            if self._simulation_type == 'mujoco' and self._simulation_classes['mujoco'] is None:
+                from simulation.mujoco.mujoco_sim import MujocoSim
+                self._simulation_classes['mujoco'] = MujocoSim
             if not object_class_check(self._simulation_classes, self._simulation_type):
                 raise ValueError
             self._simulation = self._simulation_classes[self._simulation_type](self._config["simulation_config"][self._simulation_type])
