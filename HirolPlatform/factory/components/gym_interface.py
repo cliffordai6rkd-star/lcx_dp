@@ -149,6 +149,9 @@ class GymApi(gym.Env):
         self._robot_motion.reset_robot_system(arm_command=self._reset_arm_command,
                                               space=self._reset_space,
                                               tool_command=self._reset_tool_command)
+        print("joint reset state:", self.get_joint_state())
+        print("ee reset pose:", self.get_ee_state())
+
         self.set_init_pose()
     
     def get_joint_state(self):
