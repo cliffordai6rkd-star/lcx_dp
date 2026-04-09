@@ -257,7 +257,7 @@ class DP_Inferencer(InferenceBase):
             else:
                 raise ValueError(f"obaervationtpye is not exist in gyminterface 236")
         self._lock.acquire()
-        self._joint_positions = joint
+        self._joint_positions = joint # 更新joint参数
         self._lock.release()
         # 按照dp ckpt训练定义的state_ee顺序拼接
         # dp_state = np.concatenate([ee, joint, gripper], axis=0).astype(np.float32)

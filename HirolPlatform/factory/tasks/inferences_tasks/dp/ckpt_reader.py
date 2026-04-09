@@ -3,7 +3,7 @@ import dill
 import hydra
 import glog as log
 
-ckpt_path = "dp_output/checkpoint/latest.ckpt" 
+ckpt_path = "../dp_output/2026.04.06/latest.ckpt" 
 with open(ckpt_path, "rb") as f:
     payload = torch.load(f, pickle_module=dill, map_location="cpu")
 cfg = payload["cfg"]

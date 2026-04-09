@@ -1,5 +1,5 @@
 --index-url https://download.pytorch.org/whl/cu116
 --extra-index-url https://pypi.org/simple
 
-torch==1.12.1+cu116
-torchvision==0.13.1+cu116
+torch==2.1.0+cu118
+torchvision==0.16.0+cu118

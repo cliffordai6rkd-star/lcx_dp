@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-ARG CUDA_VERSION=11.6.2
+ARG CUDA_VERSION=11.8.0
 ARG UBUNTU_VERSION=20.04
 ARG PYTHON_VERSION=3.9
 ARG HOST_UID=1000
@@ -24,7 +24,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     MAMBA_ROOT_PREFIX=/opt/micromamba \
     VIRTUAL_ENV=/opt/venv \
-    LD_LIBRARY_PATH=/usr/local/lib \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib \
     PATH=/opt/venv/bin:${PATH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -129,6 +129,11 @@ print("pinocchio:", pinocchio.__version__)
 print("panda_py:", panda_py.__version__)
 print("Panda import: ok")
 PY
+
+RUN python -m pip uninstall -y torch torchvision torchaudio || true
+
+RUN python -m pip install torch==2.1.0+cu118 torchvision \
+    --index-url https://download.pytorch.org/whl/cu118
 
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-runtime-ubuntu${UBUNTU_VERSION}
 

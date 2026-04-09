@@ -19,7 +19,6 @@ services:
     stdin_open: true
     tty: true
     network_mode: host
-    privileged: true
     environment:
       DISPLAY: ${DISPLAY}
       XAUTHORITY: ${XAUTHORITY:-$HOME/.Xauthority}
@@ -40,11 +39,10 @@ services:
       - /sys/bus/usb:/sys/bus/usb:ro
       - /sys/class/input:/sys/class/input:ro
     devices:
-      - /dev:/dev
       - /dev/bus/usb:/dev/bus/usb
       - /dev/input:/dev/input
-      - /var/run/dbus:/var/run/dbus
-      - /run/dbus:/run/dbus
+      # - /var/run/dbus:/var/run/dbus
+      # - /run/dbus:/run/dbus
     gpus: all
     group_add:
       - "plugdev"

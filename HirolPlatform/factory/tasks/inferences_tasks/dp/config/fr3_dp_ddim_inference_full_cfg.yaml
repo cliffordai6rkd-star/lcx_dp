@@ -58,7 +58,7 @@ image_height: 192
 # image_size: [128, 128]
 
 # diffusion policy model configuration
-checkpoint_path: "../dp_output/checkpoint/latest.ckpt"
+checkpoint_path: "../dp_output/2026.04.06/latest.ckpt"
 seed: 42
 device: "cuda"
 
