@@ -14,7 +14,7 @@ services:
       #   PANDA_PY_VERSION: ${PANDA_PY_VERSION:-0.8.1}
       #   LIBFRANKA_VERSION: ${LIBFRANKA_VERSION:-0.15.0}
       #   PANDA_PY_GIT_REF: ${PANDA_PY_GIT_REF:-v0.8.1}
-    image: lcx-dp:inference
+    image: lcx-dp:inferencev2
     user: teleophost
     network_mode: host
     command: ["bash", "-lc", "cd /workspace/HirolPlatform && tail -f /dev/null"]
