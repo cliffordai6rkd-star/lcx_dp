@@ -3,7 +3,7 @@ from hardware.base.utils import ToolState, ToolType
 
 # Try to import pika gripper, fall back to mock if not available
 try:
-    from pika.gripper import Gripper
+    from dependencies.pika_sdk.pika.gripper import Gripper
 except (ImportError, ModuleNotFoundError):
     import glog as log
     log.warning("pika.gripper not available, using mock implementation")

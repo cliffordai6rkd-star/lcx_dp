@@ -119,7 +119,7 @@ class DP_Inferencer(InferenceBase):
 
       super()._keyboard_on_press(key)
     
-    # # 推理控制实现    
+    # 推理控制实现    
     # def start_inference(self) -> None:
     #     """Main inference loop following PI0 pattern."""
     #     execution_thread = None
@@ -152,6 +152,13 @@ class DP_Inferencer(InferenceBase):
     #                 self._execution_interruption = False
                     
     #             def multi_step_tasks():
+    #             log.info("Initialization done. Press 's' to start inference, 'q' to quit.")
+    #             while not self._quit and not self._start_event.is_set():
+    #               time.sleep(0.05)
+
+    #             if self._quit:
+    #               return
+
     #                 with timer("gym_step", "pi0_inferencer"):
     #                     # 执行整个chunk
     #                     self.convert_to_gym_action(action_np)  

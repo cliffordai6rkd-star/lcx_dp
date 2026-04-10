@@ -4,7 +4,7 @@ set -euo pipefail
 vendor_root="${1:-/build/docker_for_inference/vendor}"
 install_mode="${2:-auto}"
 panda_py_version="${3:-0.8.1}"
-libfranka_version="${4:-0.15.3}"
+libfranka_version="${4:-0.15.0}"
 panda_py_ref="${5:-v0.8.1}"
 
 python_bin="${PYTHON_BIN:-python}"

@@ -16,10 +16,10 @@ use_relative_pose: false
 
 # tool / gripper settings
 tool_position_dof: 1
-tool_state_max: 1
+tool_state_max: 90
 tool_min: 0
-tool_max: 90
-tool_control_mode: "binary"
+tool_max: 1
+tool_control_mode: "incremental"
 tool_open_thresh: 45
 tool_close_thresh: 45
 

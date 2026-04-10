@@ -142,7 +142,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
 
             action["arm"] = np.hstack((action["arm"], cur_arm_action))
             cur_tool_action = cur_action[index_r:index_r+gripper_position_dof].copy()
-            # log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
+            log.info(f'cur tool action from model action for {j}: {cur_tool_action}, len {len(cur_tool_action)}')
             
             if self._tool_control_mode == ToolControlMode.BINARY:
                 if self._last_gripper_open[j]:
@@ -262,6 +262,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
         raise NotImplementedError
     
     def start_common_inference(self):
+        print(f"11111111111111111111111111111111111111111111111111")
         # rollout episodes
         query_frequency = int(50 / self._infer_frequency)
         for episode_id in range(self._num_episodes):
@@ -287,6 +288,7 @@ class InferenceBase(abc.ABC, metaclass=abc.ABCMeta):
                 
                 if obs is None: 
                     obs = self.convert_from_gym_obs(obs)
+                    print(f"")
                 
                 if t % query_frequency == 0:
                     # 仅在查询周期到达时预测并追加新的动作块

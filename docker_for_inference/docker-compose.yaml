@@ -2,23 +2,25 @@ name: lcx-dp-inference
 
 services:
   dp_inference:
-    build:
-      context: ..
-      dockerfile: docker_for_inference/Dockerfile
-      args:
-        PYTHON_VERSION: ${PYTHON_VERSION:-3.9}
-        HOST_UID: ${UID:-1000}
-        HOST_GID: ${GID:-1000}
-        PANDA_PY_INSTALL_MODE: ${PANDA_PY_INSTALL_MODE:-source}
-        PANDA_PY_VERSION: ${PANDA_PY_VERSION:-0.8.1}
-        LIBFRANKA_VERSION: ${LIBFRANKA_VERSION:-0.15.3}
-        PANDA_PY_GIT_REF: ${PANDA_PY_GIT_REF:-v0.8.1}
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   # args:
+      #   UBUNTU_VERSION: ${UBUNTU_VERSION:-22.04}
+      #   PYTHON_VERSION: ${PYTHON_VERSION:-3.10}
+      #   HOST_UID: ${UID:-1000}
+      #   HOST_GID: ${GID:-1000}
+      #   PANDA_PY_INSTALL_MODE: ${PANDA_PY_INSTALL_MODE:-source}
+      #   PANDA_PY_VERSION: ${PANDA_PY_VERSION:-0.8.1}
+      #   LIBFRANKA_VERSION: ${LIBFRANKA_VERSION:-0.15.0}
+      #   PANDA_PY_GIT_REF: ${PANDA_PY_GIT_REF:-v0.8.1}
     image: lcx-dp:inference
     user: teleophost
+    network_mode: host
     command: ["bash", "-lc", "cd /workspace/HirolPlatform && tail -f /dev/null"]
     stdin_open: true
+    privileged: true
     tty: true
-    network_mode: host
     environment:
       DISPLAY: ${DISPLAY}
       XAUTHORITY: ${XAUTHORITY:-$HOME/.Xauthority}
@@ -27,6 +29,8 @@ services:
       WANDB_DIR: /workspace/wandb
       DP_HIROL_PATH: /workspace/dp_hirol-main
       PYTHONPATH: /workspace/HirolPlatform:/workspace/dp_hirol-main:/workspace
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,graphics,video,display
       http_proxy:
       https_proxy:
       no_proxy:
@@ -38,7 +42,9 @@ services:
       - ${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-$HOME/.Xauthority}:ro
       - /sys/bus/usb:/sys/bus/usb:ro
       - /sys/class/input:/sys/class/input:ro
+      - /dev:/dev
     devices:
+      - /dev:/dev
       - /dev/bus/usb:/dev/bus/usb
       - /dev/input:/dev/input
       # - /var/run/dbus:/var/run/dbus
