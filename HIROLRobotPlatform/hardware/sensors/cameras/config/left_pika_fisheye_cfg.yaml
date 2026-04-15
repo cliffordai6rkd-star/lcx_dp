@@ -1,0 +1,7 @@
+opencv_camera:
+  # "/dev/video80"
+  device_id: 80
+  image_shape: [480, 640]
+  fps: 30
+  contain_depth: false
+  contain_imu: false

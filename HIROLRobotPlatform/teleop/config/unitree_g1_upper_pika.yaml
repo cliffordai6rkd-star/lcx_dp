@@ -1,0 +1,15 @@
+motion_config: !include factory/components/motion_configs/unitree_g1_upper.yaml
+
+# Target sites for left and right arms
+target_site_name: ["targetL_site", "targetR_site", "head_site"]
+tcp_visualization_site: ["TCPL_site", "TCPR_site"]
+
+teleop_interface: "pika_tracker"
+interface_config: !include teleop/pika_tracker/config/pika_tracker_unitree_upper.yaml
+inteface_output_mode: "absolute_delta"
+
+# teleoperation used parameter
+# if you are using mujoco simulation target instead of teleoperation device,
+# set use_simulation_target as true
+use_simulation_target: false
+teleoperation_loop_time: 0.01  # 100Hz teleoperation loop matching control frequency

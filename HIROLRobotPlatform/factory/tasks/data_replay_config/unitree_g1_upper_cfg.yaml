@@ -1,0 +1,33 @@
+motion_config: !include factory/components/motion_configs/unitree_g1_upper.yaml
+max_step_nums: 150 # for gym steps
+is_debug: false
+
+task_data_dir: "/mnt/nas/ZML/0118_position2_horizontal_bread_picking_single_human_68ep"
+data_type: "human_hand"
+action_prediction_step: 2
+skip_steps: 2
+# end_effector_pose_delta
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+observation_type: "ee_pose"
+contain_ft: false
+use_relative_pose: true
+contain_head: true
+state_keys: ["left", "right", "head"]
+rotation_transform: 
+  left: [0, 0, 0, 1]
+  right: [0, 0, 0, 1]
+  head: [0, 0, 0, 1]
+
+replay_frequency: 30
+tool_position_dof: 1
+tool_max: 1.0
+enable_hardware: false
+
+# move to start position for pick n place
+# cartesian
+reset_arm_command: [0.25, 0.2, 0.13, 0, 0, 0, 1,
+                    0.25, -0.2, 0.13, 0, 0, 0, 1,]
+reset_space: "cartesian"
+reset_tool_command: [[1], [1]]
+# reset_space: "joint"

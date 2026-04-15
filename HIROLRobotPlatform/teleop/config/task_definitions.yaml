@@ -1,0 +1,94 @@
+tasks:
+- id: 0
+  name: "Insert Tube"
+  save_path_prefix: "insert_tube"
+  task_description: "grab the tube from the upper-left of the rack and insert it into the lower-right hole"
+  task_description_goal: "transfer the tube from the upper-left position to the lower-right hole of the same rack"
+  task_description_step: |
+    step1: locate the tube at the upper-left of the tube rack.
+    step2: pick up the tube.
+    step3: move to the lower-right hole of the rack.
+    step4: insert the tube into the hole.
+
+
+- id: 1
+  name: "Stack blocks"
+  save_path_prefix: "block_stacking"
+  task_description: "stack colored blocks in the order: red -> blue -> yellow"
+  task_description_goal: "build a tower by stacking blocks in the correct color sequence"
+  task_description_step: |
+    step1: locate the red block on the table.
+    step2: pick up the red block and place it at the stacking position.
+    step3: locate the blue block on the table.
+    step4: pick up the blue block and place it on top of the red block.
+    step5: locate the yellow block on the table.
+    step6: pick up the yellow block and place it on top of the blue block.
+    step7: verify the tower is stable with the order: red -> blue -> yellow.
+
+
+- id: 2
+  name: "Pick and Place"
+  save_path_prefix: "pick_and_place"
+  task_description: "pick up the object and place it in the bucket"
+  task_description_goal: "grasp the object and accurately put it in the bucket"
+  task_description_step: |
+    step1: locate the object on the table.
+    step2: pick up the object.
+    step3: place it in the bucket.
+
+
+- id: 3
+  name: "Peg in Hole"
+  save_path_prefix: "peg_in_hole"
+  task_description: "pick up the peg on the table and put it in the hole"
+  task_description_goal: "pick up the peg on the table and place it in the correct hole"
+  task_description_step: |
+    step1: find the peg on the table.
+    step2: go to the location of the peg
+    step3: pick up the only peg on the table.
+    step4: find the only hole in the peg station.
+    step5: go to the top of the hole.
+    step6: place the peg into the hole.
+
+
+- id: 4
+  name: "Folding Towels"
+  save_path_prefix: "folding_towels"
+  task_description: "fold the towel symmetrically with both grippers"
+  task_description_goal: "fold the towel in half along its length"
+  task_description_step: |
+    step1: left gripper grasps the left 1/3 of the towel.
+    step2: right gripper grasps the right 1/3 of the towel.
+    step3: bring both sides together to complete the fold.
+
+
+- id: 5
+  name: "Dual-arm Powder Transfer"
+  save_path_prefix: "dual_arm_powder_transfer"
+  task_description: "scoop powder from the ampoule and transfer it to a container"
+  task_description_goal: "use the spoon in the left arm to transfer powder from the ampoule held by the right arm"
+  task_description_step: |
+    step1: left arm picks up the spoon; right arm picks up the ampoule.
+    step2: scoop powder from the ampoule with the spoon.
+    step3: transfer the powder to another container.
+  
+- id: 6
+  name: "Plug the Charger"
+  save_path_prefix: "plug_charger"
+  task_description: "pick up the charger and plug it into the power strip"
+  task_description_goal: "locate the charger and pick it up and insert it to the extension cord"
+  task_description_step: |
+    step1: left arm picks up the spoon; right arm picks up the ampoule.
+    step2: scoop powder from the ampoule with the spoon.
+    step3: transfer the powder to another container.
+
+- id: 7
+  name: "Bread picking"
+  save_path_prefix: "bread_picking"
+  task_description: "place the bread into the designated position inside the box"
+  task_description_goal: "locate the bread and box , place the bread into the designated position inside the box"
+  task_description_step: |
+    step1: left hand opens the cover and puts it aside
+    step2: left hand resets
+    step3: right hand picks up the bread and puts it into the box
+    step4: right hand resets

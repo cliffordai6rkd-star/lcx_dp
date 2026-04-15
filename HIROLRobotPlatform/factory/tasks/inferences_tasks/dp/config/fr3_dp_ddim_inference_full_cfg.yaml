@@ -1,0 +1,95 @@
+# DP package path
+# This path is resolved relative to the HirolPlatform project root when not absolute.
+# Common layouts:
+# - DP beside HirolPlatform's parent folder: "../dp_hirol-main"
+# - DP under /mnt/code while repo is /mnt/code/lcx_dp/HirolPlatform: "../../dp_hirol-main"
+
+
+# robot + motion factory
+motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
+max_step_nums: 150
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+observation_type: "img_only"
+contain_ft: false
+use_relative_pose: false
+
+# inference observation source
+observation_source: "dataset"          # "gym" | "dataset"
+dataset_task_data_dir: "../dp_output/pick_and_place"        
+dataset_episode_id: 1
+dataset_skip_steps: 1
+dataset_cam_keys: 
+- ee_cam_color
+- third_person_cam_color
+- side_cam_color
+
+dataset_state_keys: null
+dataset_data_type: "real_robot"
+
+# tool / gripper settings
+tool_position_dof: 1
+tool_state_max: 90
+tool_min: 0
+tool_max: 1
+tool_control_mode: "incremental"
+tool_open_thresh: 45
+tool_close_thresh: 45
+
+# robot reset
+reset_space: "joint"
+reset_arm_command: null
+reset_tool_command: [1]
+enable_hardware: true
+is_debug: false
+
+# rollout / execution
+num_episodes: 20
+max_timestamps: 2000
+# execution_chunk_steps: 4
+
+  # - n_action_steps = 8
+  # - 安全条件大致是：
+  #   query_frequency <= 8
+  #   int(50 / infer_frequency) <= 8
+  # - 也就是：
+  #   infer_frequency >= 6.25
+
+infer_frequency: 7
+action_weight_mode: "no"
+action_weight_gain: 0.01
+async_execution: false
+
+# display / plotting
+enable_display: true
+display_window_name: "dp ddim inference full"
+enable_plotting: false
+
+# image preprocessing
+image_width: 224
+image_height: 224
+# image_size: [128, 128]
+
+# diffusion policy model configuration
+checkpoint_path: "../dp_output/2026.0414/latest.ckpt"
+data_save_path: "../dp_output/inference_data/2026.04.15"
+
+inference_safety:
+  enabled: true
+  ee_pose_step_guard: true
+  ee_pos_step_limit_m: 0.5
+  ee_rot_step_limit_rad: 0.25
+  save_anomaly_log: true
+  anomaly_log_dir: "../dp_output/inference_anomaly/2026.04.15_r2"
+
+seed: 42
+device: "cuda"
+
+# inference scheduler
+inference_scheduler_type: "ddim"   # "ddim" or "ddpm"
+ddim_inference_steps: 8
+ddim_eta: 0.0
+num_train_timesteps: 100
+
+# logging / misc
+log_level: "info"

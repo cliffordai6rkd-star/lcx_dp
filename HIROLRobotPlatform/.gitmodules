@@ -1,0 +1,27 @@
+[submodule "dependencies/panda-py"]
+	path = dependencies/panda-py
+	url = git@github.com:linkage-x/panda-py.git
+[submodule "dependencies/monte01_sdk"]
+	path = dependencies/monte01_sdk
+	url = git@github.com:linkage-x/monte01_sdk.git
+[submodule "dependencies/unitree_sdk2"]
+	path = dependencies/unitree_sdk2
+	url = git@github.com:unitreerobotics/unitree_sdk2.git
+[submodule "dependencies/unitree_sdk2_python"]
+	path = dependencies/unitree_sdk2_python
+	url = git@github.com:unitreerobotics/unitree_sdk2_python.git
+[submodule "dependencies/a2d_sdk"]
+	path = dependencies/a2d_sdk
+	url = git@github.com:linkage-x/a2d_sdk.git
+[submodule "dependencies/act"]
+	path = dependencies/act
+	url = git@github.com:linkage-x/act.git
+[submodule "dependencies/pika_sdk"]
+	path = dependencies/pika_sdk
+	url = git@github.com:linkage-x/pika_sdk.git
+[submodule "dependencies/BC_Policy"]
+	path = dependencies/BC_Policy
+	url = git@github.com:linkage-x/BC_Policy.git
+[submodule "dependencies/gen_con_sdk_python_release"]
+	path = dependencies/gen_con_sdk_python_release
+	url = git@github.com:linkage-x/gen_con_sdk_python_release.git

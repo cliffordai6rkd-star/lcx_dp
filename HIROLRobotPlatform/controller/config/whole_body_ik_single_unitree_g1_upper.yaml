@@ -1,0 +1,15 @@
+whole_body_ik:
+  tracking_frames:
+  - name: "right_tcp"
+    dim: [4,4]
+    require_trans: true
+    trans_scalar: 1.0
+    require_rot: true
+    rot_scalar: 1.0
+  show_debug: false
+  trans_weight: 200
+  rot_weight: 20
+  smooth_weight: 0.002
+  regularization_weight: 0.0002
+  target_threshold: 0.00001
+  

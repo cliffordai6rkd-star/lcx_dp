@@ -1,0 +1,63 @@
+# Smoother Configuration
+# This file configures the joint command smoothing functionality
+
+# Basic Critical Damped Smoother (recommended for general use)
+critical_damped:
+  type: "critical_damped"
+  omega_n: 25.0           # Natural frequency (rad/s) - Controls response speed
+                          # 15-20: Soft/compliant, slower response
+                          # 20-30: Balanced (default 25)
+                          # 30-40: Fast response, stiffer
+  zeta: 1.0              # Damping ratio (1.0 = critical damping, no overshoot)
+  control_frequency: 800  # Internal control loop frequency (Hz)
+
+# Adaptive Critical Damped Smoother (adjusts response based on error)
+adaptive_critical_damped:
+  type: "adaptive_critical_damped"
+  
+  # Base parameters
+  omega_n: 25.0           # Default natural frequency
+  zeta: 1.0              # Critical damping
+  control_frequency: 800  # Internal frequency (Hz)
+  
+  # Adaptive parameters
+  omega_n_min: 15.0      # Minimum omega_n (soft mode for small errors)
+  omega_n_max: 40.0      # Maximum omega_n (fast mode for large errors)
+  
+  error_thresholds:
+    low: 0.01            # Error below this = soft mode (rad, ~0.57°)
+    high: 0.1            # Error above this = fast mode (rad, ~5.7°)
+  
+  transition: "sigmoid"   # Transition type: "linear" or "sigmoid"
+  omega_change_limit: 5.0 # Max omega_n change per update (rad/s)
+
+# Ruckig Smoother (S-curve with jerk limiting)
+ruckig:
+  type: "ruckig"
+  control_frequency: 800  # Internal control loop frequency (Hz)
+  # 14 DOF limits for dual arm (left arm + right arm, 7 joints each) - XARM7 真实限制
+  # 关节范围: J1(±360°), J2(-118°~120°), J3(±360°), J4(-11°~225°), J5(±360°), J6(97°~180°), J7(±360°)
+  min_position: [-6.2832, -2.0595, -6.2832, -0.1920, -6.2832, 1.6930, -6.2832, -6.2832, -2.0595, -6.2832, -0.1920, -6.2832, 1.6930, -6.2832] # rad
+  max_position: [ 6.2832,  2.0944,  6.2832,  3.9270,  6.2832, 3.1416,  6.2832,  6.2832,  2.0944,  6.2832,  3.9270,  6.2832, 3.1416,  6.2832]
+  max_velocity:  [3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416, 3.1416]      # 180°/s = 3.1416 rad/s
+  max_acceleration: [19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840, 19.9840]  # 1145°/s² = 19.984 rad/s²
+  max_jerk: [499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845, 499.9845]    # 28647°/s³ = 499.985 rad/s³
+  synchronization: true   # Enable synchronization
+  sync_mode: "time"      # Sync mode: "phase", "time", or "none"
+                          # - "phase": Synchronize velocity profiles (smooth coordinated motion)
+                          # - "time": All joints finish at same time (may cause sudden starts/stops)
+                          # - "none": Each joint optimizes independently (fastest per-joint)
+
+# Usage Examples in motion_config.yaml:
+# 
+# motion_factory:
+#   use_smoother: true
+#   smoother_config:
+#     type: "adaptive_critical_damped"  # or "critical_damped"
+#     omega_n: 25.0
+#     omega_n_min: 15.0
+#     omega_n_max: 40.0
+#     error_thresholds:
+#       low: 0.01
+#       high: 0.1
+#     transition: "sigmoid"

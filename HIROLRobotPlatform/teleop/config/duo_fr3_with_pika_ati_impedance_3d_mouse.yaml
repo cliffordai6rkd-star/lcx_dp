@@ -1,0 +1,18 @@
+motion_config: !include factory/components/motion_configs/duo_fr3_with_pika_ati_impedance.yaml
+
+target_site_name: ["targetL_site", "targetR_site"]
+tcp_visualization_site: ["TCPL_site", "TCPR_site"]
+
+teleop_interface: "duo_space_mouse"
+interface_config: !include teleop/space_mouse/duo_space_mouse_cfg.yaml
+inteface_output_mode: "relative"
+
+# teleoperation used parameter
+# if you are using mujoco simulation target instead of teleoperation device,
+# set use_simulation_target as true
+use_simulation_target: true
+teleoperation_loop_time: 0.01
+
+reset_arm_command: [3.69019823e-01,  1.99873044e-04,  2.04437265e-01, 1, 0, 0, 0,
+                    3.69019823e-01,  1.99873044e-04,  2.04437265e-01, 1, 0, 0, 0]
+reset_space: "cartesian"

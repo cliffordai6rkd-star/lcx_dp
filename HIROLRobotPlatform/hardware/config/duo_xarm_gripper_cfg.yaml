@@ -1,0 +1,20 @@
+duo_tool:
+  left:
+    # type: "xarm_gripper"
+    type: "corenetic_gripper"
+    component_type: 1 # COM_TYPE_LEFT
+    ip: "192.168.11.11"
+    control_mode: "incremental"  # "binary" | "incremental"
+    step_size: 0.02              # Incremental step size (2% per press)
+    move_frequency: 0.02         # Minimum time between moves (100Hz)
+    # grasp_force: 20
+      
+  right: 
+    type: "xarm_gripper"
+    ip: "192.168.11.12"
+    # grasp_speed: 0.3
+    # ctrl_mode: 0
+
+    control_mode: "incremental"  # "binary" | "incremental"
+    step_size: 0.02              # Incremental step size (2% per press)
+    move_frequency: 0.02         # Minimum time between moves (100Hz)

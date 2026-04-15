@@ -1,0 +1,8 @@
+urdf_path: "assets/unitree_g1/left_dex3_hand.urdf"
+mesh_offset: "assets/unitree_g1"
+frames: ["world", "left_hand_thumb_2_link", "left_hand_middle_1_link",
+        "left_hand_index_1_link"]
+# maybe we need to lock the hand related joint
+base_link: "world"
+ee_link: ["left_hand_thumb_2_link", "left_hand_middle_1_link", "left_hand_index_1_link"]
+fixed_base: true

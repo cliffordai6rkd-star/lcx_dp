@@ -1,0 +1,18 @@
+motion_config: !include factory/components/motion_configs/left_fr3_with_pika_ati_ik.yaml
+
+task_data_dir: "dp_output/pick_and_place"
+data_type: "robot"
+action_prediction_step: 4
+# skip_steps: 2
+# end_effector_pose_delta
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+data_save_dir: "dp_output/data_replay_fr3_state/pnp_30ep"
+replay_frequency: 30
+tool_position_dof: 1
+tool_max: 90
+enable_hardware: true
+
+# # move to start position
+# reset_arm_command: [-6.120230489417065e-05, -0.7827681732663258, -0.0008224786135059742, -2.3566525744448925, 0.0015880230540836664, 1.572229182095289, 0.7941674346782676]
+# reset_space: "joint"

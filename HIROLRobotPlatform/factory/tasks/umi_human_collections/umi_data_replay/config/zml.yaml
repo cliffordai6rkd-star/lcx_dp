@@ -1,0 +1,9 @@
+mujoco_config: "simulation/config/mujoco_umi_cfg.yaml"
+task_data_dir: dataset/data/duo_unitree_pick_n_place
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+            
+replay_frequency: 30
+motion_config: !include factory/components/motion_configs/right_fr3_with_das_ati_ik.yaml
+tool_position_dof: 1
+data_type: human_hand

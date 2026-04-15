@@ -1,0 +1,13 @@
+# services:
+#     fr3:
+#         build:
+#           context: .  # Assuming the Dockerfile is in the current directory
+#           dockerfile: Dockerfile
+#         volumes:
+#             - ../:/workspace
+#             - /tmp:/tmp
+#         stdin_open: true
+#         tty: true
+#         command: bash -c "cd /workspace && bash"
+       
+

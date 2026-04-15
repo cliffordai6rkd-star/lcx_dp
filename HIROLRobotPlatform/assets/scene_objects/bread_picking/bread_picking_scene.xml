@@ -1,0 +1,26 @@
+<mujoco model="bread_picking">
+  <compiler angle="radian" meshdir="." autolimits="true" />
+  
+  <asset>
+    <mesh name="bread_pikcing_scene_visual" file="bread_picking_scene.STL" scale="0.001 0.001 0.001"/>
+    <!-- <mesh name="bread_picking_scene_collision" file="bread_picking_scene.STL" scale="0.001 0.001 0.001"/> -->
+  </asset>
+
+  <option sdf_iterations="15" sdf_initpoints="100"/>
+ <!-- -0.5000 -0.3023 -1.0300 -->
+  <worldbody>
+    <body name="bread_pikcing_scene">
+      <geom type="mesh" 
+            pos="0.5000 0.3023 1.0300"
+            quat="0 0.7071068 -0.7071068 0"
+            mesh="bread_pikcing_scene_visual"  
+            rgba="1 0.99 0.94 1" 
+            friction="0.5 0.005 0.0001"      
+            solref="0.001 1"              
+            solimp="0.99 0.99 0.001"
+            contype="0"
+            conaffinity="0"/>
+    </body>
+  </worldbody>
+</mujoco>
+<!-- -0.5000 -0.3023 -0.9300 -->

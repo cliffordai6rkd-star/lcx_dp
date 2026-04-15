@@ -1,0 +1,36 @@
+motion_config: !include factory/components/motion_configs/right_fr3_with_das_ati_ik.yaml
+max_step_nums: 150 # for gym steps
+is_debug: false
+
+task_data_dir: "das_data/hirol_0310_100ep"
+data_type: "human_hand"
+action_prediction_step: 1
+skip_steps: 1
+# end_effector_pose_delta
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+observation_type: "ee_pose"
+contain_ft: false
+use_relative_pose: true
+state_keys: ["single"]
+cam_keys: ["left", "mid", "right"]
+rotation_transform: 
+  single: [0.7071068, 0, 0.7071068, 0]
+
+replay_frequency: 30
+tool_position_dof: 1
+tool_max: 0.115
+enable_hardware: false
+
+# data_save_dir: "dataset/data/fr3_umi_bread_picking_replay"
+
+# move to start position for pick n place
+# cartesian
+# reset_arm_command: [0.21374957, -0.38555737,  0.39685211, 0.97728997, -0.01475875,  0.20979072,  0.02596818]
+# reset_space: "cartesian"
+# reset_arm_command: [-0.0401738194832479, -1.5299874232993738, -1.9312359323737118, -2.4809956539881894, 0.0536879692413298, 2.5041080054362572, -1.2317390192072197]
+# 0.70368387, 0.00697132, 0.71022211, 0.01910407
+# x: 0.14 0.185
+reset_arm_command: [0.15327496, -0.54249998, 0.27, 0.7071068, 0, 0.7071068, 0]
+reset_space: "cartesian"
+reset_arm_to_default: false

@@ -1,0 +1,25 @@
+<mujoco>
+  <!-- Mocap object for teleoperation target visualization -->
+  <!-- The parent body will inherit mocap="true" attribute -->
+  <!-- <geom type="box" size="0.04 0.04 0.04" contype="0" conaffinity="0" rgba="0.6 0.3 0.3 0" />
+  <site type="sphere" name="targetL_site" size="0.01" rgba="0 0 1 1" group="1" /> -->
+
+  <asset>
+    <mesh name="pika_gripper_left_link" file="pika_gripper_left_link.STL"/>
+    <mesh name="pika_gripper_right_link" file="pika_gripper_right_link.STL"/>
+  </asset>
+
+  <geom type="mesh" 
+        mesh="pika_gripper_left_link" 
+        pos="-0.1 0.07 0"
+        contype="0" 
+        conaffinity="0" />
+
+  <geom type="mesh" 
+        mesh="pika_gripper_right_link" 
+        pos="-0.1 -0.07 0"
+        contype="0" 
+        conaffinity="0" /> 
+        
+  <site type="sphere" name="targetL_site" size="0.01"  rgba="0 0 1 1" group="2" />
+</mujoco>

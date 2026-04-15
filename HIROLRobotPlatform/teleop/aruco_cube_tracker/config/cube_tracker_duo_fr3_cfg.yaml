@@ -1,0 +1,35 @@
+cube_tracker:
+  # ArUco marker IDs on each visible face, order: [None, -Z, +Y, -Y, +X, -X]
+  # The +Z face is unused; keep None as placeholder to align indexing.
+  all_cube_marker_ids:
+    left:  [null, 46, 44, 45, 47, 43]
+    right: [null, 3, 0, 4, 5, 2]
+
+  cube_size: 8.0
+  marker_size: 6.4
+
+  # Camera-to-world 6D transform [x, y, z, rx, ry, rz]
+  # For eye-in-hand or fixed camera, adjust accordingly
+  transformation: [0.0, -0.1, 0.10, 0.0, 0.0, 0.0]
+
+  # Choose one RealSense config for each side if using two cameras; if single camera
+  # sees both cubes, keep the same config file and intrinsics.
+  camera_config: hardware/sensors/cameras/config/right_pika_d405_cfg.yaml
+  camera_calibration_path: calibration/camera_params.json
+
+  output_left: true
+  output_right: true
+
+  position_scale: 1.0
+
+  # Axis mapping between cube frame and robot EE frame.
+  # Use "+x/-x/+y/-y/+z/-z" to define forward/up for each frame.
+  control_frame:
+    cube_forward: "-z"
+    cube_up: "+y"
+    robot_forward: "+x"
+    robot_up: "-z"
+
+  init_pose:
+    initial_pose_left:  [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+    initial_pose_right: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
