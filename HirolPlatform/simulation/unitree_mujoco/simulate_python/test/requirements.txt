@@ -1,5 +1,0 @@
-glog
-pyyaml
-urdf_parser_py
-transformations
-pyrealsense2
