@@ -15,7 +15,8 @@ contain_ft: false
 use_relative_pose: false
 
 # inference observation source
-observation_source: "dataset"          # "gym" | "dataset"
+# dataset 推理已拆到 data_inference.py，这里只保留真机 gym 链路
+observation_source: "gym"
 dataset_task_data_dir: "../dp_output/pick_and_place"        
 dataset_episode_id: 1
 dataset_skip_steps: 1

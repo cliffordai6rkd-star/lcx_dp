@@ -1,0 +1,30 @@
+# dataset -> policy -> json
+action_type: "end_effector_pose"
+action_orientation_type: "quaternion"
+observation_type: "img_only"
+
+dataset_task_data_dir: "../dp_output/pick_and_place"
+dataset_episode_id: 1
+dataset_skip_steps: 1
+dataset_cam_keys:
+- ee_cam_color
+- third_person_cam_color
+- side_cam_color
+dataset_state_keys: null
+dataset_data_type: "real_robot"
+
+image_width: 224
+image_height: 224
+
+checkpoint_path: "../dp_output/2026.0414/latest.ckpt"
+output_json_path: "../dp_output/dataset_inference/episode_0001_actions.json"
+
+seed: 42
+device: "cuda"
+
+inference_scheduler_type: "ddim"
+ddim_inference_steps: 8
+ddim_eta: 0.0
+num_train_timesteps: 100
+
+log_level: "info"

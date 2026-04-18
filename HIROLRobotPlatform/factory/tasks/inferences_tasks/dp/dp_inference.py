@@ -1,7 +1,7 @@
 import time, os, copy
 import glog as log
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from collections import deque
 from pathlib import Path
 
@@ -9,7 +9,6 @@ from pathlib import Path
 from factory.tasks.inferences_tasks.inference_base import InferenceBase
 # from pathlib import path
 from scipy.spatial.transform import Rotation as R
-from dataset.lerobot.reader import RerunEpisodeReader
 
 # DP related imports
 import torch
@@ -18,7 +17,7 @@ import sys, cv2, random
 
 
 # 0404 debug
-# 1、ckpt输出state_ee键与gym_obs拼起来的对不上  
+# 1、ckpt输出state_ee键与gym_obs拼起来的对不上
 # 考虑做一个adapter 从ckpt取出来之后重排再传进Gymapi
 # 2、reset指令对pika和tool的指令[[1]]会报错
 # 3、现有逻辑是按照observation_type去拿ee_state 从底层看如何修改
@@ -62,107 +61,44 @@ from tools.performance_profiler import timer
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 log.info("Successfully imported diffusion_policy modules")
 
-class DP_Inferencer(InferenceBase):
+
+class DPPolicyRuntime:
+    """给 data_inference.py 复用的轻量 policy 接口。"""
+
     def __init__(self, config: Dict[str, Any]) -> None:
-        super().__init__(config)
-        
         seed = config["seed"]
         torch.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
 
-        # Load DP model and initialize inference parameters
         self._device = torch.device(config.get("device", "cuda") if torch.cuda.is_available() else "cpu")
         log.info(f"Using device: {self._device}")
 
-        self._observation_source = config.get(f'observation_source',"gym") # dataset or gym
-        
         self._dp_policy = self._load_dp_model(config["checkpoint_path"], config)
         self._n_obs_steps = getattr(self._dp_policy, 'n_obs_steps', 2)
         self._n_action_steps = getattr(self._dp_policy, 'n_action_steps', 8)
-        self._execution_action_chunk_size = self._n_action_steps  # chunk的大小实际上就是policy的动作步数
         self._action_horizon = getattr(self._dp_policy, 'horizon', 16)
         log.info(f'To: {self._n_obs_steps}, Ta: {self._n_action_steps}, Tp: {self._action_horizon}')
-        
-        img_w = config.get(f'image_width', 128)  
+
+        img_w = config.get(f'image_width', 128)
         img_h = config.get(f'image_height', 128)
         self._image_size = config.get(f'image_size', (img_w, img_h))
         self._obs_queue = deque(maxlen=self._n_obs_steps)
-        
         self._obs_type = ObservationType(config.get("observation_type", ObservationType.JOINT_POSITION_ONLY.value))
 
-        # dataset related
-        self._dataset_reader = None
-        self._dataset_episode_data = None
-        self._dataset_frame_idx = 0
-
-        if self._observation_source == "dataset":
-              self._dataset_task_data_dir = config["dataset_task_data_dir"]
-              self._dataset_episode_id = config.get("dataset_episode_id", 0)
-              self._dataset_skip_steps = config.get("dataset_skip_steps", 1)
-              self._dataset_cam_keys = config.get("dataset_cam_keys", None)
-              self._dataset_state_keys = config.get("dataset_state_keys", None)
-              self._dataset_data_type = config.get("dataset_data_type", "real_robot")
-              self._dataset_reader = RerunEpisodeReader(
-                  task_dir=self._dataset_task_data_dir,
-                  action_type=self._action_type,             # 先沿用当前action_type
-                  action_prediction_step=1,                 # 可先固定
-                  action_ori_type=self._action_ori_type,    # 沿用当前配置
-                  observation_type=self._obs_type,          # 关键：要和 DPobs_type 一致
-                  state_keys=self._dataset_state_keys,
-                  camera_keys=self._dataset_cam_keys,
-                  data_type=self._dataset_data_type,
-              )
-
-              self._load_dataset_episode()
-        
         log.info(f"DP model loaded. obs_steps: {self._n_obs_steps}, action_horizon: {self._action_horizon}")
 
-    def _load_dataset_episode(self):
-          self._dataset_episode_data = self._dataset_reader.return_episode_observations(
-              self._dataset_episode_id,
-              skip_steps_nums=self._dataset_skip_steps
-          )
-          if self._dataset_episode_data is None or len(self._dataset_episode_data) == 0:
-              raise ValueError("dataset episode is empty")
-    
-          self._dataset_frame_idx = 0
-    
-    def _reset_dataset_obs_cursor(self):
-          self._dataset_frame_idx = 0
-          self._obs_queue.clear()
-    
-    def _get_gym_obs_from_dataset(self):
-          if self._dataset_episode_data is None:
-              self._load_dataset_episode()
-    
-          if self._dataset_frame_idx >= len(self._dataset_episode_data):
-              # Mark the current episode for termination, but still return a
-              # valid observation for this call so the loop does not crash.
-              self._status_ok = False
-              frame_data = self._dataset_episode_data[-1]
-          else:
-              frame_data = self._dataset_episode_data[self._dataset_frame_idx]
-              self._dataset_frame_idx += 1
-    
-          pseudo_gym_obs = {
-              "colors": frame_data.get("colors", {}),
-              "state": frame_data.get("observations", {})
-          }
-    
-          return pseudo_gym_obs
+    @property
+    def n_obs_steps(self) -> int:
+        return self._n_obs_steps
 
+    @property
+    def n_action_steps(self) -> int:
+        return self._n_action_steps
 
-
-
-    # 在每个episode开始时重置policy内部状态
-    # 父类抽象函数的接口统一，具体实现在diffusion policy的policy里定义
-    def policy_reset(self):
+    def reset(self):
         self._dp_policy.reset()
-
-        if self._observation_source == "dataset":
-            self._load_dataset_episode()  
-            self._reset_dataset_obs_cursor()
+        self._obs_queue.clear()
 
     # 同上 从policy中拿转成numpy的action
     def policy_prediction(self, obs):
@@ -172,70 +108,45 @@ class DP_Inferencer(InferenceBase):
             log.info(f"policy action dim-8 for all steps: {action_np[:, 7]}")
             log.info(f"policy first step dim-8: {action_np[0, 7]}")
         return action_np
-    # 推理控制实现    
-
-    def start_inference(self) -> None:
-        log.info("Initialization done. Using InferenceBase episode start logic.")
-        self.start_common_inference()
 
     # 获取gym格式的obs 转换成dp需要的torch.Tensor格式的obs
-    def convert_from_gym_obs(self, gym_obs = None) -> Dict[str, torch.Tensor]:
-        """Convert gym observations to DP format.
-        
-        Returns:
-            Dict containing DP-formatted observations as tensors
-        """
-        if gym_obs is None:
-           if self._observation_source == "dataset":
-                gym_obs = self._get_gym_obs_from_dataset()
-           else:
-               gym_obs = super().convert_from_gym_obs()
-
-        # 父类在inference_base里定义了convert_from_gym_obs方法，返回gym_obs的字典格式，包含state、colors
-        gym_obs = super().convert_from_gym_obs(gym_obs = gym_obs) 
-        # 取出gym_obs里的colors
-        self.image_display(gym_obs)
-        
+    def convert_from_gym_obs(self, gym_obs) -> Optional[Dict[str, torch.Tensor]]:
         # Convert to DP format
         dp_obs_np = self._convert_gym_obs_to_dp_format(gym_obs)
-        
+
         # Add to observation queue
         if len(self._obs_queue) >= self._n_obs_steps:
             # 如果队列已满，自动丢弃最旧的观测 将最新的观测添加到队列末尾
             self._obs_queue.popleft() # popleft()方法从队列的左侧（即最旧的观测）移除一个元素
         self._obs_queue.append(dp_obs_np) # append()方法将新的观测添加到队列的右侧（即末尾）
-        
+
         # Wait until we have enough observations
         if len(self._obs_queue) < self._n_obs_steps:
-            log.info(f"Collecting observations... ({len(self._obs_queue)}/{self._n_obs_steps})")
-            time.sleep(0.01)
-            return self.convert_from_gym_obs()  # Recursive call until enough obs
-        
+            return None
+
         # Stack observations across time dimension
         obs_dict_np = {}
         for i, obs in enumerate(self._obs_queue):
             for key, value in obs.items():
                 value = value[None] # Add time dimension 等价于value = np.expand_dims(value, axis=0)
                 if i == 0:
-                    obs_dict_np[key] = value  
+                    obs_dict_np[key] = value
                 else:
                     obs_dict_np[key] = np.concatenate((obs_dict_np[key], value), axis=0)
-                # obs变成了(idx_time,state(),img())
-                # log.info(f'{i}th key: {key}, dp obs shape: {obs_dict_np[key].shape}')
-        
+
         # Convert to torch tensors and add batch dimension[1, T, C, H, W]
-        obs_dict = dict_apply(obs_dict_np, 
-            lambda x: torch.from_numpy(x).unsqueeze(0).to(self._device)) 
+        obs_dict = dict_apply(obs_dict_np,
+            lambda x: torch.from_numpy(x).unsqueeze(0).to(self._device))
         # unsqueeze(0)在第0维添加一个新的维度，即batch维度)
         # torch的to(self._device)方法将张量移动到指定的设备上（如GPU或CPU）
         return obs_dict
-        
+
     def _convert_gym_obs_to_dp_format(self, gym_obs: Dict[str, Any]) -> Dict[str, np.ndarray]:
         """Convert gym observations to DP format.
-        
+
         Args:
             gym_obs: Gym observation dictionary
-            
+
         Returns:
             DP-formatted observation dictionary
         """
@@ -246,63 +157,51 @@ class DP_Inferencer(InferenceBase):
         # Process camera observations
         for camera_name, img in gym_obs.get('colors', {}).items():
             assert img is not None and len(img.shape) == 3, f"Invalid image for {camera_name}"
-            
+
             #resize
-            img = cv2.resize(img, self._image_size) 
-            
+            img = cv2.resize(img, self._image_size)
+
             # Normalize and format
             if img.dtype == np.uint8:
                 processed_img = img.astype(np.float32) / 255.0
             else:
                 processed_img = np.clip(img.astype(np.float32), 0.0, 1.0)
-            
+
             # Convert to [1, C, H, W] format
             processed_img = np.transpose(processed_img, (2, 0, 1))
             dp_obs[camera_name] = processed_img
 
         if self._obs_type == ObservationType.IMG_ONLY:
-        #   self._joint_positions = np.array([])  
             return dp_obs
-        
+
         # Process robot state == dp state_ee
         # 按照ckpt期望重組gym_obs
         # 写法仅支持单臂  双臂需要实例化key
         for key, cur_state in gym_obs.get('state', {}).items():
             if self._obs_type == ObservationType.JOINT_POSITION_ONLY:
                 joint = cur_state[:7]
-                ee = None
                 gripper = cur_state[7:8]
                 # 针对这种ckpt的obs格式  需要用actory/tasks/inferences_tasks/dp/dp_ckpt_loader.py检查key和components
                 dp_state = np.concatenate([joint, gripper], axis=0).astype(np.float32)
                 dp_obs["state_ee"] = dp_state
             elif self._obs_type ==ObservationType.END_EFFECTOR_POSE:
-                joint = None
                 ee = cur_state[:7]
                 gripper = cur_state[7:8]
                 #同上
                 dp_state = np.concatenate([ee, gripper], axis=0).astype(np.float32)
-                dp_obs["state_ee"] = dp_state             
+                dp_obs["state_ee"] = dp_state
             elif self._obs_type == ObservationType.JOINT_POSITION_END_EFFECTOR:
                 joint = cur_state[:7]
                 ee = cur_state[7:14]
                 gripper = cur_state[14:15]
                 dp_state = np.concatenate([ee, joint, gripper], axis=0).astype(np.float32)
                 dp_obs["state_ee"] = dp_state
-                
+
             else:
                 raise ValueError(f"obaervationtpye is not exist")
-        self._lock.acquire()
-        self._joint_positions = joint # 更新joint参数
-        self._lock.release()
-        # 按照dp ckpt训练定义的state_ee顺序拼接
-        # dp_state = np.concatenate([ee, joint, gripper], axis=0).astype(np.float32)
-        # dp_obs["state_ee"] = dp_state
-      
+
         return dp_obs
-    
-        # 总结：上面两个函数最终输出的dp_obs为：batch=1, time=T, state[]和batch=1, time=T, color[C,H,W]的字典
-        
-        
+
     def _load_dp_model(self, checkpoint_path: str, config: Dict[str, Any]) -> BaseImagePolicy:
         # dp的baseworkspace里定义cfg和payload 用于取checkpoint里的模型参数和配置
         """Load DP model from checkpoint.
@@ -324,7 +223,7 @@ class DP_Inferencer(InferenceBase):
         log.info(f"Loading DP checkpoint: {checkpoint_path}")
         payload = torch.load(open(checkpoint_path, 'rb'), pickle_module=dill) # 加载模式：rb二进制和dill反序列化
         cfg = payload['cfg'] # BaseWorkspace有详细定义
-        
+
         # Create workspace and load model
         # hydra.utils.get_class()函数根据config中的_target_字段取出指定的类 即上文提到的_dp_policy对象
         cls = hydra.utils.get_class(cfg._target_)
@@ -337,7 +236,7 @@ class DP_Inferencer(InferenceBase):
         policy: BaseImagePolicy = workspace.ema_model if cfg.training.use_ema else workspace.model
         # pytorc的相关方法
         policy.eval().to(self._device)  #.eval()切换为推理模式  .toset_device(self._device)将模型移动到指定设备上（如GPU或CPU）
-        
+
         #如果有num_inference_steps属性，根据config设置推理步骤数，并根据需要设置DDIM调度器
         if hasattr(policy, 'num_inference_steps'):
             log.info(f"policy infer steps: {getattr(policy, 'num_inference_steps', 25)}")
@@ -413,30 +312,133 @@ class DP_Inferencer(InferenceBase):
             # Fallback to original inference steps setting
             policy.num_inference_steps = min(70, getattr(policy, 'num_inference_steps', 16))
             log.warning("Falling back to original DDPM inference settings")
-    
+
     def close(self) -> None:
         """Clean up DP-specific resources."""
         if hasattr(self, '_dp_policy'):
             del self._dp_policy
+
+
+class DP_Inferencer(InferenceBase):
+    def __init__(self, config: Dict[str, Any]) -> None:
+        super().__init__(config)
+
+        self._observation_source = config.get(f'observation_source',"gym") # dataset or gym
+        if self._observation_source != "gym":
+            raise ValueError("dp_inference.py 现在只保留 gym 真机链路，dataset 请使用 data_inference.py")
+
+        self._dp_runtime = DPPolicyRuntime(config)
+        self._device = self._dp_runtime._device
+        self._dp_policy = self._dp_runtime._dp_policy
+        self._n_obs_steps = self._dp_runtime._n_obs_steps
+        self._n_action_steps = self._dp_runtime._n_action_steps
+        self._execution_action_chunk_size = self._n_action_steps  # chunk的大小实际上就是policy的动作步数
+        self._action_horizon = self._dp_runtime._action_horizon
+        self._image_size = self._dp_runtime._image_size
+        self._obs_queue = self._dp_runtime._obs_queue
+        self._obs_type = self._dp_runtime._obs_type
+
+    # 在每个episode开始时重置policy内部状态
+    # 父类抽象函数的接口统一，具体实现在diffusion policy的policy里定义
+    def policy_reset(self):
+        self._dp_policy.reset()
+        self._obs_queue.clear()
+
+    # 同上 从policy中拿转成numpy的action
+    def policy_prediction(self, obs):
+        with torch.no_grad():
+            result = self._dp_policy.predict_action(obs)  #这里的self._policy是load_dp_model加载出来的
+            action_np = result['action'][0][:self._n_action_steps].detach().cpu().numpy()
+            log.info(f"policy action dim-8 for all steps: {action_np[:, 7]}")
+            log.info(f"policy first step dim-8: {action_np[0, 7]}")
+        return action_np
+    # 推理控制实现
+
+    def start_inference(self) -> None:
+        log.info("Initialization done. Using InferenceBase episode start logic.")
+        self.start_common_inference()
+
+    # 获取gym格式的obs 转换成dp需要的torch.Tensor格式的obs
+    def convert_from_gym_obs(self, gym_obs = None) -> Dict[str, torch.Tensor]:
+        """Convert gym observations to DP format.
+
+        Returns:
+            Dict containing DP-formatted observations as tensors
+        """
+        if gym_obs is None:
+            gym_obs = super().convert_from_gym_obs()
+
+        # 父类在inference_base里定义了convert_from_gym_obs方法，返回gym_obs的字典格式，包含state、colors
+        gym_obs = super().convert_from_gym_obs(gym_obs = gym_obs)
+        # 取出gym_obs里的colors
+        self.image_display(gym_obs)
+
+        # Convert to DP format
+        dp_obs_np = self._convert_gym_obs_to_dp_format(gym_obs)
+
+        # Add to observation queue
+        if len(self._obs_queue) >= self._n_obs_steps:
+            # 如果队列已满，自动丢弃最旧的观测 将最新的观测添加到队列末尾
+            self._obs_queue.popleft() # popleft()方法从队列的左侧（即最旧的观测）移除一个元素
+        self._obs_queue.append(dp_obs_np) # append()方法将新的观测添加到队列的右侧（即末尾）
+
+        # Wait until we have enough observations
+        if len(self._obs_queue) < self._n_obs_steps:
+            log.info(f"Collecting observations... ({len(self._obs_queue)}/{self._n_obs_steps})")
+            time.sleep(0.01)
+            return self.convert_from_gym_obs()  # Recursive call until enough obs
+
+        # Stack observations across time dimension
+        obs_dict_np = {}
+        for i, obs in enumerate(self._obs_queue):
+            for key, value in obs.items():
+                value = value[None] # Add time dimension 等价于value = np.expand_dims(value, axis=0)
+                if i == 0:
+                    obs_dict_np[key] = value
+                else:
+                    obs_dict_np[key] = np.concatenate((obs_dict_np[key], value), axis=0)
+                # obs变成了(idx_time,state(),img())
+                # log.info(f'{i}th key: {key}, dp obs shape: {obs_dict_np[key].shape}')
+
+        # Convert to torch tensors and add batch dimension[1, T, C, H, W]
+        obs_dict = dict_apply(obs_dict_np,
+            lambda x: torch.from_numpy(x).unsqueeze(0).to(self._device))
+        # unsqueeze(0)在第0维添加一个新的维度，即batch维度)
+        # torch的to(self._device)方法将张量移动到指定的设备上（如GPU或CPU）
+        return obs_dict
+
+    def _convert_gym_obs_to_dp_format(self, gym_obs: Dict[str, Any]) -> Dict[str, np.ndarray]:
+        return self._dp_runtime._convert_gym_obs_to_dp_format(gym_obs)
+
+    def _load_dp_model(self, checkpoint_path: str, config: Dict[str, Any]) -> BaseImagePolicy:
+        return self._dp_runtime._load_dp_model(checkpoint_path, config)
+
+    def _setup_ddim_scheduler(self, policy: BaseImagePolicy, config: Dict[str, Any]) -> None:
+        self._dp_runtime._setup_ddim_scheduler(policy, config)
+
+    def close(self) -> None:
+        """Clean up DP-specific resources."""
+        if hasattr(self, '_dp_runtime'):
+            self._dp_runtime.close()
         super().close()
-          
+
+
 def main():
     from factory.utils import parse_args
     from hardware.base.utils import dynamic_load_yaml
     # testing gym api
     arguments = {"config": {"short_cut": "-c",
                             "symbol": "--config",
-                            "type": str, 
+                            "type": str,
                             "default": "factory/tasks/inferences_tasks/dp/config/fr3_dp_ddim_inference_cfg.yaml",
                             "help": "Path to the config file"}}
     args = parse_args("dp inference", arguments)
-    
+
     # Load configuration from the YAML file
     config = dynamic_load_yaml(args.config)
     print(f'dp config: {config}')
     dp_executor = DP_Inferencer(config)
     dp_executor.start_inference()
-    
+
 if __name__ == "__main__":
     main()
-    
