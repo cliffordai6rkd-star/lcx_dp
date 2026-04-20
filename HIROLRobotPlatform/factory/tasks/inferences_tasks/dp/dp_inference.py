@@ -105,8 +105,8 @@ class DPPolicyRuntime:
         with torch.no_grad():
             result = self._dp_policy.predict_action(obs)  #这里的self._policy是load_dp_model加载出来的
             action_np = result['action'][0][:self._n_action_steps].detach().cpu().numpy()
-            log.info(f"policy action dim-8 for all steps: {action_np[:, 7]}")
-            log.info(f"policy first step dim-8: {action_np[0, 7]}")
+            # log.info(f"policy action dim-8 for all steps: {action_np[:, 7]}")
+            # log.info(f"policy first step dim-8: {action_np[0, 7]}")
         return action_np
 
     # 获取gym格式的obs 转换成dp需要的torch.Tensor格式的obs
@@ -355,9 +355,160 @@ class DP_Inferencer(InferenceBase):
     # 推理控制实现
 
     def start_inference(self) -> None:
-        log.info("Initialization done. Using InferenceBase episode start logic.")
-        self.start_common_inference()
+      log.info("Initialization done. Using DP receding-horizon inference loop.")
 
+      execution_chunk_steps = int(self._config.get("execution_chunk_steps", 1))
+      if execution_chunk_steps < 1:
+          raise ValueError("execution_chunk_steps must be >= 1")
+      execution_chunk_steps = min(execution_chunk_steps, self._n_action_steps)
+
+      for episode_id in range(self._num_episodes):
+          if self._quit:
+              break
+
+          if self._data_record:
+              self._gym_robot.start_recording()
+              log.info("start record infer data traj!!!")
+
+          if self._save_chunk_dir:
+              self._action_chunk_writer.create_episode()
+              self._episode_id = self._action_chunk_writer.episode_id
+              time.sleep(0.5)
+              log.info(f"start record model infer action chunk for {self._episode_id}!!!")
+
+          self._gym_robot.reset(options={"arm_to_default": True})
+          self._last_gripper_open = [True, True]
+          self.policy_reset()
+          self._status_ok = True
+          self._episode_start = False
+          self._episode_abort = False
+          self._episode_abort_reason = None
+          self._current_episode_id = episode_id
+
+          counter = 0
+          time.sleep(0.5)
+          while not self._episode_start:
+              if self._quit:
+                  break
+              if counter < 5:
+                  log.info("Please press s for start!!!!!!!!")
+                  counter += 1
+              time.sleep(1)
+
+          if self._quit:
+              break
+
+          self._gym_robot.reset()
+          self._gym_robot.set_init_pose()
+
+          if self._data_record:
+              self._gym_robot.record_current_snapshot(
+                  actions={
+                      "event": "episode_start",
+                      "action_type": self._action_type.name,
+                  }
+              )
+
+          log.info(f"Starting the {episode_id} th episodes")
+
+          t = 0
+          pending_gym_obs = None
+
+          while t < self._max_timestamps:
+              if not self._status_ok or self._quit or self._episode_abort:
+                  break
+
+              if pending_gym_obs is not None:
+                  obs = self.convert_from_gym_obs(pending_gym_obs)
+                  pending_gym_obs = None
+              else:
+                  obs = self.convert_from_gym_obs()
+
+              if obs is None:
+                  continue
+
+              pred_action_chunk = self.policy_prediction(obs)
+              if pred_action_chunk is None or len(pred_action_chunk) == 0:
+                  log.warning("Empty action chunk from policy, skip this round.")
+                  continue
+
+              chunk_steps = min(execution_chunk_steps, pred_action_chunk.shape[0])
+
+              if self._save_chunk_dir:
+                  pred_imgs = {}
+                  for key, img in obs.items():
+                      if "color" in key:
+                          pred_imgs[key] = dict(data=img, time_stamp=0.0)
+                  self._action_chunk_writer.add_item(
+                      actions=pred_action_chunk,
+                      colors=pred_imgs,
+                  )
+
+              chunk_anchor = None
+              if self._chunk_anchor_mode:
+                  time.sleep(0.05)
+                  chunk_anchor = self._gym_robot.get_ee_state()
+
+              self._visualize_chunk_in_sim(pred_action_chunk, chunk_anchor)
+
+              for i in range(chunk_steps):
+                  if not self._status_ok or self._quit or self._episode_abort:
+                      break
+
+                  raw_action = pred_action_chunk[i]
+                  aggregated_action = raw_action
+
+                  convert_start = time.perf_counter()
+                  gym_action = self.convert_to_gym_action_single_step(
+                      aggregated_action,
+                      raw_action,
+                      chunk_anchor,
+                  )
+                  convert_time = time.perf_counter() - convert_start
+
+                  candidate_ee_cmd = self._extract_ee_pose_targets_from_gym_action(gym_action)
+                  safe, reason = self._check_ee_step_safety(
+                      candidate_ee_cmd=candidate_ee_cmd,
+                      raw_action=raw_action,
+                      aggregated_action=aggregated_action,
+                      step_idx=t,
+                  )
+
+                  if not safe:
+                      self._episode_abort = True
+                      self._episode_abort_reason = reason
+                      self._abort_current_episode_due_to_safety(reason)
+                      break
+
+                  step_start = time.perf_counter()
+                  res = self._gym_robot.step(gym_action, True)
+                  step_time = time.perf_counter() - step_start
+
+                  post_obs = res[0] if res[0] is not None else None
+                  t += 1
+
+                  if i < chunk_steps - 1:
+                      if post_obs is not None:
+                          self.convert_from_gym_obs(post_obs)
+                      else:
+                          self.convert_from_gym_obs()
+                  else:
+                      pending_gym_obs = post_obs
+
+                  log.info(
+                      f"episode={episode_id}, t={t}, chunk_step={i+1}/{chunk_steps}, "
+                      f"convert={convert_time:.4f}s, step={step_time:.4f}s"
+                  )
+
+          if self._data_record:
+              self._gym_robot.save_recording()
+              log.info("save infer data traj!!!")
+
+          if self._save_chunk_dir:
+              self._action_chunk_writer.save_episode()
+              log.info(f"save {self._episode_id}th model infer action chunk!!!")
+              time.sleep(1.0)
+              
     # 获取gym格式的obs 转换成dp需要的torch.Tensor格式的obs
     def convert_from_gym_obs(self, gym_obs = None) -> Dict[str, torch.Tensor]:
         """Convert gym observations to DP format.
